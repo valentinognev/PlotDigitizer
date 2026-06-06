@@ -17,15 +17,7 @@ def _arc_length(path: list[tuple[float, float]]) -> list[float]:
     return lengths
 
 
-def resample_curve(
-    image_bytes: bytes,
-    color_hex: str,
-    target_count: int,
-    existing_points: list[tuple[float, float]] | None = None,
-) -> list[Point]:
-    path = trace_curve_path(image_bytes, color_hex)
-    if not path and existing_points:
-        path = list(existing_points)
+def resample_path(path: list[tuple[float, float]], target_count: int) -> list[Point]:
     if len(path) < 2:
         return [Point(pixel=p, origin="ai") for p in path]
 
@@ -52,3 +44,15 @@ def resample_curve(
         py = y0 + t * (y1 - y0)
         samples.append(Point(pixel=(px, py), origin="ai"))
     return samples
+
+
+def resample_curve(
+    image_bytes: bytes,
+    color_hex: str,
+    target_count: int,
+    existing_points: list[tuple[float, float]] | None = None,
+) -> list[Point]:
+    path = trace_curve_path(image_bytes, color_hex)
+    if not path and existing_points:
+        path = list(existing_points)
+    return resample_path(path, target_count)

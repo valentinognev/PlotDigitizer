@@ -8,8 +8,22 @@ import type {
   BBox,
 } from '../types'
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, init)
+const DEFAULT_TIMEOUT_MS = 120_000
+
+async function request<T>(path: string, init?: RequestInit, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  let res: Response
+  try {
+    res = await fetch(path, { ...init, signal: controller.signal })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('Request timed out — try again or check the API connection')
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
   if (!res.ok) {
     let body: ApiErrorBody | { detail: unknown } = { error: { code: 'unknown', message: res.statusText, hint: '' } }
     try {
@@ -40,6 +54,23 @@ export async function getSession(id: string): Promise<Session> {
   return request<Session>(`/sessions/${id}`)
 }
 
+export async function getLastSession(): Promise<Session> {
+  return request<Session>('/sessions/last')
+}
+
+export async function waitForBackend(maxAttempts = 20, delayMs = 300): Promise<boolean> {
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const res = await fetch('/health')
+      if (res.ok) return true
+    } catch {
+      /* backend not ready */
+    }
+    await new Promise((r) => setTimeout(r, delayMs))
+  }
+  return false
+}
+
 export async function detectSession(id: string): Promise<Session> {
   return request<Session>(`/sessions/${id}/detect`, { method: 'POST' })
 }
@@ -60,6 +91,26 @@ export async function refineSession(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+  })
+}
+
+export async function improveCurveFromHints(id: string, curveId: string): Promise<Session> {
+  return request<Session>(`/sessions/${id}/curves/${curveId}/improve`, { method: 'POST' })
+}
+
+export async function cvImproveCurve(id: string, curveId: string): Promise<Session> {
+  return request<Session>(`/sessions/${id}/curves/${curveId}/cv-improve`, { method: 'POST' })
+}
+
+export async function removeCurveFromPlot(
+  id: string,
+  curveId: string,
+  useAi = false,
+): Promise<Session> {
+  return request<Session>(`/sessions/${id}/curves/${curveId}/remove-from-plot`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ use_ai: useAi }),
   })
 }
 

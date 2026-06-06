@@ -5,7 +5,7 @@ import base64
 from openai import OpenAI
 
 from app.models.schemas import BBox, Curve, VLMResponse
-from app.vlm.base import DETECT_PROMPT, REFINE_PROMPT, VLMError, parse_vlm_response
+from app.vlm.base import VLMError, build_detect_prompt, build_refine_prompt, parse_vlm_response
 
 
 class OpenAIProvider:
@@ -50,10 +50,18 @@ class OpenAIProvider:
         )
         return response.choices[0].message.content or ""
 
-    def detect(self, image: bytes, *, scale_factor: float = 1.0) -> VLMResponse:
-        text = self._call(image, DETECT_PROMPT)
-        resp = parse_vlm_response(text, repair_fn=self._repair)
-        return self._scale_response(resp, scale_factor)
+    def detect(
+        self,
+        image: bytes,
+        *,
+        scale_factor: float = 1.0,
+        image_width: int | None = None,
+        image_height: int | None = None,
+    ) -> VLMResponse:
+        w = image_width or 800
+        h = image_height or 600
+        text = self._call(image, build_detect_prompt(w, h))
+        return parse_vlm_response(text, repair_fn=self._repair)
 
     def refine(
         self,
@@ -62,31 +70,22 @@ class OpenAIProvider:
         region: BBox | None = None,
         instruction: str | None = None,
         existing: list[Curve] | None = None,
+        hint_curve: Curve | None = None,
+        hint_points: list[tuple[float, float]] | None = None,
         scale_factor: float = 1.0,
+        image_width: int | None = None,
+        image_height: int | None = None,
     ) -> VLMResponse:
-        parts = [REFINE_PROMPT]
-        if instruction:
-            parts.append(f"Instruction: {instruction}")
-        if region:
-            parts.append(
-                f"Focus region bbox: x={region.x}, y={region.y}, "
-                f"w={region.width}, h={region.height}"
-            )
-        if existing:
-            labels = ", ".join(c.label for c in existing)
-            parts.append(f"Existing curves: {labels}")
-        text = self._call(image, "\n".join(parts))
-        resp = parse_vlm_response(text, repair_fn=self._repair)
-        return self._scale_response(resp, scale_factor)
-
-    def _scale_response(self, resp: VLMResponse, scale_factor: float) -> VLMResponse:
-        if scale_factor == 1.0:
-            return resp
-        inv = 1.0 / scale_factor
-        for tick in resp.axes.x.ticks:
-            tick.pixel = (tick.pixel[0] * inv, tick.pixel[1] * inv)
-        for tick in resp.axes.y.ticks:
-            tick.pixel = (tick.pixel[0] * inv, tick.pixel[1] * inv)
-        for curve in resp.curves:
-            curve.seed_points = [(x * inv, y * inv) for x, y in curve.seed_points]
-        return resp
+        w = image_width or 800
+        h = image_height or 600
+        prompt = build_refine_prompt(
+            width=w,
+            height=h,
+            region=region,
+            instruction=instruction,
+            existing=existing,
+            hint_curve=hint_curve,
+            hint_points=hint_points,
+        )
+        text = self._call(image, prompt)
+        return parse_vlm_response(text, repair_fn=self._repair)

@@ -1,6 +1,14 @@
-import Plot from 'react-plotly.js'
+import type { ComponentType } from 'react'
+import PlotlyModule from 'react-plotly.js'
 import type { Calibration, Curve } from '../types'
 import { isCalibrationValid, pixelToData } from '../lib/transform'
+
+/** Vite/Rolldown CJS interop: default export may be nested under `.default`. */
+const Plot = (
+  typeof PlotlyModule === 'function'
+    ? PlotlyModule
+    : (PlotlyModule as { default: ComponentType<Record<string, unknown>> }).default
+) as ComponentType<Record<string, unknown>>
 
 interface Props {
   curves: Curve[]
@@ -28,14 +36,14 @@ export function PreviewChart({ curves, calibration }: Props) {
         mode: 'lines+markers' as const,
         name: curve.label,
         line: { color: curve.color },
-        marker: { size: 4 },
+        marker: { size: 4, color: curve.color },
       }
     })
 
   return (
-    <div className="h-full w-full rounded-lg border border-slate-700 bg-slate-900 p-2">
+    <div className="flex h-full max-h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border border-slate-700 bg-slate-900 p-2">
       {!valid ? (
-        <div className="flex h-full items-center justify-center text-sm text-slate-400">
+        <div className="flex flex-1 items-center justify-center text-sm text-slate-400">
           Set valid calibration to preview data-space plot
         </div>
       ) : (
@@ -43,16 +51,23 @@ export function PreviewChart({ curves, calibration }: Props) {
           data={traces}
           layout={{
             autosize: true,
+            height: undefined,
             paper_bgcolor: '#0f172a',
             plot_bgcolor: '#1e293b',
-            font: { color: '#e2e8f0' },
-            margin: { l: 50, r: 20, t: 30, b: 40 },
-            xaxis: { title: 'X', gridcolor: '#334155' },
-            yaxis: { title: 'Y', gridcolor: '#334155' },
+            font: { color: '#e2e8f0', size: 11 },
+            margin: { l: 48, r: 12, t: 24, b: 36 },
+            xaxis: { title: 'X', gridcolor: '#334155', automargin: true },
+            yaxis: { title: 'Y', gridcolor: '#334155', automargin: true },
           }}
           useResizeHandler
           style={{ width: '100%', height: '100%' }}
-          config={{ responsive: true, displayModeBar: false }}
+          config={{
+            responsive: true,
+            displayModeBar: true,
+            displaylogo: false,
+            scrollZoom: true,
+            modeBarButtonsToAdd: [],
+          }}
         />
       )}
     </div>

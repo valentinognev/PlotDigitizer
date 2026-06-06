@@ -14,22 +14,42 @@ class CalibrationError(ValueError):
     pass
 
 
+def _extreme_ref_index(ref_points: list[RefPoint], axis_name: str, which: str) -> int:
+    coord = 0 if axis_name == "x" else 1
+    idx = 0
+    for i in range(1, len(ref_points)):
+        v = ref_points[i].pixel[coord]
+        best = ref_points[idx].pixel[coord]
+        if which == "min" and v < best:
+            idx = i
+        elif which == "max" and v > best:
+            idx = i
+    return idx
+
+
 def _fit_axis(ref_points: list[RefPoint], scale: Scale, axis_name: str) -> tuple[float, float]:
+    """Two-point fit at extreme pixel refs — matches xmin/xmax/ymin/ymax UI."""
     if len(ref_points) < 2:
         raise CalibrationError(f"{axis_name} axis needs at least 2 reference points")
 
-    pixels = np.array([p.pixel[0 if axis_name == "x" else 1] for p in ref_points], dtype=float)
-    values = np.array([p.value for p in ref_points], dtype=float)
+    i_a = _extreme_ref_index(ref_points, axis_name, "min")
+    i_b = _extreme_ref_index(ref_points, axis_name, "max")
+    pix_a = float(ref_points[i_a].pixel[0 if axis_name == "x" else 1])
+    pix_b = float(ref_points[i_b].pixel[0 if axis_name == "x" else 1])
+    val_a = float(ref_points[i_a].value)
+    val_b = float(ref_points[i_b].value)
 
-    if scale == "log":
-        if np.any(values <= 0):
-            raise CalibrationError(f"{axis_name} log scale requires all reference values > 0")
-        values = np.log10(values)
-
-    if np.ptp(pixels) < 1e-9:
+    if abs(pix_b - pix_a) < 1e-9:
         raise CalibrationError(f"{axis_name} axis reference pixels are degenerate")
 
-    slope, intercept = np.polyfit(pixels, values, 1)
+    if scale == "log":
+        if val_a <= 0 or val_b <= 0:
+            raise CalibrationError(f"{axis_name} log scale requires all reference values > 0")
+        val_a = math.log10(val_a)
+        val_b = math.log10(val_b)
+
+    slope = (val_b - val_a) / (pix_b - pix_a)
+    intercept = val_a - slope * pix_a
     return float(slope), float(intercept)
 
 

@@ -25,7 +25,11 @@ class VLMProvider(Protocol):
         region: BBox | None = None,
         instruction: str | None = None,
         existing: list[Curve] | None = None,
+        hint_curve: Curve | None = None,
+        hint_points: list[tuple[float, float]] | None = None,
         scale_factor: float = 1.0,
+        image_width: int | None = None,
+        image_height: int | None = None,
     ) -> VLMResponse: ...
 
 
@@ -66,7 +70,7 @@ def parse_vlm_response(text: str, *, repair_fn=None) -> VLMResponse:
             ) from second_exc
 
 
-DETECT_PROMPT = """Analyze this plot image and return ONLY valid JSON (no markdown) with this schema:
+_DETECT_PROMPT_BODY = """Analyze this plot image and return ONLY valid JSON (no markdown) with this schema:
 {
   "axes": {
     "x": { "scale": "linear"|"log", "ticks": [{"pixel": [x,y], "value": number}, ...] },
@@ -82,7 +86,21 @@ DETECT_PROMPT = """Analyze this plot image and return ONLY valid JSON (no markdo
   ],
   "notes": "string"
 }
-Use image pixel coordinates. Provide at least 2 ticks per axis and sparse seed_points along each curve."""
+Rules:
+- Use absolute pixel coordinates in the attached image (origin top-left).
+- Read each curve's true color from the legend; use distinct color_hex values per curve.
+- Provide at least 2 ticks per axis and sparse seed_points spread along each curve line."""
+
+
+def build_detect_prompt(width: int, height: int) -> str:
+    return (
+        f"The image is exactly {width}x{height} pixels. "
+        f"All pixel x must be in [0, {width - 1}] and y in [0, {height - 1}].\n"
+        + _DETECT_PROMPT_BODY
+    )
+
+
+DETECT_PROMPT = build_detect_prompt(800, 600)
 
 REFINE_PROMPT = """Analyze this plot image region/instruction and return ONLY valid JSON for curves to add or correct.
 Schema:
@@ -92,3 +110,75 @@ Schema:
   "notes": ""
 }
 If axes unchanged, return empty tick arrays. Focus on requested curves only."""
+
+
+def build_improve_from_hints_prompt(
+    width: int,
+    height: int,
+    curve: Curve,
+    hint_points: list[tuple[float, float]],
+    *,
+    target_point_count: int | None = None,
+) -> str:
+    ordered = sorted(hint_points, key=lambda p: p[0])
+    pts_json = json.dumps([[round(x, 1), round(y, 1)] for x, y in ordered])
+    trace_color = curve.trace_color or curve.color
+    target = target_point_count if target_point_count is not None else curve.target_point_count
+    seed_hint = min(max(4, target // 3), 12)
+    return (
+        f"The image is exactly {width}x{height} pixels. "
+        f"All pixel x must be in [0, {width - 1}] and y in [0, {height - 1}].\n"
+        f'The user corrected pixel positions on the curve "{curve.label}":\n'
+        f"{pts_json}\n"
+        "Return ONLY valid JSON (no markdown):\n"
+        "{\n"
+        '  "axes": { "x": {"scale":"linear","ticks":[]}, "y": {"scale":"linear","ticks":[]} },\n'
+        '  "curves": [\n'
+        "    {\n"
+        f'      "label": "{curve.label}",\n'
+        f'      "color_hex": "{trace_color}",\n'
+        f'      "style": "{curve.style}",\n'
+        '      "seed_points": [[x,y], ...]\n'
+        "    }\n"
+        "  ],\n"
+        '  "notes": ""\n'
+        "}\n"
+        "Rules:\n"
+        "- Trace the visible line in the image that best matches the user's corrected points.\n"
+        "- The line must pass near every hint point; extend seed_points along the full visible "
+        "extent of that line.\n"
+        f"- Return about {seed_hint} seed_points spread along the curve (not more than {seed_hint}).\n"
+        f"- The final curve will be resampled to {target} points.\n"
+        "- Use absolute pixel coordinates in the attached image (origin top-left)."
+    )
+
+
+def build_refine_prompt(
+    *,
+    width: int,
+    height: int,
+    region: BBox | None = None,
+    instruction: str | None = None,
+    existing: list[Curve] | None = None,
+    hint_curve: Curve | None = None,
+    hint_points: list[tuple[float, float]] | None = None,
+) -> str:
+    if hint_curve is not None and hint_points:
+        return build_improve_from_hints_prompt(width, height, hint_curve, hint_points)
+
+    parts = [
+        f"The image is exactly {width}x{height} pixels. "
+        f"All pixel x must be in [0, {width - 1}] and y in [0, {height - 1}].\n",
+        REFINE_PROMPT,
+    ]
+    if instruction:
+        parts.append(f"Instruction: {instruction}")
+    if region:
+        parts.append(
+            f"Focus region bbox: x={region.x}, y={region.y}, "
+            f"w={region.width}, h={region.height}"
+        )
+    if existing:
+        labels = ", ".join(c.label for c in existing)
+        parts.append(f"Existing curves: {labels}")
+    return "\n".join(parts)

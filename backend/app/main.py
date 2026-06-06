@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 
 from app.api import sessions, settings
 from app.settings.settings_store import settings_store
+from app.store.session_store import session_store
 
 app = FastAPI(title="PlotDigitizer API", version="1.0.0")
 
@@ -24,6 +25,9 @@ app.include_router(settings.router)
 @app.on_event("startup")
 def startup() -> None:
     settings_store.reload()
+    restored = session_store.restore_last()
+    if restored is not None:
+        print(f"Restored last session {restored.session.id}")  # noqa: T201
 
 
 @app.get("/health")

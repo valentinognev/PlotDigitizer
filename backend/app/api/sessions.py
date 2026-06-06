@@ -14,11 +14,20 @@ from app.models.schemas import (
     CalibrationUpdate,
     CurvesEditRequest,
     RefineRequest,
+    RemoveFromPlotRequest,
     ResampleRequest,
     Session,
     SessionPublic,
 )
-from app.pipeline.pipeline import run_detect, run_refine, run_resample
+from app.pipeline.pipeline import (
+    run_ai_remove_curve_from_plot,
+    run_cv_improve,
+    run_detect,
+    run_improve_from_hints,
+    run_refine,
+    run_remove_curve_from_plot,
+    run_resample,
+)
 from app.store.session_store import session_store
 from app.vlm.base import VLMError
 from app.vlm.factory import get_provider
@@ -43,8 +52,16 @@ def _to_public(stored) -> SessionPublic:
         calibration=s.calibration,
         curves=s.curves,
         history=s.history,
-        image_url=f"/sessions/{s.id}/image",
+        image_url=f"/sessions/{s.id}/image?v={s.image_meta.revision}",
     )
+
+
+@router.get("/last", response_model=SessionPublic)
+def get_last_session() -> SessionPublic:
+    stored = session_store.get_last()
+    if stored is None:
+        raise HTTPException(status_code=404, detail="No saved session")
+    return _to_public(stored)
 
 
 @router.post("", response_model=SessionPublic)
@@ -84,6 +101,15 @@ def get_session_image(session_id: str) -> Response:
     return Response(content=stored.image_bytes, media_type="image/png")
 
 
+@router.get("/{session_id}/image/original")
+def get_session_original_image(session_id: str) -> Response:
+    try:
+        stored = session_store.require(session_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Session not found") from exc
+    return Response(content=stored.original_image_bytes, media_type="image/png")
+
+
 @router.post("/{session_id}/detect", response_model=SessionPublic)
 def detect(session_id: str) -> SessionPublic:
     stored = _require(session_id)
@@ -94,6 +120,7 @@ def detect(session_id: str) -> SessionPublic:
         session_store.update(session_id, stored.session)
     except VLMError as exc:
         raise _error(exc, exc.code, exc.hint) from exc
+    stored = session_store.require(session_id)
     return _to_public(stored)
 
 
@@ -130,6 +157,71 @@ def refine(session_id: str, body: RefineRequest) -> SessionPublic:
         session_store.update(session_id, stored.session)
     except VLMError as exc:
         raise _error(exc, exc.code, exc.hint) from exc
+    return _to_public(stored)
+
+
+@router.post("/{session_id}/curves/{curve_id}/improve", response_model=SessionPublic)
+def improve_curve_from_hints(session_id: str, curve_id: str) -> SessionPublic:
+    stored = _require(session_id)
+    try:
+        provider = get_provider()
+        session_store.push_history(stored, "improve_from_hints")
+        stored.session = run_improve_from_hints(
+            provider,
+            stored.session,
+            stored.image_bytes,
+            curve_id,
+        )
+        session_store.update(session_id, stored.session)
+    except ValueError as exc:
+        raise _error(exc, "improve_input", str(exc)) from exc
+    except VLMError as exc:
+        raise _error(exc, exc.code, exc.hint) from exc
+    return _to_public(stored)
+
+
+@router.post("/{session_id}/curves/{curve_id}/cv-improve", response_model=SessionPublic)
+def cv_improve_curve(session_id: str, curve_id: str) -> SessionPublic:
+    stored = _require(session_id)
+    try:
+        session_store.push_history(stored, "cv_improve")
+        stored.session = run_cv_improve(stored.session, stored.image_bytes, curve_id)
+        session_store.update(session_id, stored.session)
+    except ValueError as exc:
+        raise _error(exc, "improve_input", str(exc)) from exc
+    return _to_public(stored)
+
+
+@router.post("/{session_id}/curves/{curve_id}/remove-from-plot", response_model=SessionPublic)
+def remove_curve_from_plot(
+    session_id: str,
+    curve_id: str,
+    body: RemoveFromPlotRequest | None = None,
+) -> SessionPublic:
+    stored = _require(session_id)
+    use_ai = body.use_ai if body is not None else False
+    try:
+        session_store.push_history(stored, "remove_from_plot")
+        if use_ai:
+            provider = get_provider()
+            _, new_image = run_ai_remove_curve_from_plot(
+                provider,
+                stored.session,
+                stored.image_bytes,
+                curve_id,
+            )
+        else:
+            _, new_image = run_remove_curve_from_plot(
+                stored.session,
+                stored.image_bytes,
+                curve_id,
+            )
+        session_store.update_working_image(session_id, new_image)
+    except ValueError as exc:
+        raise _error(exc, "remove_from_plot", str(exc)) from exc
+    except VLMError as exc:
+        raise _error(exc, exc.code, exc.hint) from exc
+    stored = session_store.require(session_id)
     return _to_public(stored)
 
 

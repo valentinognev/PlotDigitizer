@@ -29,8 +29,10 @@ export interface Curve {
   id: string
   label: string
   color: string
+  trace_color?: string | null
   style: CurveStyle
   visible: boolean
+  target_point_count?: number
   points: Point[]
 }
 
@@ -38,6 +40,7 @@ export interface ImageMeta {
   width: number
   height: number
   scale_factor: number
+  revision?: number
 }
 
 export interface Session {

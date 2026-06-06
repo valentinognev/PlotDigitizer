@@ -32,6 +32,21 @@ def test_create_and_get_session():
     assert get_res.status_code == 200
 
 
+def test_last_session_persisted():
+    data = _png_bytes()
+    res = client.post("/sessions", files={"file": ("plot.png", data, "image/png")})
+    assert res.status_code == 200
+    session_id = res.json()["id"]
+
+    last_res = client.get("/sessions/last")
+    assert last_res.status_code == 200
+    assert last_res.json()["id"] == session_id
+
+    img_res = client.get(f"/sessions/{session_id}/image")
+    assert img_res.status_code == 200
+    assert img_res.content[:8] == b"\x89PNG\r\n\x1a\n"
+
+
 def test_settings_never_return_key():
     client.put(
         "/settings",

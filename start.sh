@@ -38,9 +38,21 @@ if [[ ! -x "$ROOT/backend/.venv/bin/uvicorn" ]]; then
   exit 1
 fi
 
-if [[ ! -d "$ROOT/frontend/dist" ]]; then
-  echo "Frontend not built. Run ./install.sh first." >&2
+if [[ ! -d "$ROOT/frontend/node_modules" ]]; then
+  echo "Frontend not installed. Run ./install.sh first." >&2
   exit 1
+fi
+
+needs_frontend_build=0
+if [[ ! -f "$ROOT/frontend/dist/index.html" ]]; then
+  needs_frontend_build=1
+elif find "$ROOT/frontend/src" -newer "$ROOT/frontend/dist/index.html" -print -quit | grep -q .; then
+  needs_frontend_build=1
+fi
+
+if [[ "$needs_frontend_build" -eq 1 ]]; then
+  echo "==> Rebuilding frontend (sources changed)"
+  (cd "$ROOT/frontend" && npm run build)
 fi
 
 echo "==> Starting PlotDigitizer (background)"
@@ -57,8 +69,6 @@ nohup npm run preview -- --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" \
   >>"$FRONTEND_LOG" 2>&1 &
 echo $! >"$FRONTEND_PID_FILE"
 
-sleep 1
-
 if ! is_running "$BACKEND_PID_FILE"; then
   echo "Backend failed to start. See $BACKEND_LOG" >&2
   exit 1
@@ -67,6 +77,18 @@ fi
 if ! is_running "$FRONTEND_PID_FILE"; then
   echo "Frontend failed to start. See $FRONTEND_LOG" >&2
   "$ROOT/kill.sh" >/dev/null 2>&1 || true
+  exit 1
+fi
+
+echo "==> Waiting for backend"
+for _ in $(seq 1 40); do
+  if curl -sf "http://${BACKEND_HOST}:${BACKEND_PORT}/health" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.25
+done
+if ! curl -sf "http://${BACKEND_HOST}:${BACKEND_PORT}/health" >/dev/null 2>&1; then
+  echo "Backend did not become healthy. See $BACKEND_LOG" >&2
   exit 1
 fi
 

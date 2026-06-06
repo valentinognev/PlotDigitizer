@@ -40,15 +40,22 @@ class Curve(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     label: str
     color: str = "#3b82f6"
+    trace_color: str | None = None
     style: CurveStyle = "unknown"
     visible: bool = True
+    target_point_count: int = Field(default=30, ge=2, le=200)
     points: list[Point] = Field(default_factory=list)
+
+    @property
+    def cv_color(self) -> str:
+        return self.trace_color or self.color
 
 
 class ImageMeta(BaseModel):
     width: int
     height: int
     scale_factor: float = 1.0
+    revision: int = 0
 
 
 class HistoryEntry(BaseModel):
@@ -145,6 +152,10 @@ class RefineRequest(BaseModel):
 class ResampleRequest(BaseModel):
     curve_id: str
     target_count: int = 50
+
+
+class RemoveFromPlotRequest(BaseModel):
+    use_ai: bool = False
 
 
 class CurvesPatch(BaseModel):

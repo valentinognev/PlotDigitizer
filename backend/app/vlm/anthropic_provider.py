@@ -5,7 +5,7 @@ import base64
 from anthropic import Anthropic
 
 from app.models.schemas import BBox, Curve, VLMResponse
-from app.vlm.base import DETECT_PROMPT, REFINE_PROMPT, VLMError, parse_vlm_response
+from app.vlm.base import VLMError, build_detect_prompt, build_refine_prompt, parse_vlm_response
 
 
 class AnthropicProvider:
@@ -50,8 +50,17 @@ class AnthropicProvider:
         parts = [b.text for b in response.content if hasattr(b, "text")]
         return "\n".join(parts)
 
-    def detect(self, image: bytes, *, scale_factor: float = 1.0) -> VLMResponse:
-        text = self._call(image, DETECT_PROMPT)
+    def detect(
+        self,
+        image: bytes,
+        *,
+        scale_factor: float = 1.0,
+        image_width: int | None = None,
+        image_height: int | None = None,
+    ) -> VLMResponse:
+        w = image_width or 800
+        h = image_height or 600
+        text = self._call(image, build_detect_prompt(w, h))
         return parse_vlm_response(text, repair_fn=self._repair)
 
     def refine(
@@ -61,12 +70,22 @@ class AnthropicProvider:
         region: BBox | None = None,
         instruction: str | None = None,
         existing: list[Curve] | None = None,
+        hint_curve: Curve | None = None,
+        hint_points: list[tuple[float, float]] | None = None,
         scale_factor: float = 1.0,
+        image_width: int | None = None,
+        image_height: int | None = None,
     ) -> VLMResponse:
-        parts = [REFINE_PROMPT]
-        if instruction:
-            parts.append(f"Instruction: {instruction}")
-        if region:
-            parts.append(f"Region: {region.model_dump()}")
-        text = self._call(image, "\n".join(parts))
+        w = image_width or 800
+        h = image_height or 600
+        prompt = build_refine_prompt(
+            width=w,
+            height=h,
+            region=region,
+            instruction=instruction,
+            existing=existing,
+            hint_curve=hint_curve,
+            hint_points=hint_points,
+        )
+        text = self._call(image, prompt)
         return parse_vlm_response(text, repair_fn=self._repair)

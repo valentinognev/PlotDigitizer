@@ -1,5 +1,6 @@
 # Secrets — NEVER commit API keys
 backend/config/settings.json
+backend/config/last_session/
 config/settings.json
 *.env
 .env
@@ -25,6 +26,7 @@ npm-debug.log*
 
 # Runtime
 .run/
+temp/
 
 # OS / editor
 .DS_Store
