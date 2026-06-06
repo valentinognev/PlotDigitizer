@@ -40,6 +40,33 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [1.1.0] — 2026-06-06
+### Added
+- `install.sh`: installs backend venv/deps, frontend npm deps, and production build.
+- `start.sh`: starts backend (uvicorn) and frontend (vite preview) in the background and returns
+  to the shell; PID/log files under `.run/`.
+- `kill.sh`: stops background servers using PID files.
+
+### Changed
+- `frontend/vite.config.ts`: added `preview.proxy` so API routes work when started via `start.sh`.
+
+## [1.0.0] — 2026-06-06
+### Added
+- Full backend (Phases 1–5): FastAPI app, Pydantic schemas, in-memory session store, calibration
+  (linear/log), provider-agnostic VLM layer (OpenAI, Anthropic, Gemini), OpenCV trace/refine/resample,
+  detect/refine/resample/merge pipeline, CSV/JSON export, settings API with persisted keys in
+  `backend/config/settings.json`.
+- Full frontend (Phases 6–8): React + Tailwind + Vite app with Konva editor canvas, Plotly preview,
+  Settings/Calibration/CurveList/AIAssistBar/Export panels, drag/add/delete/reassign points,
+  region and text hints, resample, undo/redo.
+- Backend tests: calibration, merge, schema, CV trace, export, API session/settings (12 tests).
+
+### Changed
+- `README.md`: updated getting-started and status for the implemented application.
+
+### Notes
+- v1 milestone complete per `refs/WORKFLOW.md` Definition of Done.
+
 ## [0.1.0] — 2026-06-06
 ### Added
 - Initial project specification and documentation.

@@ -16,11 +16,15 @@ venv/
 
 # Node / frontend
 node_modules/
+frontend/dist/
 dist/
 build/
 .vite/
 *.log
 npm-debug.log*
+
+# Runtime
+.run/
 
 # OS / editor
 .DS_Store

@@ -94,17 +94,30 @@ status. **Never commit `config/settings.json`.**
 
 ## Getting Started
 
-> The repository is currently a specification. The sections below describe the intended setup once
-> the implementation (per `refs/WORKFLOW.md`) lands.
+### Quick start (recommended)
+
+```bash
+./install.sh   # once
+./start.sh     # starts in background, returns to shell
+./kill.sh      # stop servers
+```
+
+Open http://127.0.0.1:5173
+
+### Manual dev mode
+
+Run the backend and frontend in two terminals.
 
 ### Backend
 
 ```bash
 cd backend
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt        # or: pip install -e .
-uvicorn app.main:app --reload
+pip install -r requirements.txt
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
+
+API docs: http://127.0.0.1:8000/docs
 
 ### Frontend
 
@@ -114,8 +127,14 @@ npm install
 npm run dev
 ```
 
-Then open the dev server URL, set your API key in **Settings**, upload a plot image, and start
+Open http://127.0.0.1:5173, set your VLM API key in **Settings**, upload a plot image, and start
 digitizing.
+
+### Tests
+
+```bash
+cd backend && .venv/bin/pytest -q
+```
 
 ---
 
@@ -141,6 +160,4 @@ digitizing.
 
 ## Status
 
-Pre-implementation. Current version: see [`UPDATES.md`](UPDATES.md). Target for v1 (`1.0.0`):
-upload a multi-curve plot, AI-detect, interactively correct, iterate with AI, and export accurate
-CSV/JSON.
+v1 implemented. Current version: see [`UPDATES.md`](UPDATES.md).

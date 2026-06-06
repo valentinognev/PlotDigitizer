@@ -1,0 +1,44 @@
+import io
+
+from fastapi.testclient import TestClient
+from PIL import Image, ImageDraw
+
+from app.main import app
+
+client = TestClient(app)
+
+
+def _png_bytes() -> bytes:
+    img = Image.new("RGB", (120, 80), "white")
+    draw = ImageDraw.Draw(img)
+    draw.line([(10, 60), (110, 20)], fill=(255, 0, 0), width=2)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def test_health():
+    res = client.get("/health")
+    assert res.status_code == 200
+
+
+def test_create_and_get_session():
+    data = _png_bytes()
+    res = client.post("/sessions", files={"file": ("plot.png", data, "image/png")})
+    assert res.status_code == 200
+    body = res.json()
+    assert "id" in body
+    get_res = client.get(f"/sessions/{body['id']}")
+    assert get_res.status_code == 200
+
+
+def test_settings_never_return_key():
+    client.put(
+        "/settings",
+        json={"provider": "openai", "api_key": "sk-test-secret", "active_provider": "openai"},
+    )
+    res = client.get("/settings")
+    assert res.status_code == 200
+    text = res.text
+    assert "sk-test-secret" not in text
+    assert res.json()["providers"][0]["has_key"] is True
