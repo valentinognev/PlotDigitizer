@@ -43,11 +43,26 @@ export interface ImageMeta {
   revision?: number
 }
 
+export interface ImageSource {
+  filename?: string | null
+  path?: string | null
+}
+
+export interface WorkspaceState {
+  active_curve_id?: string | null
+  text_hint?: string
+  resample_count?: number
+  use_ai_mode?: boolean
+}
+
 export interface Session {
   id: string
   image_meta: ImageMeta
+  image_source?: ImageSource | null
   calibration: Calibration | null
+  manual_calibration?: boolean
   curves: Curve[]
+  workspace?: WorkspaceState | null
   history: unknown[]
   image_url: string
 }

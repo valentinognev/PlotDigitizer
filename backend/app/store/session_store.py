@@ -95,6 +95,7 @@ class SessionStore:
     def snapshot(self, stored: StoredSession) -> dict:
         return {
             "calibration": stored.session.calibration.model_dump() if stored.session.calibration else None,
+            "manual_calibration": stored.session.manual_calibration,
             "curves": [c.model_dump() for c in stored.session.curves],
             "image_bytes": stored.image_bytes,
             "image_revision": stored.session.image_meta.revision,
@@ -139,6 +140,8 @@ class SessionStore:
 
         cal = snap.get("calibration")
         stored.session.calibration = Calibration(**cal) if cal else None
+        if "manual_calibration" in snap:
+            stored.session.manual_calibration = bool(snap["manual_calibration"])
         stored.session.curves = [Curve(**c) for c in snap.get("curves", [])]
         image_bytes = snap.get("image_bytes")
         if image_bytes is not None:

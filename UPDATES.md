@@ -40,6 +40,154 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [1.8.13] — 2026-06-26
+### Fixed
+- Detect axes no longer clears manually placed curves when the VLM returns an empty curve list.
+- Preview chart: measured panel height, axis autorange, plot revision on data changes, and log-scale
+  point filtering so curves render reliably after edits.
+- Curve patch responses no longer drop saved calibration when the API omits it.
+
+## [1.8.12] — 2026-06-26
+### Added
+- Place-points mode: Delete or Backspace removes the last point placed on the active curve.
+
+## [1.8.11] — 2026-06-26
+### Fixed
+- Middle-mouse drag pans the plot in place-points mode (and other modes); left-click still
+  places points when that mode is active.
+
+## [1.8.10] — 2026-06-26
+### Fixed
+- Editor canvas data-point markers and calibration marks keep a constant on-screen size while
+  zooming (inverse scale applied to radius, stroke, and hit area).
+
+## [1.8.9] — 2026-06-26
+### Changed
+- Curve display colors use golden-ratio steps around the hue wheel so nearby curves stay
+  visually distinct; lightly alternate saturation/lightness for extra separation.
+- Sessions with clustered similar hues are auto-recolored to the new palette on load.
+
+## [1.8.8] — 2026-06-26
+### Fixed
+- Editor canvas markers use each curve's display color again; user-edited points keep a gold
+  outer ring instead of turning fully amber.
+- Detect restores rainbow display colors and finalized point counts on newly detected curves.
+- Sessions with duplicate curve display colors are auto-recolored to a distinct rainbow palette.
+
+## [1.8.7] — 2026-06-12
+### Fixed
+- Preview chart uses log axes when calibration has log scale on X and/or Y.
+
+## [1.8.6] — 2026-06-12
+### Fixed
+- Export uses the native **Save as** dialog when the browser supports it (avoids “download
+  blocked”); otherwise falls back to form → hidden iframe.
+
+## [1.8.5] — 2026-06-12
+### Fixed
+- Export downloads no longer blocked by the browser (synchronous navigation link
+  instead of async blob download).
+
+## [1.8.4] — 2026-06-12
+### Fixed
+- CSV and JSON export can be triggered repeatedly without reloading (programmatic
+  download instead of a static link).
+
+## [1.8.3] — 2026-06-12
+### Changed
+- CSV export no longer includes the `origin` column (user/ai). Import still accepts it when present.
+
+## [1.8.2] — 2026-06-12
+### Changed
+- Plot interaction hint now mentions middle-mouse drag to pan the picture.
+
+## [1.8.1] — 2026-06-12
+### Added
+- Interaction hint bar at the top of the plot panel (mouse buttons, Shift/Ctrl, pan, zoom).
+
+## [1.8.0] — 2026-06-12
+### Added
+- **Project save/load (JSON):** export embeds the plot image (base64), source filename/path,
+  calibration, all curves (pixel + data coords), manual-calibration flag, and workspace
+  (active curve, AI hint, resample count, AI toggle). Use **Save JSON** / **Open** in the
+  Project panel. `POST /sessions/load-project` restores a full session.
+### Changed
+- JSON export no longer requires calibration (CSV still does). Curve-only **Import** still
+  accepts legacy data JSON/CSV; full project files must use **Open**.
+
+## [1.7.5] — 2026-06-12
+### Changed
+- AI toggle in the Curves panel is **off** by default (Improve / Remove from plot use CV until enabled).
+
+## [1.7.4] — 2026-06-12
+### Added
+- Rectangle (marquee) selection on the plot: drag on empty area to select points inside
+  the box. Hold Shift/Ctrl/Cmd while dragging to add to the current selection.
+### Changed
+- Pan the plot with **Space + drag** (left-drag on empty area now draws a selection box).
+
+## [1.7.3] — 2026-06-12
+### Fixed
+- Shift/Ctrl/Cmd multi-select on points: selection now applies on pointer down
+  (mousedown was clearing the selection before the click handler ran).
+
+## [1.7.2] — 2026-06-12
+### Changed
+- Plot clicks no longer add points by default; enable **Place points** in the Curves panel
+  (active curve) then click the image to add points. Clicks on empty plot clear selection.
+
+## [1.7.1] — 2026-06-12
+### Added
+- Multi-select data points with **Shift/Ctrl+click**; drag any selected point to move the
+  whole selection together.
+
+## [1.7.0] — 2026-06-12
+### Added
+- **Import curves** from CSV or JSON using the same format as export; replaces all curves on the
+  current plot (data-space `x`/`y` mapped through the active calibration).
+- `POST /sessions/{id}/import-curves` endpoint and **Import** button in the Export panel.
+
+## [1.6.9] — 2026-06-12
+### Fixed
+- Manual calibration toggle no longer snaps off after enabling: manual mode is read from
+  session state (with optimistic updates) and preserved when other session saves complete.
+
+## [1.6.8] — 2026-06-12
+### Added
+- Session stores **manual calibration mode** (`manual_calibration`) with the figure; restored on
+  reload together with axis mark positions and curve points.
+- `PATCH /sessions/{id}/preferences` autosaves calibration and manual mode without flooding undo.
+
+### Changed
+- Manual axis mark moves, limit edits, and the Manual toggle now persist to the session
+  automatically (same as curve point edits).
+
+## [1.6.7] — 2026-06-12
+### Fixed
+- Deleting a curve (or other curve-only edits) no longer resets manual calibration mark
+  positions; the draft calibration is only reloaded when the session changes or after
+  Detect / Save calibration / Undo.
+
+## [1.6.6] — 2026-06-12
+### Changed
+- Initial **Detect** (and per-curve **Re-detect**) now produces **9 points** per curve; the VLM
+  prompt asks for 9 seed points and the pipeline resamples the traced path to 9.
+- Default per-curve **Points** target (`target_point_count`) and Densify default are now **9**
+  (was 30 / 50).
+
+## [1.6.5] — 2026-06-12
+### Fixed
+- Point edits (move, add, delete, reassign) update the UI optimistically without the global
+  progress bar, toast, or full-screen busy state, eliminating flicker on each drag.
+
+### Changed
+- Preview chart: stable Plotly layout (`uirevision`) and memoized traces to reduce redraw churn.
+
+## [1.6.4] — 2026-06-12
+### Fixed
+- Improve (AI + CV): reorder hint points along the curve before building the guide polyline
+  and resampling, fixing zig-zag polylines when points were placed or stored out of sequence.
+
 ## [1.6.3] — 2026-06-06
 ### Fixed
 - Calibration mapping uses **two-point** fits at axis extremes (xmin/xmax/ymin/ymax) instead of

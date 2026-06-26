@@ -8,15 +8,20 @@ from PIL import Image
 
 from app.calibration.calibration import CalibrationError, validate_calibration
 from app.export.export import export_csv, export_json
+from app.export.import_curves import ImportError as CurveImportError
+from app.export.import_curves import import_curves_replace_session
+from app.export.project_io import ProjectError, load_project_from_bytes, project_export_filename
 from app.models.schemas import (
     ApiError,
     ApiErrorDetail,
     CalibrationUpdate,
     CurvesEditRequest,
+    ImageSource,
     RefineRequest,
     RemoveFromPlotRequest,
     ResampleRequest,
     Session,
+    SessionPreferencesPatch,
     SessionPublic,
 )
 from app.pipeline.pipeline import (
@@ -49,8 +54,11 @@ def _to_public(stored) -> SessionPublic:
     return SessionPublic(
         id=s.id,
         image_meta=s.image_meta,
+        image_source=s.image_source,
         calibration=s.calibration,
+        manual_calibration=s.manual_calibration,
         curves=s.curves,
+        workspace=s.workspace,
         history=s.history,
         image_url=f"/sessions/{s.id}/image?v={s.image_meta.revision}",
     )
@@ -78,7 +86,10 @@ async def create_session(file: UploadFile = File(...)) -> SessionPublic:
     except Exception as exc:
         raise _error(exc, "invalid_image") from exc
 
-    session = Session(image_meta={"width": width, "height": height, "scale_factor": 1.0})
+    session = Session(
+        image_meta={"width": width, "height": height, "scale_factor": 1.0},
+        image_source=ImageSource(filename=file.filename),
+    )
     stored = session_store.create(session, data)
     return _to_public(stored)
 
@@ -133,7 +144,39 @@ def set_calibration(session_id: str, body: CalibrationUpdate) -> SessionPublic:
         raise _error(exc, "calibration_invalid", "Fix reference points") from exc
     session_store.push_history(stored, "calibration")
     stored.session.calibration = body.calibration
+    if body.manual_calibration is not None:
+        stored.session.manual_calibration = body.manual_calibration
     session_store.update(session_id, stored.session)
+    return _to_public(stored)
+
+
+@router.patch("/{session_id}/preferences", response_model=SessionPublic)
+def patch_preferences(session_id: str, body: SessionPreferencesPatch) -> SessionPublic:
+    stored = _require(session_id)
+    if body.calibration is not None:
+        try:
+            validate_calibration(body.calibration)
+        except CalibrationError as exc:
+            raise _error(exc, "calibration_invalid", "Fix reference points") from exc
+        stored.session.calibration = body.calibration
+    if body.manual_calibration is not None:
+        stored.session.manual_calibration = body.manual_calibration
+    if body.workspace is not None:
+        stored.session.workspace = body.workspace
+    session_store.update(session_id, stored.session)
+    return _to_public(stored)
+
+
+@router.post("/load-project", response_model=SessionPublic)
+async def load_project(file: UploadFile = File(...)) -> SessionPublic:
+    data = await file.read()
+    if not data:
+        raise _error(ValueError("Empty file"), "empty_file")
+    try:
+        session, image_bytes = load_project_from_bytes(data)
+    except ProjectError as exc:
+        raise _error(exc, "project_invalid", str(exc)) from exc
+    stored = session_store.create(session, image_bytes)
     return _to_public(stored)
 
 
@@ -300,6 +343,27 @@ def redo(session_id: str) -> SessionPublic:
     return _to_public(stored)
 
 
+@router.post("/{session_id}/import-curves", response_model=SessionPublic)
+async def import_curves(session_id: str, file: UploadFile = File(...)) -> SessionPublic:
+    stored = _require(session_id)
+    data = await file.read()
+    if not data:
+        raise _error(ValueError("Empty file"), "empty_file")
+    try:
+        session_store.push_history(stored, "import_curves")
+        stored.session = import_curves_replace_session(
+            stored.session,
+            data,
+            filename=file.filename,
+        )
+        session_store.update(session_id, stored.session)
+    except CalibrationError as exc:
+        raise _error(exc, "import_blocked", "Set valid calibration first") from exc
+    except CurveImportError as exc:
+        raise _error(exc, "import_invalid", str(exc)) from exc
+    return _to_public(stored)
+
+
 @router.get("/{session_id}/export")
 def export_session(session_id: str, format: str = "json"):
     stored = _require(session_id)
@@ -309,16 +373,20 @@ def export_session(session_id: str, format: str = "json"):
             media = "text/csv"
             filename = "plot_digitizer.csv"
         else:
-            content = export_json(stored.session)
+            content = export_json(stored.session, image_bytes=stored.image_bytes)
             media = "application/json"
-            filename = "plot_digitizer.json"
+            filename = project_export_filename(stored.session)
     except CalibrationError as exc:
         raise _error(exc, "export_blocked", "Set valid calibration first") from exc
 
     return StreamingResponse(
         iter([content]),
         media_type=media,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 

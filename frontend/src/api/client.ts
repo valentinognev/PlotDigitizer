@@ -6,6 +6,7 @@ import type {
   SettingsPublic,
   ProviderName,
   BBox,
+  WorkspaceState,
 } from '../types'
 
 const DEFAULT_TIMEOUT_MS = 120_000
@@ -44,6 +45,18 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs = DEFAULT_
   return res as unknown as T
 }
 
+export async function loadProject(file: File): Promise<Session> {
+  const form = new FormData()
+  form.append('file', file)
+  return request<Session>('/sessions/load-project', { method: 'POST', body: form })
+}
+
+export async function importCurves(id: string, file: File): Promise<Session> {
+  const form = new FormData()
+  form.append('file', file)
+  return request<Session>(`/sessions/${id}/import-curves`, { method: 'POST', body: form })
+}
+
 export async function uploadSession(file: File): Promise<Session> {
   const form = new FormData()
   form.append('file', file)
@@ -75,11 +88,30 @@ export async function detectSession(id: string): Promise<Session> {
   return request<Session>(`/sessions/${id}/detect`, { method: 'POST' })
 }
 
-export async function setCalibration(id: string, calibration: Calibration): Promise<Session> {
+export async function setCalibration(
+  id: string,
+  calibration: Calibration,
+  manual_calibration?: boolean,
+): Promise<Session> {
   return request<Session>(`/sessions/${id}/calibration`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ calibration }),
+    body: JSON.stringify({ calibration, manual_calibration }),
+  })
+}
+
+export async function patchSessionPreferences(
+  id: string,
+  body: {
+    calibration?: Calibration
+    manual_calibration?: boolean
+    workspace?: WorkspaceState | null
+  },
+): Promise<Session> {
+  return request<Session>(`/sessions/${id}/preferences`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   })
 }
 
@@ -176,6 +208,95 @@ export async function clearProviderKey(provider: ProviderName): Promise<Settings
   return request<SettingsPublic>(`/settings/key/${provider}`, { method: 'DELETE' })
 }
 
-export function exportUrl(sessionId: string, format: 'csv' | 'json'): string {
-  return `/sessions/${sessionId}/export?format=${format}`
+/** Must match the hidden iframe `name` in ExportPanel. */
+export const EXPORT_FRAME_NAME = 'plot-digitizer-export'
+
+const EXPORT_DEFAULT_NAMES = {
+  csv: 'plot_digitizer.csv',
+  json: 'plot_digitizer.pdproj.json',
+} as const
+
+async function exportUrl(sessionId: string, format: 'csv' | 'json'): Promise<string> {
+  return `/sessions/${sessionId}/export?format=${format}&_=${Date.now()}`
+}
+
+async function readExportError(res: Response): Promise<string> {
+  let message = res.statusText
+  try {
+    const body = await res.json()
+    const err = body?.error ?? body?.detail
+    if (typeof err === 'object' && err && 'message' in err) {
+      message = String(err.message)
+    }
+  } catch {
+    /* ignore */
+  }
+  return message
+}
+
+function submitExportForm(sessionId: string, format: 'csv' | 'json'): void {
+  const form = document.createElement('form')
+  form.method = 'GET'
+  form.action = `/sessions/${sessionId}/export`
+  form.target = EXPORT_FRAME_NAME
+  form.style.display = 'none'
+
+  for (const [name, value] of [
+    ['format', format],
+    ['_', String(Date.now())],
+  ] as const) {
+    const input = document.createElement('input')
+    input.type = 'hidden'
+    input.name = name
+    input.value = value
+    form.appendChild(input)
+  }
+
+  document.body.appendChild(form)
+  form.submit()
+  form.remove()
+}
+
+/**
+ * Export session data to disk. Uses the native save dialog when available (avoids
+ * “download blocked”), otherwise falls back to form → hidden iframe.
+ */
+export async function triggerSessionExport(
+  sessionId: string,
+  format: 'csv' | 'json',
+): Promise<void> {
+  const url = await exportUrl(sessionId, format)
+
+  const savePicker = (
+    window as Window & {
+      showSaveFilePicker?: (options: {
+        suggestedName?: string
+        types?: Array<{ description?: string; accept: Record<string, string[]> }>
+      }) => Promise<FileSystemFileHandle>
+    }
+  ).showSaveFilePicker
+
+  if (savePicker) {
+    try {
+      const handle = await savePicker({
+        suggestedName: EXPORT_DEFAULT_NAMES[format],
+        types:
+          format === 'csv'
+            ? [{ description: 'CSV', accept: { 'text/csv': ['.csv'] } }]
+            : [{ description: 'JSON', accept: { 'application/json': ['.json'] } }],
+      })
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(await readExportError(res))
+      const writable = await handle.createWritable()
+      await writable.write(await res.blob())
+      await writable.close()
+      return
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      if (err instanceof Error && err.name === 'AbortError') return
+      // Unsupported or denied — try iframe fallback below.
+    }
+  }
+
+  submitExportForm(sessionId, format)
 }

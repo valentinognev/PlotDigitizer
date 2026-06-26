@@ -8,10 +8,13 @@ from PIL import Image
 from app.calibration.calibration import calibration_from_vlm, vlm_ticks_to_axis
 from app.cv.erase import remove_curve_from_image
 from app.cv.improve import improve_curve_from_hints
+from app.cv.order import order_points_along_curve
 from app.store.temp_images import save_removal_snapshot
 from app.cv.refine import refine_seed_points
 from app.cv.resample import resample_curve, resample_path
+from app.cv.trace import trace_curve_path
 from app.models.schemas import (
+    DEFAULT_POINT_COUNT,
     Calibration,
     Curve,
     MergeOp,
@@ -77,6 +80,32 @@ def vlm_to_calibration(vlm: VLMResponse) -> Calibration:
     return calibration_from_vlm(x_axis, y_axis)
 
 
+def _ensure_curve_point_count(
+    image_bytes: bytes,
+    curve: Curve,
+    count: int = DEFAULT_POINT_COUNT,
+) -> list[Point]:
+    pixels = [p.pixel for p in curve.points]
+    if len(pixels) >= 2:
+        return resample_path(pixels, count)
+    path = trace_curve_path(image_bytes, curve.cv_color)
+    if len(path) >= 2:
+        return resample_path(path, count)
+    return curve.points
+
+
+def _finalize_detect_curves(image_bytes: bytes, curves: list[Curve]) -> list[Curve]:
+    return [
+        curve.model_copy(
+            update={
+                "target_point_count": DEFAULT_POINT_COUNT,
+                "points": _ensure_curve_point_count(image_bytes, curve, DEFAULT_POINT_COUNT),
+            }
+        )
+        for curve in curves
+    ]
+
+
 def merge(
     session: Session,
     vlm: VLMResponse,
@@ -85,17 +114,27 @@ def merge(
     target_curve_id: str | None = None,
     protect_user: bool = True,
 ) -> Session:
+    from app.store.session_store import session_store
+
     incoming = _build_incoming_curves(session, vlm)
+    stored = session_store.get(session.id)
+    image_bytes = stored.image_bytes if stored else b""
 
     if op == "detect":
-        session.curves = apply_rainbow_colors(incoming)
+        if incoming:
+            session.curves = _finalize_detect_curves(
+                image_bytes, apply_rainbow_colors(incoming)
+            )
         if vlm.axes.x.ticks and vlm.axes.y.ticks:
             session.calibration = vlm_to_calibration(vlm)
         return session
 
     if op == "redetect_curve" and target_curve_id:
         session.curves = _replace_curve(
-            session.curves, target_curve_id, incoming, protect_user=False
+            session.curves,
+            target_curve_id,
+            _finalize_detect_curves(image_bytes, incoming),
+            protect_user=False,
         )
         return session
 
@@ -355,8 +394,10 @@ def run_improve_from_hints(
     if len(curve.points) < 2:
         raise ValueError("At least 2 tuned points are required to improve a curve")
 
-    hint_points = [p.pixel for p in curve.points]
-    path_pixels = _path_pixels_from_vlm_hints(provider, image_bytes, curve, hint_points)
+    hint_points = order_points_along_curve([p.pixel for p in curve.points])
+    path_pixels = order_points_along_curve(
+        _path_pixels_from_vlm_hints(provider, image_bytes, curve, hint_points),
+    )
     new_points = resample_path(path_pixels, curve.target_point_count)
     session.curves = _replace_curve_points(session.curves, curve_id, new_points)
     return session

@@ -76,20 +76,14 @@ _DETECT_PROMPT_BODY = """Analyze this plot image and return ONLY valid JSON (no 
     "x": { "scale": "linear"|"log", "ticks": [{"pixel": [x,y], "value": number}, ...] },
     "y": { "scale": "linear"|"log", "ticks": [{"pixel": [x,y], "value": number}, ...] }
   },
-  "curves": [
-    {
-      "label": "string",
-      "color_hex": "#rrggbb",
-      "style": "solid"|"dashed"|"dotted"|"unknown",
-      "seed_points": [[x,y], ...]
-    }
-  ],
+  "curves": [],
   "notes": "string"
 }
 Rules:
 - Use absolute pixel coordinates in the attached image (origin top-left).
-- Read each curve's true color from the legend; use distinct color_hex values per curve.
-- Provide at least 2 ticks per axis and sparse seed_points spread along each curve line."""
+- Do NOT detect curves. Always return an empty curves array.
+- Read axis tick labels only. Provide at least 2 ticks per axis with accurate numeric values.
+- Include ticks at the plot edges so X min, X max, Y min, and Y max can be determined."""
 
 
 def build_detect_prompt(width: int, height: int) -> str:
@@ -120,7 +114,9 @@ def build_improve_from_hints_prompt(
     *,
     target_point_count: int | None = None,
 ) -> str:
-    ordered = sorted(hint_points, key=lambda p: p[0])
+    from app.cv.order import order_points_along_curve
+
+    ordered = order_points_along_curve(hint_points)
     pts_json = json.dumps([[round(x, 1), round(y, 1)] for x, y in ordered])
     trace_color = curve.trace_color or curve.color
     target = target_point_count if target_point_count is not None else curve.target_point_count

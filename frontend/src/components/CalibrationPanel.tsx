@@ -32,7 +32,9 @@ export function CalibrationPanel({
     return (
       <section className="min-w-[200px] flex-1 rounded-lg border border-slate-700 bg-slate-800/50 p-2">
         <h3 className="text-xs font-semibold text-slate-200">Calibration</h3>
-        <p className="mt-1 text-[11px] text-slate-400">Run Detect to populate axis calibration.</p>
+        <p className="mt-1 text-[11px] text-slate-400">
+          Run Detect axes to read X/Y min and max from the plot.
+        </p>
       </section>
     )
   }

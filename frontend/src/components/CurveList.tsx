@@ -1,32 +1,33 @@
-import { rainbowColor } from '../lib/colors'
+import { DEFAULT_POINT_COUNT } from '../lib/constants'
+import { paletteColor } from '../lib/colors'
 import type { Curve } from '../types'
 
 interface Props {
   curves: Curve[]
   activeCurveId: string | null
-  selectedPointId: string | null
+  placementCurveId: string | null
+  selectedPointIds: string[]
   busy: boolean
-  useAi: boolean
-  onUseAiChange: (useAi: boolean) => void
   onActiveChange: (id: string) => void
+  addPointMode: boolean
+  onAddPointModeChange: (enabled: boolean) => void
   onCurveChange: (curves: Curve[]) => void
-  onReassignPoint: (pointId: string, toCurveId: string) => void
+  onReassignPoints: (pointIds: string[], toCurveId: string) => void
   onImprove: (curveId: string) => void
-  onRemoveFromPlot: (curveId: string) => void
 }
 
 export function CurveList({
   curves,
   activeCurveId,
-  selectedPointId,
+  placementCurveId,
+  selectedPointIds,
   busy,
-  useAi,
-  onUseAiChange,
   onActiveChange,
+  addPointMode,
+  onAddPointModeChange,
   onCurveChange,
-  onReassignPoint,
+  onReassignPoints,
   onImprove,
-  onRemoveFromPlot,
 }: Props) {
   const updateCurve = (id: string, patch: Partial<Curve>) => {
     onCurveChange(curves.map((c) => (c.id === id ? { ...c, ...patch } : c)))
@@ -39,14 +40,22 @@ export function CurveList({
     const newCurve: Curve = {
       id: crypto.randomUUID(),
       label: `Curve ${n + 1}`,
-      color: rainbowColor(n, n + 1),
+      color: paletteColor(n),
       style: 'unknown',
       visible: true,
-      target_point_count: 30,
+      target_point_count: DEFAULT_POINT_COUNT,
       points: [],
     }
     onCurveChange([...curves, newCurve])
     onActiveChange(newCurve.id)
+  }
+
+  const hideAll = () => {
+    onCurveChange(curves.map((c) => ({ ...c, visible: false })))
+  }
+
+  const showAll = () => {
+    onCurveChange(curves.map((c) => ({ ...c, visible: true })))
   }
 
   const removeCurve = (curveId: string) => {
@@ -78,26 +87,42 @@ export function CurveList({
           >
             + Add
           </button>
-        <label className="flex items-center gap-1.5 text-xs text-slate-300">
-          <span>AI</span>
           <button
             type="button"
-            role="switch"
-            aria-checked={useAi}
-            disabled={busy}
-            onClick={() => onUseAiChange(!useAi)}
-            className={`relative h-5 w-9 rounded-full transition-colors disabled:opacity-50 ${
-              useAi ? 'bg-violet-600' : 'bg-slate-600'
+            disabled={busy || !placementCurveId}
+            title={
+              placementCurveId
+                ? 'Click the plot to place points on the first visible curve'
+                : 'Turn on show for at least one curve first'
+            }
+            onClick={() => onAddPointModeChange(!addPointMode)}
+            className={`rounded px-2 py-0.5 text-[11px] disabled:opacity-50 ${
+              addPointMode
+                ? 'bg-sky-600 hover:bg-sky-500'
+                : 'bg-slate-600 hover:bg-slate-500'
             }`}
           >
-            <span
-              className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
-                useAi ? 'translate-x-4' : 'translate-x-0'
-              }`}
-            />
+            Place points
           </button>
-        </label>
         </div>
+      </div>
+      <div className="mb-2 flex gap-1">
+        <button
+          type="button"
+          disabled={busy || curves.length === 0}
+          onClick={showAll}
+          className="rounded bg-slate-600 px-2 py-0.5 text-[11px] hover:bg-slate-500 disabled:opacity-50"
+        >
+          Show all
+        </button>
+        <button
+          type="button"
+          disabled={busy || curves.length === 0}
+          onClick={hideAll}
+          className="rounded bg-slate-600 px-2 py-0.5 text-[11px] hover:bg-slate-500 disabled:opacity-50"
+        >
+          Hide all
+        </button>
       </div>
       <ul className="min-h-0 flex-1 space-y-2 overflow-y-auto text-xs">
         {curves.map((curve) => (
@@ -146,14 +171,14 @@ export function CurveList({
                 show
               </label>
             </div>
-            <div className="mt-1 flex items-center gap-2">
+            <div className="mt-1 flex flex-wrap items-center gap-2">
               <label className="flex items-center gap-1 text-slate-300">
                 Points
                 <input
                   type="number"
                   min={2}
                   max={200}
-                  value={curve.target_point_count ?? 30}
+                  value={curve.target_point_count ?? DEFAULT_POINT_COUNT}
                   onChange={(e) => {
                     const n = Number(e.target.value)
                     if (Number.isFinite(n)) {
@@ -165,16 +190,12 @@ export function CurveList({
                   className="w-14 rounded border border-slate-600 bg-slate-900 px-1 py-0.5"
                 />
               </label>
-            </div>
-            <div className="mt-1 flex flex-wrap gap-1">
               <button
                 type="button"
                 disabled={busy || !canImprove(curve)}
                 title={
                   canImprove(curve)
-                    ? useAi
-                      ? 'Send tuned points and image to the AI model'
-                      : 'Trace the line in the corridor defined by your points (OpenCV)'
+                    ? 'Trace the line in the corridor defined by your points (OpenCV)'
                     : 'Place at least 2 points on this curve first'
                 }
                 className="rounded bg-sky-700 px-2 py-1 text-[11px] hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
@@ -182,29 +203,14 @@ export function CurveList({
               >
                 Improve
               </button>
-              <button
-                type="button"
-                disabled={busy || !canImprove(curve)}
-                title={
-                  canImprove(curve)
-                    ? useAi
-                      ? 'Use the AI model to locate the curve, then erase it from the plot image'
-                      : 'Erase this curve from the working plot image using OpenCV (original is kept)'
-                    : 'Place at least 2 points on this curve first'
-                }
-                className="rounded bg-rose-800 px-2 py-1 text-[11px] hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
-                onClick={() => onRemoveFromPlot(curve.id)}
-              >
-                Remove from plot
-              </button>
             </div>
-            {selectedPointId && (
+            {selectedPointIds.length > 0 && (
               <button
                 type="button"
                 className="mt-1 text-sky-400 hover:underline"
-                onClick={() => onReassignPoint(selectedPointId, curve.id)}
+                onClick={() => onReassignPoints(selectedPointIds, curve.id)}
               >
-                Assign selected point here
+                Assign selected point{selectedPointIds.length > 1 ? 's' : ''} here
               </button>
             )}
           </li>

@@ -63,6 +63,41 @@ def test_cv_improve_vertical_segment_snaps_along_hints():
     assert max(p.pixel[1] for p in points) - min(p.pixel[1] for p in points) > 50
 
 
+def test_cv_improve_reorders_scrambled_hints_before_tracing():
+    img = Image.new("RGB", (700, 500), "white")
+    draw = ImageDraw.Draw(img)
+    draw.line([(120, 480), (240, 420), (390, 380), (430, 200), (490, 410), (680, 440)], fill=(90, 90, 90), width=2)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    image_bytes = buf.getvalue()
+
+    ordered_hints = [
+        (120.0, 480.0),
+        (240.0, 420.0),
+        (390.0, 380.0),
+        (430.0, 200.0),
+        (490.0, 410.0),
+        (680.0, 440.0),
+    ]
+    scrambled = list(reversed(ordered_hints))
+    scrambled[1], scrambled[4] = scrambled[4], scrambled[1]
+
+    points = improve_curve_from_hints(image_bytes, "#ee2bad", scrambled, target_count=12)
+    ys = [p.pixel[1] for p in points]
+    assert ys[0] > ys[len(ys) // 2]
+    assert points[-1].pixel[0] > points[0].pixel[0]
+    assert _path_length([p.pixel for p in points]) < 900.0
+
+
+def _path_length(path: list[tuple[float, float]]) -> float:
+    import math
+
+    return sum(
+        math.hypot(path[i + 1][0] - path[i][0], path[i + 1][1] - path[i][1])
+        for i in range(len(path) - 1)
+    )
+
+
 def test_run_cv_improve_replaces_old_points():
     img = Image.new("RGB", (200, 100), "white")
     draw = ImageDraw.Draw(img)

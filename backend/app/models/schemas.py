@@ -13,6 +13,8 @@ CalibrationSource = Literal["ai", "manual"]
 ProviderName = Literal["openai", "anthropic", "gemini"]
 MergeOp = Literal["detect", "refine", "redetect_curve"]
 
+DEFAULT_POINT_COUNT = 9
+
 
 class RefPoint(BaseModel):
     pixel: tuple[float, float]
@@ -43,7 +45,7 @@ class Curve(BaseModel):
     trace_color: str | None = None
     style: CurveStyle = "unknown"
     visible: bool = True
-    target_point_count: int = Field(default=30, ge=2, le=200)
+    target_point_count: int = Field(default=DEFAULT_POINT_COUNT, ge=2, le=200)
     points: list[Point] = Field(default_factory=list)
 
     @property
@@ -58,6 +60,20 @@ class ImageMeta(BaseModel):
     revision: int = 0
 
 
+class ImageSource(BaseModel):
+    """Original plot image location (filename from upload; path if known)."""
+
+    filename: str | None = None
+    path: str | None = None
+
+
+class WorkspaceState(BaseModel):
+    active_curve_id: str | None = None
+    text_hint: str = ""
+    resample_count: int = Field(default=DEFAULT_POINT_COUNT, ge=2, le=200)
+    use_ai_mode: bool = False
+
+
 class HistoryEntry(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     action: str
@@ -67,8 +83,11 @@ class HistoryEntry(BaseModel):
 class Session(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     image_meta: ImageMeta
+    image_source: ImageSource | None = None
     calibration: Calibration | None = None
+    manual_calibration: bool = False
     curves: list[Curve] = Field(default_factory=list)
+    workspace: WorkspaceState | None = None
     history: list[HistoryEntry] = Field(default_factory=list)
   # image bytes stored outside model in SessionStore
 
@@ -76,8 +95,11 @@ class Session(BaseModel):
 class SessionPublic(BaseModel):
     id: str
     image_meta: ImageMeta
+    image_source: ImageSource | None = None
     calibration: Calibration | None
+    manual_calibration: bool = False
     curves: list[Curve]
+    workspace: WorkspaceState | None = None
     history: list[HistoryEntry]
     image_url: str
 
@@ -140,6 +162,13 @@ class SettingsUpdate(BaseModel):
 
 class CalibrationUpdate(BaseModel):
     calibration: Calibration
+    manual_calibration: bool | None = None
+
+
+class SessionPreferencesPatch(BaseModel):
+    calibration: Calibration | None = None
+    manual_calibration: bool | None = None
+    workspace: WorkspaceState | None = None
 
 
 class RefineRequest(BaseModel):
@@ -151,7 +180,7 @@ class RefineRequest(BaseModel):
 
 class ResampleRequest(BaseModel):
     curve_id: str
-    target_count: int = 50
+    target_count: int = DEFAULT_POINT_COUNT
 
 
 class RemoveFromPlotRequest(BaseModel):

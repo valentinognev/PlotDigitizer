@@ -41,10 +41,11 @@ export function AIAssistBar({
         <button
           type="button"
           disabled={busy}
+          title="Read axis limits from the plot (X min, X max, Y min, Y max). Does not detect curves."
           onClick={onDetect}
           className="rounded bg-emerald-600 px-2 py-1 font-medium hover:bg-emerald-500 disabled:opacity-50"
         >
-          Detect
+          Detect axes
         </button>
         <button
           type="button"
@@ -82,7 +83,7 @@ export function AIAssistBar({
           N
           <input
             type="number"
-            min={10}
+            min={2}
             max={200}
             value={resampleCount}
             onChange={(e) => onResampleCountChange(Number(e.target.value))}

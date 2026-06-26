@@ -3,6 +3,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
+from app.cv.order import order_points_along_curve
 from app.cv.resample import resample_path
 from app.cv.trace import build_trace_mask
 from app.models.schemas import Point
@@ -132,6 +133,7 @@ def improve_curve_from_hints(
     target_count: int,
 ) -> list[Point]:
     """Trace a curve inside the bbox and corridor defined by user hint points."""
+    hint_points = order_points_along_curve(hint_points)
     arr = np.frombuffer(image_bytes, dtype=np.uint8)
     img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     if img is None:
