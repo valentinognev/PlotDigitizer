@@ -3,15 +3,13 @@ from __future__ import annotations
 from typing import Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 
 Scale = Literal["linear", "log"]
 Origin = Literal["ai", "user"]
 CurveStyle = Literal["solid", "dashed", "dotted", "unknown"]
-CalibrationSource = Literal["ai", "manual"]
-ProviderName = Literal["openai", "anthropic", "gemini"]
-MergeOp = Literal["detect", "refine", "redetect_curve"]
+CalibrationSource = Literal["manual"]
 
 DEFAULT_POINT_COUNT = 9
 
@@ -29,13 +27,13 @@ class CalibrationAxis(BaseModel):
 class Calibration(BaseModel):
     x: CalibrationAxis
     y: CalibrationAxis
-    source: CalibrationSource = "ai"
+    source: CalibrationSource = "manual"
 
 
 class Point(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     pixel: tuple[float, float]
-    origin: Origin = "ai"
+    origin: Origin = "user"
 
 
 class Curve(BaseModel):
@@ -61,17 +59,13 @@ class ImageMeta(BaseModel):
 
 
 class ImageSource(BaseModel):
-    """Original plot image location (filename from upload; path if known)."""
-
     filename: str | None = None
     path: str | None = None
 
 
 class WorkspaceState(BaseModel):
     active_curve_id: str | None = None
-    text_hint: str = ""
     resample_count: int = Field(default=DEFAULT_POINT_COUNT, ge=2, le=200)
-    use_ai_mode: bool = False
 
 
 class HistoryEntry(BaseModel):
@@ -85,11 +79,10 @@ class Session(BaseModel):
     image_meta: ImageMeta
     image_source: ImageSource | None = None
     calibration: Calibration | None = None
-    manual_calibration: bool = False
+    manual_calibration: bool = True
     curves: list[Curve] = Field(default_factory=list)
     workspace: WorkspaceState | None = None
     history: list[HistoryEntry] = Field(default_factory=list)
-  # image bytes stored outside model in SessionStore
 
 
 class SessionPublic(BaseModel):
@@ -97,46 +90,11 @@ class SessionPublic(BaseModel):
     image_meta: ImageMeta
     image_source: ImageSource | None = None
     calibration: Calibration | None
-    manual_calibration: bool = False
+    manual_calibration: bool = True
     curves: list[Curve]
     workspace: WorkspaceState | None = None
     history: list[HistoryEntry]
     image_url: str
-
-
-class BBox(BaseModel):
-    x: float
-    y: float
-    width: float
-    height: float
-
-
-class VLMTick(BaseModel):
-    pixel: tuple[float, float]
-    value: float
-
-
-class VLMAxis(BaseModel):
-    scale: Scale = "linear"
-    ticks: list[VLMTick] = Field(default_factory=list)
-
-
-class VLMCurve(BaseModel):
-    label: str
-    color_hex: str = "#3b82f6"
-    style: CurveStyle = "unknown"
-    seed_points: list[tuple[float, float]] = Field(default_factory=list)
-
-
-class VLMAxes(BaseModel):
-    x: VLMAxis
-    y: VLMAxis
-
-
-class VLMResponse(BaseModel):
-    axes: VLMAxes
-    curves: list[VLMCurve] = Field(default_factory=list)
-    notes: str = ""
 
 
 class ApiErrorDetail(BaseModel):
@@ -147,17 +105,6 @@ class ApiErrorDetail(BaseModel):
 
 class ApiError(BaseModel):
     error: ApiErrorDetail
-
-
-class SettingsPublic(BaseModel):
-    active_provider: ProviderName
-    providers: list[dict[str, Any]]
-
-
-class SettingsUpdate(BaseModel):
-    active_provider: ProviderName | None = None
-    provider: ProviderName | None = None
-    api_key: str | None = None
 
 
 class CalibrationUpdate(BaseModel):
@@ -171,20 +118,9 @@ class SessionPreferencesPatch(BaseModel):
     workspace: WorkspaceState | None = None
 
 
-class RefineRequest(BaseModel):
-    region: BBox | None = None
-    instruction: str | None = None
-    curve_id: str | None = None
-    redetect_curve: bool = False
-
-
 class ResampleRequest(BaseModel):
     curve_id: str
     target_count: int = DEFAULT_POINT_COUNT
-
-
-class RemoveFromPlotRequest(BaseModel):
-    use_ai: bool = False
 
 
 class CurvesPatch(BaseModel):

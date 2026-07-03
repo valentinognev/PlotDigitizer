@@ -45,15 +45,3 @@ def test_last_session_persisted():
     img_res = client.get(f"/sessions/{session_id}/image")
     assert img_res.status_code == 200
     assert img_res.content[:8] == b"\x89PNG\r\n\x1a\n"
-
-
-def test_settings_never_return_key():
-    client.put(
-        "/settings",
-        json={"provider": "openai", "api_key": "sk-test-secret", "active_provider": "openai"},
-    )
-    res = client.get("/settings")
-    assert res.status_code == 200
-    text = res.text
-    assert "sk-test-secret" not in text
-    assert res.json()["providers"][0]["has_key"] is True

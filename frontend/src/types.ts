@@ -1,7 +1,6 @@
 export type Scale = 'linear' | 'log'
 export type Origin = 'ai' | 'user'
 export type CurveStyle = 'solid' | 'dashed' | 'dotted' | 'unknown'
-export type ProviderName = 'openai' | 'anthropic' | 'gemini'
 
 export interface RefPoint {
   pixel: [number, number]
@@ -16,7 +15,7 @@ export interface CalibrationAxis {
 export interface Calibration {
   x: CalibrationAxis
   y: CalibrationAxis
-  source: 'ai' | 'manual'
+  source: 'manual'
 }
 
 export interface Point {
@@ -50,9 +49,7 @@ export interface ImageSource {
 
 export interface WorkspaceState {
   active_curve_id?: string | null
-  text_hint?: string
   resample_count?: number
-  use_ai_mode?: boolean
 }
 
 export interface Session {
@@ -65,18 +62,6 @@ export interface Session {
   workspace?: WorkspaceState | null
   history: unknown[]
   image_url: string
-}
-
-export interface SettingsPublic {
-  active_provider: ProviderName
-  providers: { name: ProviderName; has_key: boolean }[]
-}
-
-export interface BBox {
-  x: number
-  y: number
-  width: number
-  height: number
 }
 
 export interface ApiErrorBody {

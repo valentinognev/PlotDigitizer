@@ -1,13 +1,4 @@
-import type {
-  ApiErrorBody,
-  Calibration,
-  Curve,
-  Session,
-  SettingsPublic,
-  ProviderName,
-  BBox,
-  WorkspaceState,
-} from '../types'
+import type { Calibration, Curve, Session, WorkspaceState } from '../types'
 
 const DEFAULT_TIMEOUT_MS = 120_000
 
@@ -26,13 +17,15 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs = DEFAULT_
     clearTimeout(timer)
   }
   if (!res.ok) {
-    let body: ApiErrorBody | { detail: unknown } = { error: { code: 'unknown', message: res.statusText, hint: '' } }
+    let body: { error?: { message: string }; detail?: unknown } = {
+      error: { message: res.statusText },
+    }
     try {
       body = await res.json()
     } catch {
       /* ignore */
     }
-    const err = 'error' in body ? body.error : body.detail
+    const err = 'error' in body && body.error ? body.error : body.detail
     const message =
       typeof err === 'object' && err && 'message' in err
         ? String((err as { message: string }).message)
@@ -84,19 +77,15 @@ export async function waitForBackend(maxAttempts = 20, delayMs = 300): Promise<b
   return false
 }
 
-export async function detectSession(id: string): Promise<Session> {
-  return request<Session>(`/sessions/${id}/detect`, { method: 'POST' })
+export async function applyUnskew(id: string): Promise<Session> {
+  return request<Session>(`/sessions/${id}/unskew/apply`, { method: 'POST' })
 }
 
-export async function setCalibration(
-  id: string,
-  calibration: Calibration,
-  manual_calibration?: boolean,
-): Promise<Session> {
+export async function setCalibration(id: string, calibration: Calibration): Promise<Session> {
   return request<Session>(`/sessions/${id}/calibration`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ calibration, manual_calibration }),
+    body: JSON.stringify({ calibration, manual_calibration: true }),
   })
 }
 
@@ -115,35 +104,8 @@ export async function patchSessionPreferences(
   })
 }
 
-export async function refineSession(
-  id: string,
-  body: { region?: BBox; instruction?: string; curve_id?: string; redetect_curve?: boolean },
-): Promise<Session> {
-  return request<Session>(`/sessions/${id}/refine`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-}
-
-export async function improveCurveFromHints(id: string, curveId: string): Promise<Session> {
-  return request<Session>(`/sessions/${id}/curves/${curveId}/improve`, { method: 'POST' })
-}
-
 export async function cvImproveCurve(id: string, curveId: string): Promise<Session> {
   return request<Session>(`/sessions/${id}/curves/${curveId}/cv-improve`, { method: 'POST' })
-}
-
-export async function removeCurveFromPlot(
-  id: string,
-  curveId: string,
-  useAi = false,
-): Promise<Session> {
-  return request<Session>(`/sessions/${id}/curves/${curveId}/remove-from-plot`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ use_ai: useAi }),
-  })
 }
 
 export async function resampleSession(
@@ -188,27 +150,6 @@ export async function redoSession(id: string): Promise<Session> {
   return request<Session>(`/sessions/${id}/redo`, { method: 'POST' })
 }
 
-export async function getSettings(): Promise<SettingsPublic> {
-  return request<SettingsPublic>('/settings')
-}
-
-export async function updateSettings(body: {
-  active_provider?: ProviderName
-  provider?: ProviderName
-  api_key?: string
-}): Promise<SettingsPublic> {
-  return request<SettingsPublic>('/settings', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-}
-
-export async function clearProviderKey(provider: ProviderName): Promise<SettingsPublic> {
-  return request<SettingsPublic>(`/settings/key/${provider}`, { method: 'DELETE' })
-}
-
-/** Must match the hidden iframe `name` in ExportPanel. */
 export const EXPORT_FRAME_NAME = 'plot-digitizer-export'
 
 const EXPORT_DEFAULT_NAMES = {
@@ -257,10 +198,6 @@ function submitExportForm(sessionId: string, format: 'csv' | 'json'): void {
   form.remove()
 }
 
-/**
- * Export session data to disk. Uses the native save dialog when available (avoids
- * “download blocked”), otherwise falls back to form → hidden iframe.
- */
 export async function triggerSessionExport(
   sessionId: string,
   format: 'csv' | 'json',
@@ -294,7 +231,6 @@ export async function triggerSessionExport(
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
       if (err instanceof Error && err.name === 'AbortError') return
-      // Unsupported or denied — try iframe fallback below.
     }
   }
 

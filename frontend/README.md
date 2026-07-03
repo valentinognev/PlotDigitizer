@@ -1,73 +1,43 @@
-# React + TypeScript + Vite
+# PlotDigitizer — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + TypeScript + Vite UI for manual plot digitization. See the root [`README.md`](../README.md)
+for setup and workflow.
 
-Currently, two official plugins are available:
+## Layout
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+| Component            | Role                                                                 |
+|----------------------|----------------------------------------------------------------------|
+| `App.tsx`            | Session state, calibration placement, unskew preview, curve edits    |
+| `EditorCanvas.tsx`   | Konva image canvas — points, calibration marks, unskew preview warp |
+| `UnskewPanel.tsx`    | Preview corrected / Apply / Cancel — perspective fix from axis bounds |
+| `CalibrationPanel.tsx` | Manual axis bounds: place on plot, enter min/max values            |
+| `CurveList.tsx`      | Curves, place-points mode, Improve / Densify per curve               |
+| `PreviewChart.tsx`   | Plotly live preview in data-space                                    |
+| `ExportPanel.tsx`    | Open/save project, CSV/JSON export, curve import                     |
 
-## React Compiler
+Top toolbar order: **Unskew** → **Calibration** → **Export**.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Key libraries
 
-## Expanding the ESLint configuration
+- `src/lib/transform.ts` — pixel ↔ data calibration (mirrors backend)
+- `src/lib/calibration.ts` — axis bound placement helpers
+- `src/lib/unskew.ts` — homography from axis bounds; preview warp; mirrors `backend/app/cv/unskew.py`
+- `src/lib/sessionPatch.ts` — optimistic local curve/point updates
+- `src/api/client.ts` — typed REST client (includes `applyUnskew`)
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## Unskew preview
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+Preview runs entirely in the browser (`warpImageToCanvas`). **Apply** calls
+`POST /sessions/{id}/unskew/apply` so the backend OpenCV warp becomes the working image and all
+calibration marks / curve pixels are remapped. During preview, stored coordinates stay in original
+image space; the canvas maps clicks and drags through the inverse homography.
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## Development
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev      # http://127.0.0.1:5173 — proxies /sessions and /health to :8000
+npm run build    # output in dist/ (used by ./start.sh)
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+Backend must be running on port 8000 (`uvicorn` from `backend/`).

@@ -3,9 +3,7 @@ from __future__ import annotations
 import math
 from typing import Literal
 
-import numpy as np
-
-from app.models.schemas import Calibration, CalibrationAxis, RefPoint
+from app.models.schemas import Calibration, RefPoint
 
 Scale = Literal["linear", "log"]
 
@@ -28,7 +26,6 @@ def _extreme_ref_index(ref_points: list[RefPoint], axis_name: str, which: str) -
 
 
 def _fit_axis(ref_points: list[RefPoint], scale: Scale, axis_name: str) -> tuple[float, float]:
-    """Two-point fit at extreme pixel refs — matches xmin/xmax/ymin/ymax UI."""
     if len(ref_points) < 2:
         raise CalibrationError(f"{axis_name} axis needs at least 2 reference points")
 
@@ -93,14 +90,3 @@ def data_to_pixel(calibration: Calibration, data: tuple[float, float]) -> tuple[
     px = _axis_value_to_pixel(data[0], xs, xi, calibration.x.scale)
     py = _axis_value_to_pixel(data[1], ys, yi, calibration.y.scale)
     return px, py
-
-
-def calibration_from_vlm(axes_x: CalibrationAxis, axes_y: CalibrationAxis) -> Calibration:
-    cal = Calibration(x=axes_x, y=axes_y, source="ai")
-    validate_calibration(cal)
-    return cal
-
-
-def vlm_ticks_to_axis(ticks: list, scale: str) -> CalibrationAxis:
-    ref_points = [RefPoint(pixel=t.pixel, value=t.value) for t in ticks]
-    return CalibrationAxis(scale=scale, ref_points=ref_points)

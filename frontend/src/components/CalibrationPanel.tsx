@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import type { Calibration, Scale } from '../types'
 import {
   formatAxisValue,
@@ -5,125 +6,212 @@ import {
   updateAxisBound,
   type AxisBoundKey,
 } from '../lib/transform'
+import { AXIS_PLACE_LABELS } from '../lib/calibration'
 
 interface Props {
   calibration: Calibration | null
-  manualMode: boolean
-  onToggleManual: (v: boolean) => void
+  axisPlaceStep: AxisBoundKey | null
+  onStartAxisPlacement: () => void
   onChange: (cal: Calibration) => void
   onSave: () => void
 }
 
-const BOUND_LABELS: { key: AxisBoundKey; label: string }[] = [
-  { key: 'xmin', label: 'X min' },
-  { key: 'xmax', label: 'X max' },
-  { key: 'ymin', label: 'Y min' },
-  { key: 'ymax', label: 'Y max' },
-]
+function shouldDeferBoundCommit(raw: string): boolean {
+  if (raw === '' || raw === '-' || raw === '.' || raw === '-.') return true
+  if (raw.endsWith('.')) return true
+  if (/^-0$/.test(raw)) return true
+  return false
+}
+
+function BoundInput({
+  value,
+  logScale,
+  title,
+  onCommit,
+}: {
+  value: number
+  logScale: boolean
+  title?: string
+  onCommit: (value: number) => void
+}) {
+  const [draft, setDraft] = useState(String(value))
+
+  useEffect(() => {
+    setDraft(String(value))
+  }, [value])
+
+  const tryCommit = (raw: string) => {
+    if (shouldDeferBoundCommit(raw)) return
+    const n = Number(raw)
+    if (!Number.isFinite(n)) return
+    if (logScale && n <= 0) return
+    onCommit(n)
+  }
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      title={title}
+      className="input-no-spinner w-[4.5rem] rounded border border-slate-600 bg-slate-900 px-1 py-0.5"
+      value={draft}
+      onChange={(e) => {
+        const raw = e.target.value
+        setDraft(raw)
+        tryCommit(raw)
+      }}
+      onBlur={() => {
+        if (shouldDeferBoundCommit(draft)) {
+          setDraft(String(value))
+          return
+        }
+        const n = Number(draft)
+        if (!Number.isFinite(n) || (logScale && n <= 0)) {
+          setDraft(String(value))
+          return
+        }
+        setDraft(String(n))
+        onCommit(n)
+      }}
+    />
+  )
+}
+
+function AxisRow({
+  axis,
+  scale,
+  minKey,
+  maxKey,
+  minLabel,
+  maxLabel,
+  bounds,
+  onScaleChange,
+  onBoundCommit,
+}: {
+  axis: 'x' | 'y'
+  scale: Scale
+  minKey: AxisBoundKey
+  maxKey: AxisBoundKey
+  minLabel: string
+  maxLabel: string
+  bounds: NonNullable<ReturnType<typeof getAxisBounds>>
+  onScaleChange: (scale: Scale) => void
+  onBoundCommit: (key: AxisBoundKey, value: number) => void
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <label className="inline-flex w-14 shrink-0 items-center gap-1 text-slate-300">
+        {axis.toUpperCase()}
+        <select
+          className="min-w-0 flex-1 rounded border border-slate-600 bg-slate-900 px-1 py-0.5"
+          value={scale}
+          onChange={(e) => onScaleChange(e.target.value as Scale)}
+        >
+          <option value="linear">lin</option>
+          <option value="log">log</option>
+        </select>
+      </label>
+      <label className="inline-flex items-center gap-1 text-slate-300">
+        {minLabel}
+        <BoundInput
+          value={bounds[minKey].value}
+          logScale={scale === 'log'}
+          title={formatAxisValue(bounds[minKey].value)}
+          onCommit={(value) => onBoundCommit(minKey, value)}
+        />
+      </label>
+      <label className="inline-flex items-center gap-1 text-slate-300">
+        {maxLabel}
+        <BoundInput
+          value={bounds[maxKey].value}
+          logScale={scale === 'log'}
+          title={formatAxisValue(bounds[maxKey].value)}
+          onCommit={(value) => onBoundCommit(maxKey, value)}
+        />
+      </label>
+    </div>
+  )
+}
 
 export function CalibrationPanel({
   calibration,
-  manualMode,
-  onToggleManual,
+  axisPlaceStep,
+  onStartAxisPlacement,
   onChange,
   onSave,
 }: Props) {
-  if (!calibration) {
-    return (
-      <section className="min-w-[200px] flex-1 rounded-lg border border-slate-700 bg-slate-800/50 p-2">
-        <h3 className="text-xs font-semibold text-slate-200">Calibration</h3>
-        <p className="mt-1 text-[11px] text-slate-400">
-          Run Detect axes to read X/Y min and max from the plot.
-        </p>
-      </section>
-    )
-  }
-
-  const bounds = getAxisBounds(calibration)
-
   const updateScale = (axis: 'x' | 'y', scale: Scale) => {
+    if (!calibration) return
     onChange({
       ...calibration,
-      source: manualMode ? 'manual' : calibration.source,
+      source: 'manual',
       [axis]: { ...calibration[axis], scale },
     })
   }
 
-  const updateBoundValue = (key: AxisBoundKey, raw: string) => {
-    const value = Number(raw)
-    if (!Number.isFinite(value)) return
+  const commitBoundValue = (key: AxisBoundKey, value: number) => {
+    if (!calibration) return
     if (calibration[key.startsWith('x') ? 'x' : 'y'].scale === 'log' && value <= 0) return
     onChange(updateAxisBound(calibration, key, { value }))
   }
 
+  const bounds = calibration ? getAxisBounds(calibration) : null
+  const placeTitle = axisPlaceStep
+    ? `Click on the plot: ${AXIS_PLACE_LABELS[axisPlaceStep]}`
+    : 'Click four points on the plot: X min, X max, Y min, Y max'
+
   return (
-    <section className="min-w-[280px] flex-1 rounded-lg border border-slate-700 bg-slate-800/50 p-2">
-      <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-xs font-semibold text-slate-200">Calibration</h3>
-        <label className="flex items-center gap-1.5 text-[11px] text-slate-300">
-          <input
-            type="checkbox"
-            checked={manualMode}
-            onChange={(e) => onToggleManual(e.target.checked)}
-          />
-          Manual
-        </label>
-      </div>
-      <div className="mb-1.5 flex flex-wrap gap-2 text-[11px]">
-        <label className="flex items-center gap-1 text-slate-300">
-          X
-          <select
-            className="rounded border border-slate-600 bg-slate-900 px-1 py-0.5"
-            value={calibration.x.scale}
-            onChange={(e) => updateScale('x', e.target.value as Scale)}
-          >
-            <option value="linear">linear</option>
-            <option value="log">log</option>
-          </select>
-        </label>
-        <label className="flex items-center gap-1 text-slate-300">
-          Y
-          <select
-            className="rounded border border-slate-600 bg-slate-900 px-1 py-0.5"
-            value={calibration.y.scale}
-            onChange={(e) => updateScale('y', e.target.value as Scale)}
-          >
-            <option value="linear">linear</option>
-            <option value="log">log</option>
-          </select>
-        </label>
+    <section className="min-w-0 shrink rounded-lg border border-slate-700 bg-slate-800/50 px-2 py-1 text-[11px]">
+      <div className="mb-1 flex items-center gap-2">
+        <h3 className="shrink-0 font-semibold text-slate-200">Calibration</h3>
         <button
           type="button"
-          onClick={onSave}
-          className="rounded bg-sky-600 px-2 py-0.5 text-[11px] font-medium hover:bg-sky-500"
+          title={placeTitle}
+          onClick={onStartAxisPlacement}
+          className={`shrink-0 rounded px-2 py-0.5 font-medium ${
+            axisPlaceStep
+              ? 'bg-amber-600 hover:bg-amber-500'
+              : 'bg-sky-600 hover:bg-sky-500'
+          }`}
         >
-          Save
+          {axisPlaceStep ? `Placing ${axisPlaceStep.toUpperCase()}` : 'Place bounds'}
         </button>
+        {calibration && (
+          <button
+            type="button"
+            onClick={onSave}
+            className="shrink-0 rounded bg-slate-600 px-2 py-0.5 font-medium hover:bg-slate-500"
+          >
+            Save
+          </button>
+        )}
       </div>
-      {bounds ? (
-        <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-          {BOUND_LABELS.map(({ key, label }) => (
-            <label key={key} className="text-slate-300">
-              {label}
-              <input
-                type="number"
-                step="any"
-                title={formatAxisValue(bounds[key].value)}
-                className="mt-0.5 w-full rounded border border-slate-600 bg-slate-900 px-1 py-0.5 disabled:text-slate-400"
-                value={bounds[key].value}
-                readOnly={!manualMode}
-                onChange={(e) => updateBoundValue(key, e.target.value)}
-              />
-            </label>
-          ))}
+
+      {calibration && bounds && (
+        <div className="flex flex-col gap-0.5">
+          <AxisRow
+            axis="x"
+            scale={calibration.x.scale}
+            minKey="xmin"
+            maxKey="xmax"
+            minLabel="Xmin"
+            maxLabel="Xmax"
+            bounds={bounds}
+            onScaleChange={(scale) => updateScale('x', scale)}
+            onBoundCommit={commitBoundValue}
+          />
+          <AxisRow
+            axis="y"
+            scale={calibration.y.scale}
+            minKey="ymin"
+            maxKey="ymax"
+            minLabel="Ymin"
+            maxLabel="Ymax"
+            bounds={bounds}
+            onScaleChange={(scale) => updateScale('y', scale)}
+            onBoundCommit={commitBoundValue}
+          />
         </div>
-      ) : (
-        <p className="text-[11px] text-slate-400">Need at least 2 refs per axis.</p>
-      )}
-      {manualMode && bounds && (
-        <p className="mt-1 text-[10px] text-sky-300/90">
-          Drag cyan (X) and magenta (Y) marks on the plot image to adjust limits.
-        </p>
       )}
     </section>
   )

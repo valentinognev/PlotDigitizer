@@ -9,23 +9,11 @@ sys.path.insert(0, str(ROOT))
 
 @pytest.fixture(autouse=True)
 def isolate_runtime_config(tmp_path, monkeypatch):
-    """Keep pytest from overwriting backend/config/settings.json or last_session/."""
-    from app.settings.settings_store import SettingsStore
+    """Keep pytest from overwriting last_session/."""
     from app.store.session_store import SessionStore
 
-    settings_path = tmp_path / "settings.json"
     last_session_dir = tmp_path / "last_session"
-
-    settings = SettingsStore(path=settings_path)
     sessions = SessionStore()
-
-    for module in (
-        "app.settings.settings_store",
-        "app.api.settings",
-        "app.vlm.factory",
-        "app.main",
-    ):
-        monkeypatch.setattr(f"{module}.settings_store", settings)
 
     for module in (
         "app.store.session_store",

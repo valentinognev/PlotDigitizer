@@ -40,6 +40,62 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [2.1.3] — 2026-07-03
+### Changed
+- Updated `README.md`, `refs/WORKFLOW.md`, and `frontend/README.md` for v2.1 unskew workflow.
+
+## [2.1.2] — 2026-07-03
+### Fixed
+- Unskew preview toggle: replaced hard-to-use checkbox with a button; enabled once axis bounds
+  are placed; shows a toast when geometry is invalid.
+
+## [2.1.1] — 2026-07-03
+### Fixed
+- Unskew preview/apply no longer crops to the axis quad — the full image is preserved so
+  data outside axis limits remains visible.
+- Unskew Y orientation: Ymax now appears above Ymin (correct image coordinates, y-down).
+
+## [2.1.0] — 2026-07-03
+### Added
+- **Unskew panel:** preview and apply perspective correction from calibration axis bounds
+  (Xmin/Xmax/Ymin/Ymax); remaps working image, calibration marks, and curve points on apply.
+- `POST /sessions/{id}/unskew/apply` backend endpoint with undo support.
+
+## [2.0.5] — 2026-07-03
+### Changed
+- Updated `README.md`, `refs/WORKFLOW.md`, and `frontend/README.md` for v2.0 manual-only workflow.
+
+## [2.0.4] — 2026-07-03
+### Changed
+- Calibration min/max fields hide browser stepper arrows (plain text-style inputs).
+
+## [2.0.3] — 2026-07-03
+### Fixed
+- Calibration min/max fields accept a leading minus while typing (e.g. `-0.25`).
+
+## [2.0.2] — 2026-07-03
+### Changed
+- Calibration panel: two rows (X scale + Xmin/Xmax, Y scale + Ymin/Ymax) with title and actions on top.
+
+## [2.0.1] — 2026-07-03
+### Changed
+- Calibration panel uses a single compact row (title, place bounds, scales, min/max inputs, save)
+  instead of stacked sections.
+
+## [2.0.0] — 2026-07-03
+### Removed
+- All AI / VLM integration: detect, refine, settings API, provider packages, and AI assist UI.
+- AI-based curve removal from plot; OpenCV erase remains for manual remove-from-plot workflow.
+
+### Added
+- **Place axis bounds** button: click X min, X max, Y min, Y max on the plot image, then enter numeric
+  axis values manually.
+- Per-curve **Densify** control in the curve list (moved from the removed AI bar).
+
+### Changed
+- Calibration is manual-only (`source: manual`); linear/log scale and four bound markers on the plot.
+- App subtitle and workflow are fully manual digitization (upload → calibrate → place points → export).
+
 ## [1.8.13] — 2026-06-26
 ### Fixed
 - Detect axes no longer clears manually placed curves when the VLM returns an empty curve list.

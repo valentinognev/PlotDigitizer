@@ -52,9 +52,7 @@ def _session_ready() -> Session:
         manual_calibration=True,
         workspace=WorkspaceState(
             active_curve_id="curve-1",
-            text_hint="hint",
             resample_count=12,
-            use_ai_mode=False,
         ),
         curves=[
             Curve(
@@ -63,7 +61,7 @@ def _session_ready() -> Session:
                 color="#ff0000",
                 points=[
                     Point(id="p1", pixel=(25.0, 75.0), origin="user"),
-                    Point(id="p2", pixel=(75.0, 25.0), origin="ai"),
+                    Point(id="p2", pixel=(75.0, 25.0), origin="user"),
                 ],
             )
         ],
@@ -78,7 +76,7 @@ def test_export_json_is_project_format():
     assert payload["image_source"]["filename"] == "plot.png"
     assert payload["image_source"]["path"] == "/data/plot.png"
     assert payload["manual_calibration"] is True
-    assert payload["workspace"]["text_hint"] == "hint"
+    assert payload["workspace"]["resample_count"] == 12
     assert payload["curves"][0]["points"][0]["pixel"] == [25.0, 75.0]
     assert "data" in payload["curves"][0]["points"][0]
     assert base64.b64decode(payload["image"]["data"]) == TINY_PNG_BYTES
@@ -93,7 +91,7 @@ def test_project_roundtrip():
     assert restored.image_source.filename == "plot.png"
     assert restored.manual_calibration is True
     assert restored.workspace is not None
-    assert restored.workspace.text_hint == "hint"
+    assert restored.workspace.resample_count == 12
     assert len(restored.curves) == 1
     assert restored.curves[0].label == "A"
     assert len(restored.curves[0].points) == 2
@@ -145,7 +143,7 @@ _LEGACY_CURVES_JSON = """
       "label": "A",
       "color": "#ff0000",
       "style": "unknown",
-      "points": [{"x": 2.5, "y": 2.5, "origin": "user"}, {"x": 7.5, "y": 7.5, "origin": "ai"}]
+      "points": [{"x": 2.5, "y": 2.5, "origin": "user"}, {"x": 7.5, "y": 7.5, "origin": "user"}]
     }
   ]
 }

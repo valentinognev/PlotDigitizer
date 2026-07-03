@@ -8,12 +8,15 @@ interface Props {
   placementCurveId: string | null
   selectedPointIds: string[]
   busy: boolean
+  resampleCount: number
+  onResampleCountChange: (n: number) => void
   onActiveChange: (id: string) => void
   addPointMode: boolean
   onAddPointModeChange: (enabled: boolean) => void
   onCurveChange: (curves: Curve[]) => void
   onReassignPoints: (pointIds: string[], toCurveId: string) => void
   onImprove: (curveId: string) => void
+  onResample: (curveId: string) => void
 }
 
 export function CurveList({
@@ -22,12 +25,15 @@ export function CurveList({
   placementCurveId,
   selectedPointIds,
   busy,
+  resampleCount,
+  onResampleCountChange,
   onActiveChange,
   addPointMode,
   onAddPointModeChange,
   onCurveChange,
   onReassignPoints,
   onImprove,
+  onResample,
 }: Props) {
   const updateCurve = (id: string, patch: Partial<Curve>) => {
     onCurveChange(curves.map((c) => (c.id === id ? { ...c, ...patch } : c)))
@@ -105,6 +111,25 @@ export function CurveList({
             Place points
           </button>
         </div>
+      </div>
+      <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
+        <label className="flex items-center gap-1">
+          Densify to
+          <input
+            type="number"
+            min={2}
+            max={200}
+            value={resampleCount}
+            onChange={(e) => {
+              const n = Number(e.target.value)
+              if (Number.isFinite(n)) {
+                onResampleCountChange(Math.min(200, Math.max(2, Math.round(n))))
+              }
+            }}
+            className="w-14 rounded border border-slate-600 bg-slate-900 px-1 py-0.5"
+          />
+          pts
+        </label>
       </div>
       <div className="mb-2 flex gap-1">
         <button
@@ -190,6 +215,15 @@ export function CurveList({
                   className="w-14 rounded border border-slate-600 bg-slate-900 px-1 py-0.5"
                 />
               </label>
+              <button
+                type="button"
+                disabled={busy || curve.points.length < 2}
+                title="Interpolate evenly spaced points along the curve"
+                className="rounded bg-slate-600 px-2 py-1 text-[11px] hover:bg-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => onResample(curve.id)}
+              >
+                Densify
+              </button>
               <button
                 type="button"
                 disabled={busy || !canImprove(curve)}

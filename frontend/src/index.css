@@ -26,3 +26,14 @@ body {
 .progress-indeterminate {
   animation: progress-indeterminate 1.4s ease-in-out infinite;
 }
+
+.input-no-spinner {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.input-no-spinner::-webkit-outer-spin-button,
+.input-no-spinner::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}

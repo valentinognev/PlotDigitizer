@@ -17,25 +17,19 @@ from app.models.schemas import (
     CalibrationUpdate,
     CurvesEditRequest,
     ImageSource,
-    RefineRequest,
-    RemoveFromPlotRequest,
     ResampleRequest,
     Session,
     SessionPreferencesPatch,
     SessionPublic,
 )
+from app.cv.unskew import UnskewError
 from app.pipeline.pipeline import (
-    run_ai_remove_curve_from_plot,
     run_cv_improve,
-    run_detect,
-    run_improve_from_hints,
-    run_refine,
     run_remove_curve_from_plot,
     run_resample,
+    run_unskew_apply,
 )
 from app.store.session_store import session_store
-from app.vlm.base import VLMError
-from app.vlm.factory import get_provider
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
@@ -121,20 +115,6 @@ def get_session_original_image(session_id: str) -> Response:
     return Response(content=stored.original_image_bytes, media_type="image/png")
 
 
-@router.post("/{session_id}/detect", response_model=SessionPublic)
-def detect(session_id: str) -> SessionPublic:
-    stored = _require(session_id)
-    try:
-        provider = get_provider()
-        session_store.push_history(stored, "detect")
-        stored.session = run_detect(provider, stored.session, stored.image_bytes)
-        session_store.update(session_id, stored.session)
-    except VLMError as exc:
-        raise _error(exc, exc.code, exc.hint) from exc
-    stored = session_store.require(session_id)
-    return _to_public(stored)
-
-
 @router.post("/{session_id}/calibration", response_model=SessionPublic)
 def set_calibration(session_id: str, body: CalibrationUpdate) -> SessionPublic:
     stored = _require(session_id)
@@ -144,8 +124,7 @@ def set_calibration(session_id: str, body: CalibrationUpdate) -> SessionPublic:
         raise _error(exc, "calibration_invalid", "Fix reference points") from exc
     session_store.push_history(stored, "calibration")
     stored.session.calibration = body.calibration
-    if body.manual_calibration is not None:
-        stored.session.manual_calibration = body.manual_calibration
+    stored.session.manual_calibration = True
     session_store.update(session_id, stored.session)
     return _to_public(stored)
 
@@ -159,6 +138,7 @@ def patch_preferences(session_id: str, body: SessionPreferencesPatch) -> Session
         except CalibrationError as exc:
             raise _error(exc, "calibration_invalid", "Fix reference points") from exc
         stored.session.calibration = body.calibration
+        stored.session.manual_calibration = True
     if body.manual_calibration is not None:
         stored.session.manual_calibration = body.manual_calibration
     if body.workspace is not None:
@@ -180,49 +160,6 @@ async def load_project(file: UploadFile = File(...)) -> SessionPublic:
     return _to_public(stored)
 
 
-@router.post("/{session_id}/refine", response_model=SessionPublic)
-def refine(session_id: str, body: RefineRequest) -> SessionPublic:
-    stored = _require(session_id)
-    if not body.region and not body.instruction:
-        raise _error(ValueError("region or instruction required"), "refine_input")
-    try:
-        provider = get_provider()
-        session_store.push_history(stored, "refine")
-        stored.session = run_refine(
-            provider,
-            stored.session,
-            stored.image_bytes,
-            region=body.region,
-            instruction=body.instruction,
-            curve_id=body.curve_id,
-            redetect_curve=body.redetect_curve,
-        )
-        session_store.update(session_id, stored.session)
-    except VLMError as exc:
-        raise _error(exc, exc.code, exc.hint) from exc
-    return _to_public(stored)
-
-
-@router.post("/{session_id}/curves/{curve_id}/improve", response_model=SessionPublic)
-def improve_curve_from_hints(session_id: str, curve_id: str) -> SessionPublic:
-    stored = _require(session_id)
-    try:
-        provider = get_provider()
-        session_store.push_history(stored, "improve_from_hints")
-        stored.session = run_improve_from_hints(
-            provider,
-            stored.session,
-            stored.image_bytes,
-            curve_id,
-        )
-        session_store.update(session_id, stored.session)
-    except ValueError as exc:
-        raise _error(exc, "improve_input", str(exc)) from exc
-    except VLMError as exc:
-        raise _error(exc, exc.code, exc.hint) from exc
-    return _to_public(stored)
-
-
 @router.post("/{session_id}/curves/{curve_id}/cv-improve", response_model=SessionPublic)
 def cv_improve_curve(session_id: str, curve_id: str) -> SessionPublic:
     stored = _require(session_id)
@@ -236,34 +173,37 @@ def cv_improve_curve(session_id: str, curve_id: str) -> SessionPublic:
 
 
 @router.post("/{session_id}/curves/{curve_id}/remove-from-plot", response_model=SessionPublic)
-def remove_curve_from_plot(
-    session_id: str,
-    curve_id: str,
-    body: RemoveFromPlotRequest | None = None,
-) -> SessionPublic:
+def remove_curve_from_plot(session_id: str, curve_id: str) -> SessionPublic:
     stored = _require(session_id)
-    use_ai = body.use_ai if body is not None else False
     try:
         session_store.push_history(stored, "remove_from_plot")
-        if use_ai:
-            provider = get_provider()
-            _, new_image = run_ai_remove_curve_from_plot(
-                provider,
-                stored.session,
-                stored.image_bytes,
-                curve_id,
-            )
-        else:
-            _, new_image = run_remove_curve_from_plot(
-                stored.session,
-                stored.image_bytes,
-                curve_id,
-            )
+        _, new_image = run_remove_curve_from_plot(
+            stored.session,
+            stored.image_bytes,
+            curve_id,
+        )
         session_store.update_working_image(session_id, new_image)
     except ValueError as exc:
         raise _error(exc, "remove_from_plot", str(exc)) from exc
-    except VLMError as exc:
-        raise _error(exc, exc.code, exc.hint) from exc
+    stored = session_store.require(session_id)
+    return _to_public(stored)
+
+
+@router.post("/{session_id}/unskew/apply", response_model=SessionPublic)
+def apply_unskew(session_id: str) -> SessionPublic:
+    stored = _require(session_id)
+    if stored.session.calibration is None:
+        raise _error(ValueError("Set calibration bounds first"), "unskew_no_calibration")
+    try:
+        session_store.push_history(stored, "unskew_apply")
+        new_session, new_image = run_unskew_apply(stored.session, stored.image_bytes)
+        stored.session = new_session
+        session_store.update_working_image(session_id, new_image)
+        session_store.update(session_id, stored.session)
+    except UnskewError as exc:
+        raise _error(exc, "unskew_invalid", "Adjust axis bounds") from exc
+    except ValueError as exc:
+        raise _error(exc, "unskew_input", str(exc)) from exc
     stored = session_store.require(session_id)
     return _to_public(stored)
 

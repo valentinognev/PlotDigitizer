@@ -2,20 +2,22 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Circle, Group, Image as KonvaImage, Layer, Rect, Stage, Text } from 'react-konva'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import { getAxisBounds, type AxisBoundKey } from '../lib/transform'
+import { AXIS_PLACE_LABELS } from '../lib/calibration'
+import { applyHomography, warpImageToCanvas, type UnskewTransform } from '../lib/unskew'
 import type { Calibration, Curve, Point } from '../types'
 
 interface Props {
   imageUrl: string | null
   width: number
   height: number
+  unskewTransform?: UnskewTransform | null
   curves: Curve[]
   placementCurveId: string | null
   addPointMode: boolean
-  regionMode: boolean
+  axisPlaceStep: AxisBoundKey | null
   calibration: Calibration | null
-  manualCalibration: boolean
   onMoveCalibrationMark: (key: AxisBoundKey, pixel: [number, number]) => void
-  onRegion: (bbox: { x: number; y: number; width: number; height: number }) => void
+  onAxisPlaceClick: (pixel: [number, number]) => void
   onAddPoint: (pixel: [number, number]) => void
   onMovePoint: (pointId: string, pixel: [number, number]) => void
   onMovePoints: (moves: Array<{ pointId: string; pixel: [number, number] }>) => void
@@ -46,14 +48,18 @@ function isBackgroundTarget(target: KonvaEventObject<MouseEvent>['target']) {
   return target === target.getStage() || target.getClassName() === 'Image'
 }
 
-function pointsInRect(curves: Curve[], rect: ImageBox): string[] {
+function pointsInRect(
+  curves: Curve[],
+  rect: ImageBox,
+  getPixel: (pt: Point) => [number, number],
+): string[] {
   const x2 = rect.x + rect.w
   const y2 = rect.y + rect.h
   const ids: string[] = []
   for (const curve of curves) {
     if (!curve.visible) continue
     for (const pt of curve.points) {
-      const [px, py] = pt.pixel
+      const [px, py] = getPixel(pt)
       if (px >= rect.x && px <= x2 && py >= rect.y && py <= y2) ids.push(pt.id)
     }
   }
@@ -63,12 +69,13 @@ function pointsInRect(curves: Curve[], rect: ImageBox): string[] {
 function collectSelectedStarts(
   curves: Curve[],
   selectedPointIds: string[],
+  toDisplay: (pixel: [number, number]) => [number, number],
 ): Map<string, [number, number]> {
   const selected = new Set(selectedPointIds)
   const starts = new Map<string, [number, number]>()
   for (const curve of curves) {
     for (const pt of curve.points) {
-      if (selected.has(pt.id)) starts.set(pt.id, pt.pixel)
+      if (selected.has(pt.id)) starts.set(pt.id, toDisplay(pt.pixel))
     }
   }
   return starts
@@ -78,14 +85,14 @@ export function EditorCanvas({
   imageUrl,
   width,
   height,
+  unskewTransform = null,
   curves,
   placementCurveId,
   addPointMode,
-  regionMode,
+  axisPlaceStep,
   calibration,
-  manualCalibration,
   onMoveCalibrationMark,
-  onRegion,
+  onAxisPlaceClick,
   onAddPoint,
   onMovePoint,
   onMovePoints,
@@ -95,14 +102,12 @@ export function EditorCanvas({
   selectedPointIds,
   onDeletePoint,
 }: Props) {
-  const axisBounds =
-    manualCalibration && calibration ? getAxisBounds(calibration) : null
+  const axisBounds = calibration ? getAxisBounds(calibration) : null
   const [image, setImage] = useState<HTMLImageElement | null>(null)
+  const [warpedCanvas, setWarpedCanvas] = useState<HTMLCanvasElement | null>(null)
   const [scale, setScale] = useState(1)
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 })
   const [stageDraggable, setStageDraggable] = useState(true)
-  const [drawing, setDrawing] = useState<{ x: number; y: number } | null>(null)
-  const [box, setBox] = useState<ImageBox | null>(null)
   const [marquee, setMarquee] = useState<Marquee | null>(null)
   const [marqueeBox, setMarqueeBox] = useState<ImageBox | null>(null)
   const [groupDrag, setGroupDrag] = useState<GroupDrag | null>(null)
@@ -122,8 +127,31 @@ export function EditorCanvas({
 
   const selectedSet = new Set(selectedPointIds)
   const multiSelected = selectedPointIds.length > 1
-  const fitScale = Math.min(viewSize.w / Math.max(width, 1), viewSize.h / Math.max(height, 1), 1)
+  const displayWidth = unskewTransform ? Math.round(unskewTransform.width) : width
+  const displayHeight = unskewTransform ? Math.round(unskewTransform.height) : height
+  const matrix = unskewTransform?.matrix
+  const fitScale = Math.min(
+    viewSize.w / Math.max(displayWidth, 1),
+    viewSize.h / Math.max(displayHeight, 1),
+    1,
+  )
   const totalScale = scale * fitScale
+
+  const toDisplayCoords = useCallback(
+    (original: [number, number]): [number, number] => {
+      if (!matrix) return original
+      return applyHomography(matrix, original, false)
+    },
+    [matrix],
+  )
+
+  const toOriginalCoords = useCallback(
+    (display: [number, number]): [number, number] => {
+      if (!matrix) return display
+      return applyHomography(matrix, display, true)
+    },
+    [matrix],
+  )
 
   useEffect(() => {
     if (!imageUrl) return
@@ -133,9 +161,23 @@ export function EditorCanvas({
   }, [imageUrl])
 
   useEffect(() => {
+    if (!image || !unskewTransform) {
+      setWarpedCanvas(null)
+      return
+    }
+    let cancelled = false
+    warpImageToCanvas(image, unskewTransform).then((canvas) => {
+      if (!cancelled) setWarpedCanvas(canvas)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [image, unskewTransform])
+
+  useEffect(() => {
     setStagePos({ x: 0, y: 0 })
     setScale(1)
-  }, [imageUrl, width, height])
+  }, [imageUrl, width, height, unskewTransform])
 
   useEffect(() => {
     const el = containerRef.current
@@ -233,12 +275,13 @@ export function EditorCanvas({
 
   const displayPixel = useCallback(
     (pt: Point): [number, number] => {
-      if (!groupDrag || !selectedPointIds.includes(pt.id)) return pt.pixel
+      const base = toDisplayCoords(pt.pixel)
+      if (!groupDrag || !selectedPointIds.includes(pt.id)) return base
       const start = groupDrag.starts.get(pt.id)
-      if (!start) return pt.pixel
+      if (!start) return base
       return [start[0] + groupDrag.dx, start[1] + groupDrag.dy]
     },
-    [groupDrag, selectedPointIds],
+    [groupDrag, selectedPointIds, toDisplayCoords],
   )
 
   const handleWheel = (e: KonvaEventObject<WheelEvent>) => {
@@ -264,7 +307,6 @@ export function EditorCanvas({
   }
 
   const handleStageMouseDown = (e: KonvaEventObject<MouseEvent>) => {
-    if (regionMode) return
     if (!isBackgroundTarget(e.target)) return
     if (e.evt.button !== 0) return
 
@@ -278,8 +320,13 @@ export function EditorCanvas({
       setStageDraggable(true)
       return
     }
+    if (axisPlaceStep) {
+      onAxisPlaceClick(toOriginalCoords([x, y]))
+      setStageDraggable(false)
+      return
+    }
     if (addPointMode && placementCurveId) {
-      onAddPoint([x, y])
+      onAddPoint(toOriginalCoords([x, y]))
       setStageDraggable(false)
       return
     }
@@ -305,18 +352,8 @@ export function EditorCanvas({
     }
     if (e.target.getClassName() === 'Text') return
     if (!isBackgroundTarget(e.target)) return
-    if (regionMode || addPointMode) return
+    if (axisPlaceStep || addPointMode) return
     onClearSelection()
-  }
-
-  const handleMouseDown = (e: KonvaEventObject<MouseEvent>) => {
-    if (!regionMode) return
-    const stage = e.target.getStage()
-    const pos = stage?.getPointerPosition()
-    if (!pos) return
-    const [x, y] = toImageCoords(pos.x, pos.y)
-    setDrawing({ x, y })
-    setBox(null)
   }
 
   const handleMouseMove = (e: KonvaEventObject<MouseEvent>) => {
@@ -324,16 +361,6 @@ export function EditorCanvas({
     const pos = stage?.getPointerPosition()
     if (!pos) return
     const [x, y] = toImageCoords(pos.x, pos.y)
-
-    if (regionMode && drawing) {
-      setBox({
-        x: Math.min(drawing.x, x),
-        y: Math.min(drawing.y, y),
-        w: Math.abs(x - drawing.x),
-        h: Math.abs(y - drawing.y),
-      })
-      return
-    }
 
     if (!marquee) return
     setMarqueeBox({
@@ -345,30 +372,22 @@ export function EditorCanvas({
   }
 
   const handleMouseUp = () => {
-    if (regionMode) {
-      if (box && box.w > MARQUEE_MIN && box.h > MARQUEE_MIN)
-        onRegion({ x: box.x, y: box.y, width: box.w, height: box.h })
-      setDrawing(null)
-      setBox(null)
-      return
-    }
-
     if (marqueeBox && marqueeBox.w > MARQUEE_MIN && marqueeBox.h > MARQUEE_MIN && marquee) {
-      const ids = pointsInRect(curves, marqueeBox)
+      const ids = pointsInRect(curves, marqueeBox, (pt) => toDisplayCoords(pt.pixel))
       if (ids.length) onSelectPoints(ids, marquee.additive)
       else if (!marquee.additive) onClearSelection()
       suppressNextClickRef.current = true
     }
     setMarquee(null)
     setMarqueeBox(null)
-    setStageDraggable(!addPointMode || spaceDownRef.current)
+    setStageDraggable(!addPointMode && !axisPlaceStep && spaceDownRef.current)
   }
 
   const prepareGroupDrag = (pt: Point) => {
     if (!selectedSet.has(pt.id) || !multiSelected) return
     setGroupDrag({
       anchorId: pt.id,
-      starts: collectSelectedStarts(curves, selectedPointIds),
+      starts: collectSelectedStarts(curves, selectedPointIds, toDisplayCoords),
       dx: 0,
       dy: 0,
     })
@@ -409,7 +428,10 @@ export function EditorCanvas({
           if (!start) return null
           return {
             pointId: id,
-            pixel: [start[0] + groupDrag.dx, start[1] + groupDrag.dy] as [number, number],
+            pixel: toOriginalCoords([
+              start[0] + groupDrag.dx,
+              start[1] + groupDrag.dy,
+            ] as [number, number]),
           }
         })
         .filter((m): m is { pointId: string; pixel: [number, number] } => m !== null)
@@ -418,22 +440,27 @@ export function EditorCanvas({
       return
     }
     setGroupDrag(null)
-    onMovePoint(pt.id, [e.target.x(), e.target.y()])
+    onMovePoint(pt.id, toOriginalCoords([e.target.x(), e.target.y()]))
   }
+
+  const imageSource = unskewTransform && warpedCanvas ? warpedCanvas : image
 
   return (
     <div className="flex h-full max-h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border border-slate-700 bg-slate-900">
-      <PlotInteractionHint addPointMode={addPointMode} regionMode={regionMode} />
+      <PlotInteractionHint
+        addPointMode={addPointMode}
+        axisPlaceStep={axisPlaceStep}
+        unskewPreview={!!unskewTransform}
+      />
       <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden">
       <Stage
         width={viewSize.w}
         height={viewSize.h}
         onWheel={handleWheel}
         onClick={handleStageClick}
-        onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        draggable={stageDraggable && !regionMode && (!addPointMode || spacePan)}
+        draggable={stageDraggable && (!addPointMode || spacePan) && !axisPlaceStep}
         x={stagePos.x}
         y={stagePos.y}
         scaleX={totalScale}
@@ -441,7 +468,9 @@ export function EditorCanvas({
         onDragEnd={handleStageDragEnd}
       >
         <Layer onMouseDown={handleStageMouseDown}>
-          {image && <KonvaImage image={image} width={width} height={height} />}
+          {imageSource && (
+            <KonvaImage image={imageSource} width={displayWidth} height={displayHeight} />
+          )}
           {curves.map(
             (curve) =>
               curve.visible &&
@@ -468,17 +497,6 @@ export function EditorCanvas({
                 )
               }),
           )}
-          {box && (
-            <Rect
-              x={box.x}
-              y={box.y}
-              width={box.w}
-              height={box.h}
-              stroke="#38bdf8"
-              dash={[6, 4]}
-              strokeWidth={2 / totalScale}
-            />
-          )}
           {marqueeBox && (
             <Rect
               x={marqueeBox.x}
@@ -497,13 +515,14 @@ export function EditorCanvas({
                 <CalibrationMark
                   key={key}
                   label={key.toUpperCase()}
-                  pixel={bound.pixel}
+                  pixel={toDisplayCoords(bound.pixel)}
                   color={key.startsWith('x') ? '#22d3ee' : '#e879f9'}
                   scale={totalScale}
+                  active={axisPlaceStep === key}
                   onDragStart={() => setStageDraggable(false)}
                   onDragEnd={(px) => {
                     setStageDraggable(true)
-                    onMoveCalibrationMark(key, px)
+                    onMoveCalibrationMark(key, toOriginalCoords(px))
                   }}
                 />
               ),
@@ -517,20 +536,23 @@ export function EditorCanvas({
 
 function PlotInteractionHint({
   addPointMode,
-  regionMode,
+  axisPlaceStep,
+  unskewPreview,
 }: {
   addPointMode: boolean
-  regionMode: boolean
+  axisPlaceStep: AxisBoundKey | null
+  unskewPreview?: boolean
 }) {
   let text: string
   const panHint = 'Middle-drag or Space + left-drag: pan · Wheel: zoom'
-  if (regionMode) {
-    text = `Left-drag on the plot to draw a region for AI refine. ${panHint}`
+  if (axisPlaceStep) {
+    text = `Click on the plot: ${AXIS_PLACE_LABELS[axisPlaceStep]} · ${panHint}`
   } else if (addPointMode) {
     text = `Left-click to place points on the first visible curve. Delete/Backspace: undo last point. ${panHint}`
   } else {
     text = `Left-click point: select · Shift/Ctrl + click: add/remove from selection · Left-drag empty area: box-select · Shift/Ctrl + drag box: add to selection · Drag selected point(s): move · Delete/Backspace or double-click: delete · Left-click empty: clear selection · ${panHint}`
   }
+  if (unskewPreview) text = `Unskew preview · ${text}`
 
   return (
     <p
@@ -547,6 +569,7 @@ function CalibrationMark({
   pixel,
   color,
   scale,
+  active,
   onDragStart,
   onDragEnd,
 }: {
@@ -554,10 +577,11 @@ function CalibrationMark({
   pixel: [number, number]
   color: string
   scale: number
+  active?: boolean
   onDragStart: () => void
   onDragEnd: (pixel: [number, number]) => void
 }) {
-  const r = 8 / scale
+  const r = (active ? 10 : 8) / scale
   const fontSize = 11 / scale
   return (
     <Group
@@ -577,7 +601,12 @@ function CalibrationMark({
         onDragEnd([e.target.x(), e.target.y()])
       }}
     >
-      <Circle radius={r} fill={color} stroke="#fff" strokeWidth={2 / scale} />
+      <Circle
+        radius={r}
+        fill={color}
+        stroke={active ? '#fbbf24' : '#fff'}
+        strokeWidth={(active ? 3 : 2) / scale}
+      />
       <Text
         x={r + 2 / scale}
         y={-fontSize / 2}

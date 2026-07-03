@@ -1,8 +1,7 @@
 # PlotDigitizer
 
-**AI-assisted, human-in-the-loop digitization of plots.** Upload a picture of a figure that
-contains one or more curves, let an AI propose the data points, correct them interactively, and
-iterate with the AI until every curve is digitized. Export the result as CSV or JSON.
+**Manual, human-in-the-loop digitization of plots.** Upload a figure image, calibrate the axes,
+place and refine data points on each curve, and export the result as CSV or JSON.
 
 > **For contributors / agents:** [`refs/WORKFLOW.md`](refs/WORKFLOW.md) is the authoritative build
 > spec, and **[`UPDATES.md`](UPDATES.md) is mandatory reading and maintaining** — read it before
@@ -13,31 +12,30 @@ iterate with the AI until every curve is digitized. Export the result as CSV or 
 ## Background & Motivation
 
 Scientific and engineering data is often locked inside published figures with no accompanying raw
-data. Recovering those numbers by hand is tedious and error-prone. Fully automatic digitizers
-struggle with overlapping curves, dashed lines, log axes, and busy legends; fully manual tools are
-slow. PlotDigitizer combines both: an AI does the heavy lifting and understands the figure
-semantically, while the user stays in control and corrects the AI, iterating until the result is
-correct.
+data. Recovering those numbers by hand is tedious and error-prone. PlotDigitizer gives you a
+focused canvas for placing points on curves, with OpenCV-assisted tracing and resampling, live
+data-space preview, and project save/load — without relying on external AI services.
 
 ---
 
 ## How It Works
 
-PlotDigitizer uses a **hybrid pipeline**:
+PlotDigitizer uses a **manual-first pipeline**:
 
-1. **Vision LLM (VLM)** reads the image semantically — locates axes and tick labels, reads the
-   legend, identifies which curves exist (color/style), and proposes rough seed points.
-2. **Computer vision (OpenCV)** refines those seed points by snapping them to the actual curve
-   pixels, and traces/resamples curves on demand.
-3. **Calibration** maps pixel coordinates to real data values (linear or log), either AI-detected
-   (and user-confirmed) or set manually.
-4. **The user** corrects everything interactively — dragging, adding, removing, and reassigning
-   points — and asks the AI to re-detect problem regions, add missed curves, or densify points.
-5. The loop repeats until the user is satisfied, then exports **CSV / JSON**.
+1. **Upload** a plot image (including photos taken at an angle).
+2. **Calibrate** axes manually: click four bounds on the plot (X min, X max, Y min, Y max) and
+   enter the corresponding numeric values (linear or log per axis).
+3. **Unskew** *(optional)*: preview and apply perspective correction from those same axis bounds
+   to straighten rotated or skewed photos; the full image is kept (content outside axis limits
+   remains visible).
+4. **Place points** on each curve on the canvas; drag, select, delete, and reassign as needed.
+5. **Refine** with OpenCV: **Improve** traces the line between your seed points; **Densify**
+   interpolates evenly spaced points along the curve.
+6. Watch the **preview chart** update live in data-space.
+7. **Export** CSV / JSON, or save a full **project** (`.pdproj.json`) for later restore.
 
-A key design rule: **pixel coordinates are the source of truth** and data values are always
-*derived* through the current calibration, so re-calibrating instantly remaps all points without
-re-running the AI. Another: **AI is additive and never destroys the user's manual corrections.**
+**Pixel coordinates are the source of truth.** Data-space values are always derived through the
+current calibration, so re-calibrating instantly remaps all points.
 
 ---
 
@@ -47,17 +45,16 @@ re-running the AI. Another: **AI is additive and never destroys the user's manua
 ┌──────────────────────────── Frontend (React + Tailwind) ────────────────────────────┐
 │  EditorCanvas (Konva)          PreviewChart (Plotly)                                   │
 │  image + draggable points  ──▶  live replot in data-space                              │
-│  CalibrationPanel · CurveList · AIAssistBar · SettingsPanel · ExportPanel              │
+│  UnskewPanel · CalibrationPanel · CurveList · ExportPanel                              │
 └───────────────────────────────────────┬───────────────────────────────────────────────┘
                                          │ typed REST (JSON)
 ┌────────────────────────────── Backend (Python + FastAPI) ──────────────────────────────┐
-│  api/         routers: sessions, settings                                                │
-│  pipeline/    orchestrates detect / refine / resample + merge rules                      │
-│  vlm/         provider-agnostic VLM abstraction (swappable) + factory                    │
-│  cv/          trace · refine · resample (OpenCV + NumPy)                                  │
-│  calibration/ pixel <-> data transforms (linear / log)                                   │
-│  store/       in-memory SessionStore (swappable interface)                               │
-│  settings/    SettingsStore  →  config/settings.json (gitignored)                        │
+│  api/         sessions router (upload, curves, calibration, unskew, CV, export, …)   │
+│  pipeline/    orchestrates CV improve, resample, remove-from-plot, unskew apply    │
+│  cv/          trace · improve · resample · erase · unskew (OpenCV + NumPy)           │
+│  calibration/ pixel ↔ data transforms (linear / log)                                   │
+│  export/      CSV, JSON, project save/load, curve import                             │
+│  store/       in-memory SessionStore + last-session persistence                       │
 └──────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -66,29 +63,12 @@ re-running the AI. Another: **AI is additive and never destroys the user's manua
 | Layer            | Choice                                                            |
 |------------------|-------------------------------------------------------------------|
 | Backend          | Python + FastAPI (Pydantic, async, OpenAPI)                       |
-| AI brain         | Provider-agnostic VLM abstraction (swappable; one default impl)  |
 | Computer vision  | OpenCV + NumPy                                                    |
-| Persistence      | In-memory (designed swappable; no database in v1)                |
+| Persistence      | In-memory sessions; last session + project files on disk          |
 | Frontend         | React + Tailwind CSS                                              |
 | Image editing UI | Konva.js / react-konva                                           |
 | Preview chart    | Plotly                                                            |
-| Config / secrets | Plaintext `config/settings.json` (gitignored)                    |
-| Exports          | CSV, JSON                                                        |
-
----
-
-## API Keys
-
-PlotDigitizer calls a Vision LLM, so you provide your own API key:
-
-1. Open the **Settings** panel in the UI.
-2. Choose a provider and paste your API key.
-3. The key is saved to `backend/config/settings.json` (plaintext, gitignored) and **persists across
-   restarts** — no need to re-enter it after closing the program.
-
-Keys are stored **per provider**, so you can switch the active provider without re-entering them.
-The key is never sent back to the browser after being saved — the UI only shows a masked `•••• set`
-status. **Never commit `config/settings.json`.**
+| Exports          | CSV, JSON, project (`.pdproj.json`)                              |
 
 ---
 
@@ -108,7 +88,7 @@ Open http://127.0.0.1:5173
 
 Run the backend and frontend in two terminals.
 
-### Backend
+#### Backend
 
 ```bash
 cd backend
@@ -119,7 +99,7 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 API docs: http://127.0.0.1:8000/docs
 
-### Frontend
+#### Frontend
 
 ```bash
 cd frontend
@@ -127,8 +107,7 @@ npm install
 npm run dev
 ```
 
-Open http://127.0.0.1:5173, set your VLM API key in **Settings**, upload a plot image, and start
-digitizing.
+Open http://127.0.0.1:5173, upload a plot image, and start digitizing.
 
 ### Tests
 
@@ -140,24 +119,30 @@ cd backend && .venv/bin/pytest -q
 
 ## Typical Workflow
 
-1. Upload a plot image.
-2. Run **Detect** — the AI proposes axes, curves, and points.
-3. Confirm or adjust **calibration** (AI-detected, or manual 2-points-per-axis; linear or log).
-4. **Correct** points on the canvas: drag, add, remove, reassign to a different curve.
-5. **Ask the AI to iterate** on problem areas: draw a box over a missed curve, give a text hint
-   (e.g. "the red dashed curve is missing"), or resample a correct curve for more density.
-6. Watch the **preview chart** update live in data-space.
-7. **Export** to CSV or JSON when satisfied.
+1. **Upload** a plot image.
+2. Click **Place bounds** in the Calibration panel, then click the plot four times: X min, X max,
+   Y min, Y max.
+3. Enter the **numeric axis values** (and choose linear/log per axis).
+4. *(Optional, skewed/rotated photos)* In the **Unskew** panel, click **Preview corrected** to
+   review the straightened image, then **Apply** to commit (or **Cancel preview** to revert the
+   view). Axis bounds must cross; invalid geometry shows a toast.
+5. **Add curves** and turn on **Place points** to click seed points on each curve.
+6. Use **Improve** (OpenCV trace) or **Densify** to refine a curve.
+7. **Drag** points to correct positions; use box-select, Delete, and curve reassignment as needed.
+8. Watch the **preview chart** update in data-space.
+9. **Export** CSV/JSON or **Save JSON** project when satisfied.
 
 ---
 
 ## Project Documents
 
-- [`refs/WORKFLOW.md`](refs/WORKFLOW.md) — authoritative implementation spec and build phases.
+- [`refs/WORKFLOW.md`](refs/WORKFLOW.md) — implementation spec and build phases.
 - [`UPDATES.md`](UPDATES.md) — version history and bug log (**mandatory** to read and maintain).
+- [`frontend/README.md`](frontend/README.md) — frontend layout and dev notes.
 
 ---
 
 ## Status
 
-v1 implemented. Current version: see [`UPDATES.md`](UPDATES.md).
+**v2.1** — manual digitization with optional image unskew for camera photos. Current version: see
+[`UPDATES.md`](UPDATES.md).

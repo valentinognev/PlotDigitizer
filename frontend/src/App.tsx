@@ -1,33 +1,33 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  clearProviderKey,
-  detectSession,
+  applyUnskew,
   getLastSession,
-  getSettings,
   waitForBackend,
   cvImproveCurve,
   importCurves,
   loadProject,
   patchCurves,
   patchSessionPreferences,
-  refineSession,
   resampleSession,
   setCalibration,
   undoSession,
   redoSession,
-  updateSettings,
   uploadSession,
 } from './api/client'
-import { AIAssistBar } from './components/AIAssistBar'
 import { ProgressBar } from './components/ProgressBar'
 import { CalibrationPanel } from './components/CalibrationPanel'
+import { UnskewPanel } from './components/UnskewPanel'
 import { CurveList } from './components/CurveList'
 import { EditorCanvas } from './components/EditorCanvas'
 import { ExportPanel } from './components/ExportPanel'
 import { PreviewChart } from './components/PreviewChart'
-import { SettingsPanel } from './components/SettingsPanel'
 import { firstVisibleCurve } from './lib/curves'
 import { DEFAULT_POINT_COUNT } from './lib/constants'
+import {
+  AXIS_PLACE_ORDER,
+  createEmptyCalibration,
+  setAxisBoundPixel,
+} from './lib/calibration'
 import { curvesNeedDistinctColors, rainbowColors } from './lib/colors'
 import {
   addPoint as addPointLocal,
@@ -36,8 +36,9 @@ import {
   reassignPoints as reassignPointsLocal,
 } from './lib/sessionPatch'
 import { mergePreferencesUpdate, mergeSessionUpdate } from './lib/sessionMerge'
-import { isCalibrationValid, updateAxisBound, type AxisBoundKey } from './lib/transform'
-import type { Calibration, ProviderName, Session, SettingsPublic } from './types'
+import { isUnskewReady, unskewFromCalibration, type UnskewTransform } from './lib/unskew'
+import { getAxisBounds, isCalibrationValid, updateAxisBound, type AxisBoundKey } from './lib/transform'
+import type { Calibration, Session } from './types'
 
 function toast(message: string) {
   const el = document.getElementById('toast')
@@ -46,19 +47,16 @@ function toast(message: string) {
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
-  const [settings, setSettings] = useState<SettingsPublic | null>(null)
-  const [selectedProvider, setSelectedProvider] = useState<ProviderName>('openai')
-  const [apiKeyInput, setApiKeyInput] = useState('')
   const [activeCurveId, setActiveCurveId] = useState<string | null>(null)
   const [selectedPointIds, setSelectedPointIds] = useState<string[]>([])
-  const [textHint, setTextHint] = useState('')
-  const [regionMode, setRegionMode] = useState(false)
   const [addPointMode, setAddPointMode] = useState(false)
+  const [axisPlaceStep, setAxisPlaceStep] = useState<AxisBoundKey | null>(null)
   const [resampleCount, setResampleCount] = useState(DEFAULT_POINT_COUNT)
   const [busy, setBusy] = useState(false)
   const [busyMessage, setBusyMessage] = useState<string | null>(null)
   const [initializing, setInitializing] = useState(true)
   const [draftCalibration, setDraftCalibration] = useState<Calibration | null>(null)
+  const [unskewPreview, setUnskewPreview] = useState(false)
   const patchSeq = useRef(0)
   const prefsSeq = useRef(0)
   const prefsDebounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -87,7 +85,6 @@ export default function App() {
     } else {
       setActiveCurveId(null)
     }
-    if (ws?.text_hint !== undefined) setTextHint(ws.text_hint)
     if (ws?.resample_count !== undefined) setResampleCount(ws.resample_count)
   }, [])
 
@@ -100,8 +97,6 @@ export default function App() {
     [applyWorkspaceFromSession],
   )
 
-  const manualCalibration = session?.manual_calibration ?? false
-
   useEffect(() => {
     let cancelled = false
 
@@ -110,17 +105,6 @@ export default function App() {
       setBusyMessage('Connecting to server…')
       try {
         await waitForBackend()
-
-        try {
-          const s = await getSettings()
-          if (!cancelled) {
-            setSettings(s)
-            setSelectedProvider(s.active_provider)
-          }
-        } catch {
-          if (!cancelled) toast('Could not load settings')
-        }
-
         if (!cancelled) setBusyMessage('Loading last session…')
         for (let attempt = 0; attempt < 5 && !cancelled; attempt++) {
           try {
@@ -146,12 +130,13 @@ export default function App() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [syncSessionUi])
 
-  // Restore calibration draft when switching sessions — not on every curve edit.
   useEffect(() => {
     pendingPrefsPatch.current = {}
     setDraftCalibration(session?.calibration ?? null)
+    setAxisPlaceStep(null)
+    setUnskewPreview(false)
   }, [session?.id])
 
   useEffect(() => {
@@ -163,8 +148,7 @@ export default function App() {
     if (!needsUpdate) return
     const colored = session.curves.map((c, i) => ({ ...c, color: colors[i] }))
     setSession((prev) => (prev ? { ...prev, curves: colored } : prev))
-    patchCurves(session.id, { curves: colored })
-      .catch(() => {})
+    patchCurves(session.id, { curves: colored }).catch(() => {})
   }, [session?.id, session?.curves])
 
   const run = useCallback(async (fn: () => Promise<Session>, message = 'Working…') => {
@@ -190,6 +174,8 @@ export default function App() {
       syncSessionUi(s)
       setActiveCurveId(null)
       setSelectedPointIds([])
+      setAxisPlaceStep(null)
+      setUnskewPreview(false)
       toast('Image uploaded')
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Upload failed')
@@ -239,7 +225,6 @@ export default function App() {
 
       const workspace = {
         active_curve_id: activeCurveId,
-        text_hint: textHint,
         resample_count: resampleCount,
       }
 
@@ -268,7 +253,7 @@ export default function App() {
         flush()
       }
     },
-    [session?.id, activeCurveId, textHint, resampleCount],
+    [session?.id, activeCurveId, resampleCount],
   )
 
   useEffect(() => {
@@ -279,11 +264,6 @@ export default function App() {
     }
     saveWorkspaceQuiet()
   }, [session?.id, activeCurveId, resampleCount, saveWorkspaceQuiet])
-
-  useEffect(() => {
-    if (!session?.id || !workspaceAutosaveReady.current) return
-    saveWorkspaceQuiet({ debounceMs: 400 })
-  }, [session?.id, textHint, saveWorkspaceQuiet])
 
   const savePreferencesQuiet = useCallback(
     (
@@ -302,9 +282,7 @@ export default function App() {
       const applyLocal = (current: Session): Session => ({
         ...current,
         ...(patch.calibration !== undefined ? { calibration: patch.calibration } : {}),
-        ...(patch.manual_calibration !== undefined
-          ? { manual_calibration: patch.manual_calibration }
-          : {}),
+        manual_calibration: true,
       })
 
       setSession((current) => (current ? applyLocal(current) : current))
@@ -346,10 +324,6 @@ export default function App() {
     if (activeCurveId && active && !active.visible) {
       setActiveCurveId(firstVisibleCurve(curves)?.id ?? null)
     }
-  }
-
-  const handleMovePoint = (pointId: string, pixel: [number, number]) => {
-    handleMovePoints([{ pointId, pixel }])
   }
 
   const handleMovePoints = (moves: Array<{ pointId: string; pixel: [number, number] }>) => {
@@ -410,10 +384,6 @@ export default function App() {
     [patchCurvesQuiet],
   )
 
-  const handleDeletePoint = (pointId: string) => {
-    handleDeletePoints([pointId])
-  }
-
   const handleRemoveLastPlacedPoint = useCallback(() => {
     if (!placementCurveId || !session) return false
     const curve = session.curves.find((c) => c.id === placementCurveId)
@@ -467,46 +437,57 @@ export default function App() {
     setSelectedPointIds([])
   }
 
-  const handleRegion = (bbox: { x: number; y: number; width: number; height: number }) => {
-    if (!session) return
-    setRegionMode(false)
-    run(
-      () =>
-        refineSession(session.id, {
-          region: bbox,
-          curve_id: activeCurveId ?? undefined,
-        }),
-      'Refining region with AI…',
-    )
-  }
-
-  const handleSaveSettings = () => {
-    updateSettings({
-      active_provider: selectedProvider,
-      provider: selectedProvider,
-      api_key: apiKeyInput || undefined,
-    })
-      .then(setSettings)
-      .then(() => {
-        setApiKeyInput('')
-        toast('Settings saved')
-      })
-      .catch((e) => toast(e instanceof Error ? e.message : 'Save failed'))
-  }
-
   const imageUrl = session ? session.image_url : null
   const calibration = draftCalibration ?? session?.calibration ?? null
-
-  const handleCalibrationChange = (cal: Calibration) => {
-    const next: Calibration = {
-      ...cal,
-      source: manualCalibration ? 'manual' : cal.source,
+  const imageWidth = session?.image_meta.width ?? 0
+  const imageHeight = session?.image_meta.height ?? 0
+  const axisBounds = calibration ? getAxisBounds(calibration) : null
+  const canToggleUnskewPreview = !!session && !!axisBounds && !busy
+  const unskewTransform = useMemo((): UnskewTransform | null => {
+    if (!unskewPreview || !calibration || imageWidth < 1 || imageHeight < 1) return null
+    try {
+      return unskewFromCalibration(calibration, imageWidth, imageHeight)
+    } catch {
+      return null
     }
-    savePreferencesQuiet({ calibration: next }, { debounceMs: 300 })
+  }, [unskewPreview, calibration, imageWidth, imageHeight])
+  const unskewReady = isUnskewReady(calibration, imageWidth, imageHeight)
+  const unskewStatus = !session
+    ? 'Upload an image to begin'
+    : !axisBounds
+      ? 'Place axis bounds in Calibration first'
+      : !unskewReady
+        ? 'Bounds set — axis lines must cross for preview'
+        : unskewPreview
+          ? 'Preview active — click Apply to commit correction'
+          : 'Ready — enable preview to see correction'
+  const canApplyUnskew = unskewPreview && unskewReady && !busy
+
+  const handleToggleUnskewPreview = (on: boolean) => {
+    if (!on) {
+      setUnskewPreview(false)
+      return
+    }
+    if (!calibration || imageWidth < 1 || imageHeight < 1) return
+    try {
+      unskewFromCalibration(calibration, imageWidth, imageHeight)
+      setUnskewPreview(true)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Cannot preview unskew')
+    }
   }
 
-  const handleToggleManual = (enabled: boolean) => {
-    savePreferencesQuiet({ manual_calibration: enabled })
+  const handleApplyUnskew = () => {
+    if (!session) return
+    run(async () => {
+      const s = await applyUnskew(session.id)
+      setUnskewPreview(false)
+      return s
+    }, 'Applying unskew…')
+  }
+
+  const handleCalibrationChange = (cal: Calibration) => {
+    savePreferencesQuiet({ calibration: { ...cal, source: 'manual' } }, { debounceMs: 300 })
   }
 
   const handleMoveCalibrationMark = (key: AxisBoundKey, pixel: [number, number]) => {
@@ -515,12 +496,42 @@ export default function App() {
     savePreferencesQuiet({ calibration: next })
   }
 
+  const startAxisPlacement = () => {
+    if (!session) return
+    const w = session.image_meta.width
+    const h = session.image_meta.height
+    const cal = draftCalibration ?? createEmptyCalibration(w, h)
+    setDraftCalibration(cal)
+    savePreferencesQuiet({ calibration: cal, manual_calibration: true })
+    setAxisPlaceStep('xmin')
+    setAddPointMode(false)
+    setSelectedPointIds([])
+  }
+
+  const handleAxisPlaceClick = (pixel: [number, number]) => {
+    if (!axisPlaceStep) return
+    const w = session?.image_meta.width ?? 800
+    const h = session?.image_meta.height ?? 500
+    const base = draftCalibration ?? createEmptyCalibration(w, h)
+    const next = setAxisBoundPixel(base, axisPlaceStep, pixel)
+    setDraftCalibration(next)
+    savePreferencesQuiet({ calibration: next, manual_calibration: true })
+
+    const idx = AXIS_PLACE_ORDER.indexOf(axisPlaceStep)
+    if (idx < AXIS_PLACE_ORDER.length - 1) {
+      setAxisPlaceStep(AXIS_PLACE_ORDER[idx + 1])
+    } else {
+      setAxisPlaceStep(null)
+      toast('Axis bounds placed — enter numeric values')
+    }
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <header className="shrink-0 flex items-center justify-between border-b border-slate-700 px-4 py-2">
         <div>
           <h1 className="text-lg font-bold text-slate-100">PlotDigitizer</h1>
-          <p className="text-xs text-slate-400">AI-assisted plot digitization with human correction</p>
+          <p className="text-xs text-slate-400">Manual plot digitization</p>
         </div>
         <div className="flex items-center gap-2">
           <label className="cursor-pointer rounded bg-slate-700 px-3 py-1.5 text-xs hover:bg-slate-600">
@@ -567,87 +578,26 @@ export default function App() {
       <p id="toast" className="shrink-0 px-4 py-0.5 text-center text-xs text-amber-300" />
 
       <div className="shrink-0 flex gap-2 overflow-x-auto border-b border-slate-800 px-2 py-2">
-        <SettingsPanel
-          settings={settings}
-          apiKeyInput={apiKeyInput}
-          selectedProvider={selectedProvider}
-          onProviderChange={setSelectedProvider}
-          onApiKeyChange={setApiKeyInput}
-          onSave={handleSaveSettings}
-          onClearKey={(p) =>
-            clearProviderKey(p)
-              .then(setSettings)
-              .then(() => toast('Key cleared'))
-              .catch((e) => toast(e.message))
-          }
-        />
-        <AIAssistBar
-          textHint={textHint}
-          regionMode={regionMode}
-          resampleCount={resampleCount}
+        <UnskewPanel
+          canTogglePreview={canToggleUnskewPreview}
+          previewActive={unskewPreview}
+          canApply={canApplyUnskew}
+          status={unskewStatus}
           busy={busy}
-          onTextHintChange={setTextHint}
-          onResampleCountChange={setResampleCount}
-          onToggleRegion={() => {
-            setRegionMode((v) => !v)
-            setAddPointMode(false)
-          }}
-          busyMessage={busyMessage}
-          onDetect={() =>
-            session && run(() => detectSession(session.id), 'Detecting axis limits…')
-          }
-          onRefineText={() =>
-            session &&
-            run(
-              () =>
-                refineSession(session.id, {
-                  instruction: textHint,
-                  curve_id: activeCurveId ?? undefined,
-                }),
-              'Refining with AI…',
-            )
-          }
-          onResample={() =>
-            session &&
-            activeCurveId &&
-            run(
-              () => resampleSession(session.id, activeCurveId, resampleCount),
-              'Resampling curve…',
-            )
-          }
-          onRedetect={() =>
-            session &&
-            activeCurveId &&
-            run(
-              () =>
-                refineSession(session.id, {
-                  curve_id: activeCurveId,
-                  redetect_curve: true,
-                  instruction: 'Re-detect this entire curve',
-                }),
-              'Re-detecting curve…',
-            )
-          }
-          activeCurveId={activeCurveId}
+          onTogglePreview={handleToggleUnskewPreview}
+          onApply={handleApplyUnskew}
+          onCancelPreview={() => setUnskewPreview(false)}
         />
         <CalibrationPanel
           calibration={calibration}
-          manualMode={manualCalibration}
-          onToggleManual={handleToggleManual}
+          axisPlaceStep={axisPlaceStep}
+          onStartAxisPlacement={startAxisPlacement}
           onChange={handleCalibrationChange}
           onSave={() =>
             session &&
             draftCalibration &&
             run(
-              () =>
-                setCalibration(
-                  session.id,
-                  {
-                    ...draftCalibration,
-                    source: manualCalibration ? 'manual' : draftCalibration.source,
-                  },
-                  manualCalibration,
-                ),
+              () => setCalibration(session.id, { ...draftCalibration, source: 'manual' }),
               'Saving calibration…',
             )
           }
@@ -665,7 +615,7 @@ export default function App() {
               const s = await loadProject(file)
               setSelectedPointIds([])
               setAddPointMode(false)
-              setRegionMode(false)
+              setAxisPlaceStep(null)
               return s
             }, 'Opening project…')
           }
@@ -688,22 +638,22 @@ export default function App() {
               imageUrl={imageUrl}
               width={session?.image_meta.width ?? 800}
               height={session?.image_meta.height ?? 500}
+              unskewTransform={unskewTransform}
               curves={session?.curves ?? []}
               placementCurveId={placementCurveId}
               addPointMode={addPointMode}
-              regionMode={regionMode}
+              axisPlaceStep={axisPlaceStep}
               calibration={calibration}
-              manualCalibration={manualCalibration}
               onMoveCalibrationMark={handleMoveCalibrationMark}
-              onRegion={handleRegion}
+              onAxisPlaceClick={handleAxisPlaceClick}
               onAddPoint={handleAddPoint}
-              onMovePoint={handleMovePoint}
+              onMovePoint={(id, pixel) => handleMovePoints([{ pointId: id, pixel }])}
               onMovePoints={handleMovePoints}
               onSelectPoint={handleSelectPoint}
               onSelectPoints={handleSelectPoints}
               onClearSelection={() => setSelectedPointIds([])}
               selectedPointIds={selectedPointIds}
-              onDeletePoint={handleDeletePoint}
+              onDeletePoint={(id) => handleDeletePoints([id])}
             />
           </div>
           <div className="min-h-0 overflow-hidden">
@@ -718,14 +668,25 @@ export default function App() {
             placementCurveId={placementCurveId}
             selectedPointIds={selectedPointIds}
             busy={busy}
+            resampleCount={resampleCount}
+            onResampleCountChange={setResampleCount}
             onActiveChange={setActiveCurveId}
             addPointMode={addPointMode}
-            onAddPointModeChange={setAddPointMode}
+            onAddPointModeChange={(enabled) => {
+              setAddPointMode(enabled)
+              if (enabled) setAxisPlaceStep(null)
+            }}
             onCurveChange={syncCurves}
             onReassignPoints={handleReassign}
             onImprove={(curveId) =>
+              session && run(() => cvImproveCurve(session.id, curveId), 'Tracing curve…')
+            }
+            onResample={(curveId) =>
               session &&
-              run(() => cvImproveCurve(session.id, curveId), 'Improving curve…')
+              run(
+                () => resampleSession(session.id, curveId, resampleCount),
+                'Densifying curve…',
+              )
             }
           />
         </aside>

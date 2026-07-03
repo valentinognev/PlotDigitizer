@@ -144,7 +144,7 @@ export const PreviewChart = memo(function PreviewChart({ curves, calibration }: 
   )
 
   const missingCalibrationMessage = hasVisiblePoints(curves)
-    ? 'Run Detect axes to preview curves in data space.'
+    ? 'Set calibration to preview curves in data space.'
     : 'Set valid calibration to preview data-space plot'
 
   return (

@@ -1,0 +1,45 @@
+import type { Calibration } from '../types'
+import { updateAxisBound, type AxisBoundKey } from './transform'
+
+export const AXIS_PLACE_ORDER: AxisBoundKey[] = ['xmin', 'xmax', 'ymin', 'ymax']
+
+export const AXIS_PLACE_LABELS: Record<AxisBoundKey, string> = {
+  xmin: 'X minimum',
+  xmax: 'X maximum',
+  ymin: 'Y minimum',
+  ymax: 'Y maximum',
+}
+
+export function createEmptyCalibration(width: number, height: number): Calibration {
+  const mx = width * 0.1
+  const my = height * 0.1
+  const xLeft = mx
+  const xRight = width - mx
+  const yTop = my
+  const yBottom = height - my
+  return {
+    source: 'manual',
+    x: {
+      scale: 'linear',
+      ref_points: [
+        { pixel: [xLeft, yBottom], value: 0 },
+        { pixel: [xRight, yBottom], value: 1 },
+      ],
+    },
+    y: {
+      scale: 'linear',
+      ref_points: [
+        { pixel: [xLeft, yBottom], value: 0 },
+        { pixel: [xLeft, yTop], value: 1 },
+      ],
+    },
+  }
+}
+
+export function setAxisBoundPixel(
+  cal: Calibration,
+  key: AxisBoundKey,
+  pixel: [number, number],
+): Calibration {
+  return updateAxisBound(cal, key, { pixel })
+}
