@@ -36,8 +36,25 @@ import {
   reassignPoints as reassignPointsLocal,
 } from './lib/sessionPatch'
 import { mergePreferencesUpdate, mergeSessionUpdate } from './lib/sessionMerge'
-import { isUnskewReady, unskewFromCalibration, type UnskewTransform } from './lib/unskew'
-import { getAxisBounds, isCalibrationValid, updateAxisBound, type AxisBoundKey } from './lib/transform'
+import {
+  computeMeshWarpTransform,
+  initMeshFromCalibration,
+  isMeshReady,
+  isMeshWithinImage,
+  meshToPayload,
+  plotQuadFromCalibration,
+  plotQuadsMatch,
+  remeshToPlotQuad,
+  restoreMeshFromWorkspace,
+  sanitizeMeshForImage,
+  type CorrectionTransform,
+  type MeshGridState,
+  type MeshVertex,
+  type PlotQuad,
+  type UnskewMode,
+} from './lib/meshWarp'
+import { isUnskewReady, unskewFromCalibration } from './lib/unskew'
+import { getAxisBounds, isCalibrationValid, updateAxisBound, areCalibrationPixelsInImage, type AxisBoundKey } from './lib/transform'
 import type { Calibration, Session } from './types'
 
 function toast(message: string) {
@@ -57,6 +74,11 @@ export default function App() {
   const [initializing, setInitializing] = useState(true)
   const [draftCalibration, setDraftCalibration] = useState<Calibration | null>(null)
   const [unskewPreview, setUnskewPreview] = useState(false)
+  const [unskewMode, setUnskewMode] = useState<UnskewMode>('perspective')
+  const [meshGrid, setMeshGrid] = useState<MeshGridState | null>(null)
+  /** Calibration plot quad the current mesh is synced to — used to detect calibration
+   *  moves (which should remap the mesh) vs. direct mesh-vertex edits (which should not). */
+  const meshSyncedQuadRef = useRef<PlotQuad | null>(null)
   const patchSeq = useRef(0)
   const prefsSeq = useRef(0)
   const prefsDebounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -69,6 +91,9 @@ export default function App() {
   const applyWorkspaceFromSession = useCallback((s: Session | null) => {
     if (!s) {
       setActiveCurveId(null)
+      setUnskewMode('perspective')
+      setMeshGrid(null)
+      meshSyncedQuadRef.current = null
       return
     }
     const ws = s.workspace
@@ -86,6 +111,28 @@ export default function App() {
       setActiveCurveId(null)
     }
     if (ws?.resample_count !== undefined) setResampleCount(ws.resample_count)
+    setUnskewMode(ws?.unskew_mode ?? 'perspective')
+    if (s.calibration && ws?.mesh) {
+      try {
+        setMeshGrid(
+          restoreMeshFromWorkspace(
+            s.calibration,
+            ws.mesh,
+            s.image_meta.width,
+            s.image_meta.height,
+          ),
+        )
+        // Baseline going forward is "whatever calibration this mesh was loaded with" —
+        // not the mesh's own corners, which may be intentionally edited away from it.
+        meshSyncedQuadRef.current = plotQuadFromCalibration(s.calibration)
+      } catch {
+        setMeshGrid(null)
+        meshSyncedQuadRef.current = null
+      }
+    } else {
+      setMeshGrid(null)
+      meshSyncedQuadRef.current = null
+    }
   }, [])
 
   const syncSessionUi = useCallback(
@@ -219,13 +266,21 @@ export default function App() {
   }, [session?.id])
 
   const saveWorkspaceQuiet = useCallback(
-    (options?: { debounceMs?: number }) => {
+    (options?: {
+      debounceMs?: number
+      meshOverride?: MeshGridState | null
+      modeOverride?: UnskewMode
+    }) => {
       const sessionId = session?.id
       if (!sessionId) return
 
+      const mode = options?.modeOverride ?? unskewMode
+      const meshState = options?.meshOverride !== undefined ? options.meshOverride : meshGrid
       const workspace = {
         active_curve_id: activeCurveId,
         resample_count: resampleCount,
+        unskew_mode: mode,
+        mesh: meshState ? meshToPayload(meshState) : null,
       }
 
       pendingPrefsPatch.current = {
@@ -253,7 +308,7 @@ export default function App() {
         flush()
       }
     },
-    [session?.id, activeCurveId, resampleCount],
+    [session?.id, activeCurveId, resampleCount, unskewMode, meshGrid],
   )
 
   useEffect(() => {
@@ -441,27 +496,111 @@ export default function App() {
   const calibration = draftCalibration ?? session?.calibration ?? null
   const imageWidth = session?.image_meta.width ?? 0
   const imageHeight = session?.image_meta.height ?? 0
+
+  useEffect(() => {
+    if (!calibration || !meshGrid || imageWidth < 1 || imageHeight < 1) return
+
+    const calibQuad = plotQuadFromCalibration(calibration)
+    const syncedQuad = meshSyncedQuadRef.current
+    let next = meshGrid
+    if (calibQuad && syncedQuad && !plotQuadsMatch(calibQuad, syncedQuad)) {
+      // Calibration axis marks moved since the mesh was last synced — remap the whole
+      // mesh (positions + tangents) from the quad it was synced to onto the new one, so
+      // it stays proportionally aligned instead of stretching against a stale rect.
+      // (Compared against the sync baseline, not the mesh's own corners, so that
+      // directly dragging a mesh corner is never mistaken for a calibration change.)
+      next = remeshToPlotQuad(meshGrid, syncedQuad, calibQuad)
+    }
+    if (calibQuad && !plotQuadsMatch(calibQuad, syncedQuad)) {
+      meshSyncedQuadRef.current = calibQuad
+    }
+
+    if (!isMeshWithinImage(next, imageWidth, imageHeight)) {
+      next = sanitizeMeshForImage(next, calibration, imageWidth, imageHeight)
+      toast('Mesh reset — saved vertices were outside the image bounds')
+    }
+
+    if (next !== meshGrid) {
+      setMeshGrid(next)
+      saveWorkspaceQuiet({ meshOverride: next })
+    }
+  }, [calibration, meshGrid, imageWidth, imageHeight, saveWorkspaceQuiet])
+
   const axisBounds = calibration ? getAxisBounds(calibration) : null
   const canToggleUnskewPreview = !!session && !!axisBounds && !busy
-  const unskewTransform = useMemo((): UnskewTransform | null => {
-    if (!unskewPreview || !calibration || imageWidth < 1 || imageHeight < 1) return null
-    try {
-      return unskewFromCalibration(calibration, imageWidth, imageHeight)
-    } catch {
+  const correctionTransform = useMemo((): CorrectionTransform | null => {
+    if (!unskewPreview || !calibration || imageWidth < 1 || imageHeight < 1) {
       return null
     }
-  }, [unskewPreview, calibration, imageWidth, imageHeight])
-  const unskewReady = isUnskewReady(calibration, imageWidth, imageHeight)
+    try {
+      const t =
+        unskewMode === 'mesh' && meshGrid
+          ? computeMeshWarpTransform(meshGrid, calibration, imageWidth, imageHeight, {
+              sanitize: false,
+            })
+          : unskewFromCalibration(calibration, imageWidth, imageHeight)
+      return t
+    } catch (err) {
+      return null
+    }
+  }, [unskewPreview, unskewMode, meshGrid, calibration, imageWidth, imageHeight])
+
+  const correctionReady =
+    unskewMode === 'mesh'
+      ? isMeshReady(calibration, meshGrid, imageWidth, imageHeight)
+      : isUnskewReady(calibration, imageWidth, imageHeight)
+
+  const calPixelsInImage =
+    !!calibration && imageWidth > 0 && imageHeight > 0
+      ? areCalibrationPixelsInImage(calibration, imageWidth, imageHeight)
+      : true
+
   const unskewStatus = !session
     ? 'Upload an image to begin'
     : !axisBounds
       ? 'Place axis bounds in Calibration first'
-      : !unskewReady
-        ? 'Bounds set — axis lines must cross for preview'
-        : unskewPreview
-          ? 'Preview active — click Apply to commit correction'
-          : 'Ready — enable preview to see correction'
-  const canApplyUnskew = unskewPreview && unskewReady && !busy
+      : !calPixelsInImage
+        ? 'Axis marks are outside the image — re-place bounds (turn off preview first)'
+      : unskewMode === 'mesh' && !meshGrid
+        ? 'Switch to Mesh mode — grid initializes from bounds'
+        : !correctionReady
+          ? 'Bounds set — axis lines must cross for preview'
+          : unskewPreview
+            ? 'Preview active — click Apply to commit correction'
+            : unskewMode === 'mesh'
+              ? 'Adjust mesh boundary, then preview correction'
+              : 'Ready — enable preview to see correction'
+  const canApplyUnskew = unskewPreview && correctionReady && !busy
+
+  const ensureMeshGrid = useCallback(() => {
+    if (!calibration) return null
+    try {
+      const grid = initMeshFromCalibration(calibration)
+      meshSyncedQuadRef.current = plotQuadFromCalibration(calibration)
+      return grid
+    } catch {
+      return null
+    }
+  }, [calibration])
+
+  const handleUnskewModeChange = (mode: UnskewMode) => {
+    setUnskewMode(mode)
+    let meshOverride: MeshGridState | null | undefined
+    if (mode === 'mesh' && !meshGrid && calibration) {
+      const grid = ensureMeshGrid()
+      if (grid) {
+        setMeshGrid(grid)
+        meshOverride = grid
+      } else {
+        toast('Cannot initialize mesh — check calibration bounds')
+      }
+    }
+    if (mode === 'perspective') setUnskewPreview(false)
+    saveWorkspaceQuiet({
+      modeOverride: mode,
+      ...(meshOverride !== undefined ? { meshOverride } : {}),
+    })
+  }
 
   const handleToggleUnskewPreview = (on: boolean) => {
     if (!on) {
@@ -470,20 +609,58 @@ export default function App() {
     }
     if (!calibration || imageWidth < 1 || imageHeight < 1) return
     try {
-      unskewFromCalibration(calibration, imageWidth, imageHeight)
+      if (unskewMode === 'mesh') {
+        const grid = meshGrid ?? ensureMeshGrid()
+        if (!grid) throw new Error('Mesh grid unavailable')
+        if (!meshGrid) {
+          setMeshGrid(grid)
+          saveWorkspaceQuiet({ meshOverride: grid, modeOverride: 'mesh' })
+        }
+        computeMeshWarpTransform(grid, calibration, imageWidth, imageHeight)
+      } else {
+        unskewFromCalibration(calibration, imageWidth, imageHeight)
+      }
       setUnskewPreview(true)
     } catch (e) {
-      toast(e instanceof Error ? e.message : 'Cannot preview unskew')
+      toast(e instanceof Error ? e.message : 'Cannot preview correction')
     }
   }
 
   const handleApplyUnskew = () => {
     if (!session) return
     run(async () => {
-      const s = await applyUnskew(session.id)
+      const body =
+        unskewMode === 'mesh' && meshGrid
+          ? { mode: 'mesh' as const, mesh: meshToPayload(meshGrid) }
+          : { mode: 'perspective' as const }
+      const s = await applyUnskew(session.id, body)
       setUnskewPreview(false)
+      setMeshGrid(null)
+      setUnskewMode('perspective')
+      saveWorkspaceQuiet({ meshOverride: null, modeOverride: 'perspective' })
       return s
-    }, 'Applying unskew…')
+    }, 'Applying correction…')
+  }
+
+  const handleUpdateMeshVertex = (row: number, col: number, vertex: MeshVertex) => {
+    if (!meshGrid) return
+    const vertices = meshGrid.vertices.map((r, ri) =>
+      r.map((v, ci) => (ri === row && ci === col ? { ...vertex } : { ...v, position: [...v.position] as [number, number] })),
+    )
+    setMeshGrid({ ...meshGrid, vertices })
+    saveWorkspaceQuiet({ debounceMs: 300 })
+  }
+
+  const handleResetMesh = () => {
+    if (!calibration) return
+    const grid = ensureMeshGrid()
+    if (!grid) {
+      toast('Cannot reset mesh — check calibration bounds')
+      return
+    }
+    setMeshGrid(grid)
+    saveWorkspaceQuiet({ meshOverride: grid })
+    toast('Mesh reset to calibration bounds')
   }
 
   const handleCalibrationChange = (cal: Calibration) => {
@@ -579,14 +756,18 @@ export default function App() {
 
       <div className="shrink-0 flex gap-2 overflow-x-auto border-b border-slate-800 px-2 py-2">
         <UnskewPanel
+          mode={unskewMode}
           canTogglePreview={canToggleUnskewPreview}
           previewActive={unskewPreview}
           canApply={canApplyUnskew}
           status={unskewStatus}
           busy={busy}
+          canResetMesh={unskewMode === 'mesh' && !!meshGrid}
+          onModeChange={handleUnskewModeChange}
           onTogglePreview={handleToggleUnskewPreview}
           onApply={handleApplyUnskew}
           onCancelPreview={() => setUnskewPreview(false)}
+          onResetMesh={handleResetMesh}
         />
         <CalibrationPanel
           calibration={calibration}
@@ -638,7 +819,10 @@ export default function App() {
               imageUrl={imageUrl}
               width={session?.image_meta.width ?? 800}
               height={session?.image_meta.height ?? 500}
-              unskewTransform={unskewTransform}
+              correctionTransform={correctionTransform}
+              meshGrid={meshGrid}
+              showMeshGrid={unskewMode === 'mesh' && !!meshGrid && !unskewPreview}
+              onUpdateMeshVertex={handleUpdateMeshVertex}
               curves={session?.curves ?? []}
               placementCurveId={placementCurveId}
               addPointMode={addPointMode}

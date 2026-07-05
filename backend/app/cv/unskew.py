@@ -119,6 +119,42 @@ def _expand_homography_to_full_image(
     return final, max_x - min_x, max_y - min_y
 
 
+def compute_homography_from_plot_quad(
+    bl: tuple[float, float],
+    br: tuple[float, float],
+    tr: tuple[float, float],
+    tl: tuple[float, float],
+    *,
+    image_width: int,
+    image_height: int,
+) -> tuple[np.ndarray, float, float, float, float, tuple[float, float]]:
+    plot_width = math.hypot(br[0] - bl[0], br[1] - bl[1])
+    plot_height = math.hypot(tl[0] - bl[0], tl[1] - bl[1])
+    if plot_width < 10 or plot_height < 10:
+        raise UnskewError("Degenerate plot area")
+
+    src = np.float32([bl, br, tr, tl])
+    dst = np.float32(
+        [
+            [0, plot_height],
+            [plot_width, plot_height],
+            [plot_width, 0],
+            [0, 0],
+        ]
+    )
+    if _quad_area(tuple(src[0]), tuple(src[1]), tuple(src[2]), tuple(src[3])) < 1:
+        raise UnskewError("Degenerate plot area")
+
+    plot_matrix = cv2.getPerspectiveTransform(src, dst)
+    matrix, out_width, out_height = _expand_homography_to_full_image(
+        plot_matrix,
+        image_width,
+        image_height,
+    )
+    bl_dest = apply_homography_to_point(matrix, bl)
+    return matrix, out_width, out_height, plot_width, plot_height, bl_dest
+
+
 def compute_unskew_homography(
     xmin: tuple[float, float],
     xmax: tuple[float, float],
@@ -136,34 +172,18 @@ def compute_unskew_homography(
     y_raw = (tl[0] - origin[0], tl[1] - origin[1])
     _gram_schmidt_y(x_raw, y_raw)
 
-    plot_width = math.hypot(br[0] - origin[0], br[1] - origin[1])
-    plot_height = math.hypot(tl[0] - origin[0], tl[1] - origin[1])
-    if plot_width < 1 or plot_height < 1:
-        raise UnskewError("Degenerate plot area")
-
     tr = (
         origin[0] + (br[0] - origin[0]) + (tl[0] - origin[0]),
         origin[1] + (br[1] - origin[1]) + (tl[1] - origin[1]),
     )
 
-    src = np.float32([origin, br, tr, tl])
-    # Image coords: y down — ymax (tl) at top, origin (ymin/xmin corner) at bottom.
-    dst = np.float32(
-        [
-            [0, plot_height],
-            [plot_width, plot_height],
-            [plot_width, 0],
-            [0, 0],
-        ]
-    )
-    if _quad_area(tuple(src[0]), tuple(src[1]), tuple(src[2]), tuple(src[3])) < 1:
-        raise UnskewError("Degenerate plot area")
-
-    plot_matrix = cv2.getPerspectiveTransform(src, dst)
-    matrix, out_width, out_height = _expand_homography_to_full_image(
-        plot_matrix,
-        image_width,
-        image_height,
+    matrix, out_width, out_height, _, _, _ = compute_homography_from_plot_quad(
+        origin,
+        br,
+        tr,
+        tl,
+        image_width=image_width,
+        image_height=image_height,
     )
     return UnskewResult(matrix=matrix, width=out_width, height=out_height)
 

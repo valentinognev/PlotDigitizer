@@ -63,9 +63,23 @@ class ImageSource(BaseModel):
     path: str | None = None
 
 
+class MeshVertexPayload(BaseModel):
+    row: int = Field(ge=0, le=3)
+    col: int = Field(ge=0, le=3)
+    position: tuple[float, float]
+    tangent_h: tuple[float, float] | None = None
+    tangent_v: tuple[float, float] | None = None
+
+
+class MeshGridPayload(BaseModel):
+    vertices: list[MeshVertexPayload]
+
+
 class WorkspaceState(BaseModel):
     active_curve_id: str | None = None
     resample_count: int = Field(default=DEFAULT_POINT_COUNT, ge=2, le=200)
+    unskew_mode: Literal["perspective", "mesh"] | None = None
+    mesh: MeshGridPayload | None = None
 
 
 class HistoryEntry(BaseModel):
@@ -145,3 +159,8 @@ class CurvesEditRequest(BaseModel):
 
 class ExportFormat(BaseModel):
     format: Literal["csv", "json"] = "json"
+
+
+class UnskewApplyRequest(BaseModel):
+    mode: Literal["perspective", "mesh"] = "perspective"
+    mesh: MeshGridPayload | None = None

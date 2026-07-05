@@ -12,7 +12,7 @@ from app.cv.unskew import (
     remap_session_pixels,
     warp_image,
 )
-from app.models.schemas import Curve, Point, Session
+from app.models.schemas import Curve, Point, Session, UnskewApplyRequest
 from app.store.temp_images import save_removal_snapshot
 
 
@@ -91,7 +91,19 @@ def run_remove_curve_from_plot(
     return session, new_image
 
 
-def run_unskew_apply(session: Session, image_bytes: bytes) -> tuple[Session, bytes]:
+def run_unskew_apply(
+    session: Session,
+    image_bytes: bytes,
+    request: UnskewApplyRequest | None = None,
+) -> tuple[Session, bytes]:
+    req = request or UnskewApplyRequest()
+    if req.mode == "mesh":
+        if req.mesh is None:
+            raise ValueError("Mesh payload required for mesh mode")
+        from app.cv.mesh_warp import run_mesh_warp_apply
+
+        return run_mesh_warp_apply(session, image_bytes, req.mesh.vertices)
+
     if session.calibration is None:
         raise ValueError("Calibration required for unskew")
 

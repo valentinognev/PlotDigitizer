@@ -172,6 +172,7 @@ Frontend: `lib/transform.ts` and `lib/calibration.ts` mirror placement and bound
 | `resample.py` | Interpolate evenly spaced points along an existing curve         |
 | `erase.py`    | Remove a traced curve from the plot image (remove-from-plot)     |
 | `unskew.py`   | Perspective correction from calibration axis bounds (homography) |
+| `mesh_warp.py`| Mesh (Coons) warp for curved paper; hybrid with homography       |
 | `trace.py`    | Color segmentation / path helpers used by improve              |
 | `order.py`    | Order points along curve direction before resample               |
 
@@ -192,7 +193,7 @@ used internally.
 | POST   | `/sessions/{id}/calibration`                | Set/replace calibration              |
 | PATCH  | `/sessions/{id}/preferences`                | Calibration + workspace autosave     |
 | PATCH  | `/sessions/{id}/curves`                     | Point/curve edits                    |
-| POST   | `/sessions/{id}/unskew/apply`               | Apply perspective warp + remap pixels |
+| POST   | `/sessions/{id}/unskew/apply`               | Apply perspective or mesh warp + remap pixels |
 | POST   | `/sessions/{id}/curves/{cid}/cv-improve`    | OpenCV trace along seed points       |
 | POST   | `/sessions/{id}/curves/{cid}/remove-from-plot` | Erase curve from image            |
 | POST   | `/sessions/{id}/resample`                   | Densify curve to N points            |
@@ -212,10 +213,11 @@ UnskewPanel + CalibrationPanel + ExportPanel**.
 
 - **EditorCanvas:** image background; draggable points; calibration marks (cyan X, magenta Y);
   axis-bound placement mode; optional unskew preview (warped image + inverse-mapped interaction);
-  zoom/pan; box-select; place-points mode.
-- **UnskewPanel:** **Preview corrected** toggle button; **Apply** (commits backend warp); **Cancel
-  preview**. Reuses calibration bound pixels (Xmin/Xmax/Ymin/Ymax). Preview is client-side;
-  apply remaps image, calibration marks, and curve points (undo supported).
+  mesh boundary overlay in mesh mode (hidden during preview); zoom/pan; box-select; place-points mode.
+- **UnskewPanel:** **Perspective** / **Mesh** mode; **Preview corrected** toggle; **Apply**
+  (commits backend warp); **Cancel preview**; **Reset mesh** (mesh mode). Reuses calibration
+  bound pixels (Xmin/Xmax/Ymin/Ymax). Preview is client-side; apply remaps image, calibration
+  marks, and curve points (undo supported).
 - **CalibrationPanel:** Place bounds button; two rows (X scale + Xmin/Xmax, Y scale + Ymin/Ymax);
   Save.
 - **CurveList:** add/rename/recolor curves; Place points; Improve; Densify; show/hide.
@@ -223,22 +225,36 @@ UnskewPanel + CalibrationPanel + ExportPanel**.
 - **ExportPanel:** open/save project, CSV/JSON export, curve import.
 
 `lib/transform.ts` mirrors backend calibration math for instant preview.
-`lib/unskew.ts` mirrors `cv/unskew.py` for preview warp geometry.
+`lib/unskew.ts` mirrors `cv/unskew.py` for perspective preview warp geometry.
+`lib/meshWarp.ts` mirrors `cv/mesh_warp.py` for mesh preview warp and point mapping.
 
 ---
 
-## 8a. Image unskew (v2.1)
+## 8a. Image unskew (v2.1+)
 
-**Use case:** plot photos taken at an angle (rotation + linear skew / mild perspective).
+**Use case:** plot photos taken at an angle (rotation + linear skew / mild perspective), or paper
+with curved or wavy edges that a single homography cannot flatten.
 
 **Inputs:** the four calibration bound pixels — X-axis line through Xmin/Xmax, Y-axis line through
 Ymin/Ymax, assumed orthogonal in the corrected view.
+
+### Perspective mode (v2.1)
 
 **Geometry:** intersect axes → plot quad → homography to axis-aligned rectangle (Ymax at top in
 image coordinates). Expand output canvas to the bounding box of the full warped image so content
 outside axis limits is not cropped.
 
-**Flow:** place bounds → preview (frontend) → apply (backend `warpPerspective` + pixel remap).
+### Mesh mode (v2.2)
+
+**Geometry:** 4×4 boundary grid initialized from the calibration quad; interior derived via Coons
+patch. Destination layout uses the same homography-framed plot rectangle; plot interior is re-warped
+with mesh UV mapping, blending to homography outside the plot (with margin). Boundary vertices and
+tangents are persisted in `workspace.mesh`.
+
+**Preview:** frontend hybrid warp (`warpImageMeshToCanvas`); source rasterized to logical
+`image_meta` dimensions before sampling so overlays stay aligned with the canvas.
+
+**Flow:** place bounds → (mesh: adjust boundary) → preview (frontend) → apply (backend + pixel remap).
 
 Design spec: `docs/superpowers/specs/2026-07-03-image-unskew-design.md`.
 
@@ -250,6 +266,7 @@ Design spec: `docs/superpowers/specs/2026-07-03-image-unskew-design.md`.
 |---------------------------------|----------------------------------------------------|
 | Calibration invalid             | Block export; preview shows setup message          |
 | Unskew geometry invalid         | Preview toggle shows toast; apply returns 400      |
+| Mesh apply without vertices     | Apply returns 400 (`unskew_input`)                 |
 | Log axis with non-positive value| Reject value on commit                             |
 | CV improve with &lt; 2 points   | Button disabled; API returns error if forced       |
 | Oversized image                 | Track scale in `image_meta`; CV uses working image |
@@ -260,6 +277,14 @@ Design spec: `docs/superpowers/specs/2026-07-03-image-unskew-design.md`.
 
 Phases 1–9 below delivered **v1.x** (AI-assisted). **v2.0** removed VLM/settings and made
 calibration fully manual. New work should target v2.0 behavior only.
+
+### v2.2 — Mesh unskew (`2.2.0`)
+
+- Mesh mode: 4×4 boundary grid, Coons patch, hybrid homography + mesh warp on apply.
+- Backend `cv/mesh_warp.py`; frontend `lib/meshWarp.ts`, `MeshGridOverlay`.
+- Mesh preview axis marks track corrected image (logical source rasterization, texture downscale).
+- Workspace persists `unskew_mode` and `mesh.vertices`.
+- **Accept:** upload curved/skewed photo → place bounds → adjust mesh → preview → apply → digitize.
 
 ### v2.1 — Image unskew (`2.1.0`)
 
@@ -294,10 +319,11 @@ calibration fully manual. New work should target v2.0 behavior only.
 
 ---
 
-## 11. Definition of Done (v2.1)
+## 11. Definition of Done (v2.2)
 
-- Upload a multi-curve plot (or skewed photo) → manually calibrate → optionally unskew → place
-  and edit points → optionally Improve / Densify → export accurate CSV/JSON or save project.
+- Upload a multi-curve plot (or skewed/curved photo) → manually calibrate → optionally unskew
+  (perspective or mesh) → place and edit points → optionally Improve / Densify → export accurate
+  CSV/JSON or save project.
 - Calibration is manual-only and is the single source of pixel↔data mapping.
 - Unskew is optional; when applied, pixel coordinates and working image stay consistent.
 - No external AI API keys or provider configuration required.

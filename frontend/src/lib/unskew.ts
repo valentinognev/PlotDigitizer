@@ -1,5 +1,5 @@
 import type { Calibration } from '../types'
-import { getAxisBounds } from './transform'
+import { areCalibrationPixelsInImage, getAxisBounds } from './transform'
 
 export class UnskewError extends Error {}
 
@@ -165,6 +165,56 @@ function expandHomographyToFullImage(
   }
 }
 
+/** Raw perspective homography mapping one quad's 4 points onto another's — no image-space expansion. */
+export function computeQuadToQuadHomography(src: Point[], dst: Point[]): number[] {
+  return getPerspectiveTransform(src, dst)
+}
+
+export interface PlotHomographyResult extends UnskewTransform {
+  plotWidth: number
+  plotHeight: number
+  /** Bottom-left plot corner in expanded destination space. */
+  blDest: Point
+}
+
+/** Perspective homography from a source plot quad to an axis-aligned destination plot rect. */
+export function computeHomographyFromPlotQuad(
+  bl: Point,
+  br: Point,
+  tr: Point,
+  tl: Point,
+  imageWidth: number,
+  imageHeight: number,
+): PlotHomographyResult {
+  const plotWidth = Math.hypot(br[0] - bl[0], br[1] - bl[1])
+  const plotHeight = Math.hypot(tl[0] - bl[0], tl[1] - bl[1])
+  if (plotWidth < 10 || plotHeight < 10) throw new UnskewError('Degenerate plot area')
+
+  const src: Point[] = [bl, br, tr, tl]
+  const dst: Point[] = [
+    [0, plotHeight],
+    [plotWidth, plotHeight],
+    [plotWidth, 0],
+    [0, 0],
+  ]
+
+  if (quadArea(src[0], src[1], src[2], src[3]) < 1) {
+    throw new UnskewError('Degenerate plot area')
+  }
+
+  const plotMatrix = getPerspectiveTransform(src, dst)
+  const expanded = expandHomographyToFullImage(plotMatrix, imageWidth, imageHeight)
+  const blDest = applyHomography(expanded.matrix, bl, false)
+  return {
+    matrix: expanded.matrix,
+    width: expanded.width,
+    height: expanded.height,
+    plotWidth,
+    plotHeight,
+    blDest,
+  }
+}
+
 export function computeUnskewHomography(
   xmin: Point,
   xmax: Point,
@@ -181,30 +231,20 @@ export function computeUnskewHomography(
   const yRaw: Point = [tl[0] - origin[0], tl[1] - origin[1]]
   gramSchmidtY(xRaw, yRaw)
 
-  const plotWidth = Math.hypot(br[0] - origin[0], br[1] - origin[1])
-  const plotHeight = Math.hypot(tl[0] - origin[0], tl[1] - origin[1])
-  if (plotWidth < 1 || plotHeight < 1) throw new UnskewError('Degenerate plot area')
-
   const tr: Point = [
     origin[0] + (br[0] - origin[0]) + (tl[0] - origin[0]),
     origin[1] + (br[1] - origin[1]) + (tl[1] - origin[1]),
   ]
 
-  const src: Point[] = [origin, br, tr, tl]
-  const dst: Point[] = [
-    [0, plotHeight],
-    [plotWidth, plotHeight],
-    [plotWidth, 0],
-    [0, 0],
-  ]
-
-  if (quadArea(src[0], src[1], src[2], src[3]) < 1) {
-    throw new UnskewError('Degenerate plot area')
-  }
-
-  const plotMatrix = getPerspectiveTransform(src, dst)
-  const expanded = expandHomographyToFullImage(plotMatrix, imageWidth, imageHeight)
-  return { matrix: expanded.matrix, width: expanded.width, height: expanded.height }
+  const { matrix, width, height } = computeHomographyFromPlotQuad(
+    origin,
+    br,
+    tr,
+    tl,
+    imageWidth,
+    imageHeight,
+  )
+  return { matrix, width, height }
 }
 
 export function applyHomography(
@@ -227,6 +267,7 @@ export function isUnskewReady(
   imageHeight: number,
 ): boolean {
   if (!calibration || imageWidth < 1 || imageHeight < 1) return false
+  if (!areCalibrationPixelsInImage(calibration, imageWidth, imageHeight)) return false
   const bounds = getAxisBounds(calibration)
   if (!bounds) return false
   try {
@@ -297,9 +338,29 @@ function sampleBilinear(
   return out
 }
 
+export interface SourceImageSize {
+  width: number
+  height: number
+}
+
+/** Rasterize the loaded image into the logical coordinate system used by calibration. */
+export function buildSourceImageData(
+  image: HTMLImageElement,
+  sourceSize: SourceImageSize,
+): ImageData {
+  const srcCanvas = document.createElement('canvas')
+  srcCanvas.width = Math.max(1, Math.round(sourceSize.width))
+  srcCanvas.height = Math.max(1, Math.round(sourceSize.height))
+  const srcCtx = srcCanvas.getContext('2d')
+  if (!srcCtx) throw new UnskewError('Canvas 2D context unavailable')
+  srcCtx.drawImage(image, 0, 0, srcCanvas.width, srcCanvas.height)
+  return srcCtx.getImageData(0, 0, srcCanvas.width, srcCanvas.height)
+}
+
 export async function warpImageToCanvas(
   image: HTMLImageElement,
   transform: UnskewTransform,
+  sourceSize?: SourceImageSize,
 ): Promise<HTMLCanvasElement> {
   const w = Math.round(transform.width)
   const h = Math.round(transform.height)
@@ -309,13 +370,10 @@ export async function warpImageToCanvas(
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new UnskewError('Canvas 2D context unavailable')
 
-  const srcCanvas = document.createElement('canvas')
-  srcCanvas.width = image.naturalWidth
-  srcCanvas.height = image.naturalHeight
-  const srcCtx = srcCanvas.getContext('2d')
-  if (!srcCtx) throw new UnskewError('Canvas 2D context unavailable')
-  srcCtx.drawImage(image, 0, 0)
-  const srcData = srcCtx.getImageData(0, 0, srcCanvas.width, srcCanvas.height)
+  const srcData = buildSourceImageData(image, {
+    width: sourceSize?.width ?? image.naturalWidth,
+    height: sourceSize?.height ?? image.naturalHeight,
+  })
   const destData = ctx.createImageData(w, h)
 
   const rowsPerChunk = 16
@@ -337,6 +395,100 @@ export async function warpImageToCanvas(
 
   ctx.putImageData(destData, 0, 0)
   return canvas
+}
+
+/** Downscale warped canvas so Konva/WebGL can texture it (typical max 4096px). */
+const KONVA_MAX_TEXTURE = 4096
+
+export async function canvasToDisplayImage(
+  canvas: HTMLCanvasElement,
+): Promise<HTMLImageElement> {
+  const maxSide = Math.max(canvas.width, canvas.height)
+  const scale = Math.min(1, KONVA_MAX_TEXTURE / maxSide)
+  const w = Math.max(1, Math.round(canvas.width * scale))
+  const h = Math.max(1, Math.round(canvas.height * scale))
+
+  const out = document.createElement('canvas')
+  out.width = w
+  out.height = h
+  const ctx = out.getContext('2d')
+  if (!ctx) throw new UnskewError('Canvas 2D context unavailable')
+  ctx.drawImage(canvas, 0, 0, w, h)
+
+  return new Promise((resolve, reject) => {
+    out.toBlob((blob) => {
+      if (!blob) {
+        reject(new UnskewError('Failed to create preview image'))
+        return
+      }
+      const url = URL.createObjectURL(blob)
+      const img = new Image()
+      img.onload = () => {
+        URL.revokeObjectURL(url)
+        resolve(img)
+      }
+      img.onerror = () => {
+        URL.revokeObjectURL(url)
+        reject(new UnskewError('Failed to create preview image'))
+      }
+      img.src = url
+    }, 'image/png')
+  })
+}
+
+export interface PreviewContentBBox {
+  x: number
+  y: number
+  w: number
+  h: number
+  /** Fraction of logical canvas area covered by content (0–1). */
+  frac: number
+}
+
+/** Sparse scan for non-black pixels; maps to logical display coordinates. */
+export function estimatePreviewContentBBox(
+  img: HTMLImageElement,
+  logicalWidth: number,
+  logicalHeight: number,
+): PreviewContentBBox | null {
+  const maxScan = 512
+  const scanScale = Math.min(1, maxScan / Math.max(img.naturalWidth, img.naturalHeight, 1))
+  const sw = Math.max(1, Math.round(img.naturalWidth * scanScale))
+  const sh = Math.max(1, Math.round(img.naturalHeight * scanScale))
+  const scan = document.createElement('canvas')
+  scan.width = sw
+  scan.height = sh
+  const ctx = scan.getContext('2d')
+  if (!ctx) return null
+  ctx.drawImage(img, 0, 0, sw, sh)
+  const data = ctx.getImageData(0, 0, sw, sh).data
+  const threshold = 12
+  let minX = sw
+  let minY = sh
+  let maxX = 0
+  let maxY = 0
+  let found = false
+  for (let y = 0; y < sh; y++) {
+    for (let x = 0; x < sw; x++) {
+      const i = (y * sw + x) * 4
+      if (data[i] > threshold || data[i + 1] > threshold || data[i + 2] > threshold) {
+        found = true
+        minX = Math.min(minX, x)
+        minY = Math.min(minY, y)
+        maxX = Math.max(maxX, x)
+        maxY = Math.max(maxY, y)
+      }
+    }
+  }
+  if (!found) return null
+  const sx = logicalWidth / img.naturalWidth
+  const sy = logicalHeight / img.naturalHeight
+  const inv = 1 / scanScale
+  const x = minX * inv * sx
+  const y = minY * inv * sy
+  const w = (maxX - minX + 1) * inv * sx
+  const h = (maxY - minY + 1) * inv * sy
+  return { x, y, w, h, frac: (w * h) / Math.max(logicalWidth * logicalHeight, 1) }
 }
 
 /** Dev parity check against backend fixture — call manually, not at import. */

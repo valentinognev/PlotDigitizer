@@ -77,8 +77,17 @@ export async function waitForBackend(maxAttempts = 20, delayMs = 300): Promise<b
   return false
 }
 
-export async function applyUnskew(id: string): Promise<Session> {
-  return request<Session>(`/sessions/${id}/unskew/apply`, { method: 'POST' })
+export async function applyUnskew(
+  id: string,
+  body: { mode: 'perspective' } | { mode: 'mesh'; mesh: { vertices: unknown[] } } = {
+    mode: 'perspective',
+  },
+): Promise<Session> {
+  return request<Session>(`/sessions/${id}/unskew/apply`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
 }
 
 export async function setCalibration(id: string, calibration: Calibration): Promise<Session> {

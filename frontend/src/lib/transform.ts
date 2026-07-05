@@ -52,6 +52,20 @@ function extremeRefIndex(refs: RefPoint[], axis: 'x' | 'y', which: 'min' | 'max'
   return idx
 }
 
+export function areCalibrationPixelsInImage(
+  calibration: Calibration,
+  imageWidth: number,
+  imageHeight: number,
+): boolean {
+  for (const axis of [calibration.x, calibration.y]) {
+    for (const ref of axis.ref_points) {
+      const [x, y] = ref.pixel
+      if (x < 0 || y < 0 || x > imageWidth || y > imageHeight) return false
+    }
+  }
+  return true
+}
+
 export function getAxisBounds(
   cal: Calibration,
 ): Record<AxisBoundKey, AxisBound> | null {

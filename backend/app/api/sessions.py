@@ -21,6 +21,7 @@ from app.models.schemas import (
     Session,
     SessionPreferencesPatch,
     SessionPublic,
+    UnskewApplyRequest,
 )
 from app.cv.unskew import UnskewError
 from app.pipeline.pipeline import (
@@ -142,7 +143,12 @@ def patch_preferences(session_id: str, body: SessionPreferencesPatch) -> Session
     if body.manual_calibration is not None:
         stored.session.manual_calibration = body.manual_calibration
     if body.workspace is not None:
-        stored.session.workspace = body.workspace
+        current = stored.session.workspace
+        merged = body.workspace.model_dump(exclude_unset=True)
+        if current is not None:
+            stored.session.workspace = current.model_copy(update=merged)
+        else:
+            stored.session.workspace = body.workspace
     session_store.update(session_id, stored.session)
     return _to_public(stored)
 
@@ -190,13 +196,16 @@ def remove_curve_from_plot(session_id: str, curve_id: str) -> SessionPublic:
 
 
 @router.post("/{session_id}/unskew/apply", response_model=SessionPublic)
-def apply_unskew(session_id: str) -> SessionPublic:
+def apply_unskew(session_id: str, body: UnskewApplyRequest | None = None) -> SessionPublic:
     stored = _require(session_id)
     if stored.session.calibration is None:
         raise _error(ValueError("Set calibration bounds first"), "unskew_no_calibration")
+    req = body or UnskewApplyRequest()
+    if req.mode == "mesh" and req.mesh is None:
+        raise _error(ValueError("Mesh data required"), "unskew_input", "Provide mesh vertices")
     try:
         session_store.push_history(stored, "unskew_apply")
-        new_session, new_image = run_unskew_apply(stored.session, stored.image_bytes)
+        new_session, new_image = run_unskew_apply(stored.session, stored.image_bytes, req)
         stored.session = new_session
         session_store.update_working_image(session_id, new_image)
         session_store.update(session_id, stored.session)

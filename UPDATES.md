@@ -40,6 +40,27 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [2.2.0] — 2026-07-05
+### Added
+- **Mesh unskew mode:** 4×4 boundary grid (Coons patch) for curved or wavy paper beyond simple
+  perspective; draggable boundary vertices with tangent handles; mesh persisted in session
+  workspace (`unskew_mode`, `mesh.vertices`).
+- Backend `cv/mesh_warp.py`, hybrid homography + mesh warp on apply; frontend `lib/meshWarp.ts`,
+  `MeshGridOverlay`, and mesh preview in `EditorCanvas`.
+- `POST /sessions/{id}/unskew/apply` accepts `{ "mode": "mesh", "mesh": { "vertices": … } }`.
+
+### Fixed
+- Mesh preview: axis bound marks (Xmin/Xmax/Ymin/Ymax) stay aligned with the corrected image when
+  **Preview corrected** is on — warp sampling now rasterizes the source into the logical
+  calibration coordinate system (`image_meta` dimensions) so marks track the same pixels as the
+  displayed canvas.
+- Mesh preview: wait for the warped texture before transforming overlays; downscale large warped
+  canvases to Konva’s max texture size with consistent mark placement.
+
+### Changed
+- Unskew panel: **Perspective** / **Mesh** mode toggle; **Reset mesh** when boundary was adjusted.
+- Updated `README.md`, `refs/WORKFLOW.md`, and `frontend/README.md` for v2.2 mesh unskew.
+
 ## [2.1.3] — 2026-07-03
 ### Changed
 - Updated `README.md`, `refs/WORKFLOW.md`, and `frontend/README.md` for v2.1 unskew workflow.

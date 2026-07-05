@@ -1,16 +1,32 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Circle, Group, Image as KonvaImage, Layer, Rect, Stage, Text } from 'react-konva'
 import type { KonvaEventObject } from 'konva/lib/Node'
+import type Konva from 'konva'
 import { getAxisBounds, type AxisBoundKey } from '../lib/transform'
 import { AXIS_PLACE_LABELS } from '../lib/calibration'
-import { applyHomography, warpImageToCanvas, type UnskewTransform } from '../lib/unskew'
+import {
+  isMeshTransform,
+  mapAxisBoundToDisplay,
+  mapDisplayToAxisBound,
+  mapPointToDisplay,
+  mapPointToOriginal,
+  warpImageMeshToCanvas,
+  type CorrectionTransform,
+  type MeshGridState,
+  type MeshVertex,
+} from '../lib/meshWarp'
+import { warpImageToCanvas, canvasToDisplayImage, estimatePreviewContentBBox } from '../lib/unskew'
+import { MeshGridOverlay } from './MeshGridOverlay'
 import type { Calibration, Curve, Point } from '../types'
 
 interface Props {
   imageUrl: string | null
   width: number
   height: number
-  unskewTransform?: UnskewTransform | null
+  correctionTransform?: CorrectionTransform | null
+  meshGrid?: MeshGridState | null
+  showMeshGrid?: boolean
+  onUpdateMeshVertex?: (row: number, col: number, vertex: MeshVertex) => void
   curves: Curve[]
   placementCurveId: string | null
   addPointMode: boolean
@@ -85,7 +101,10 @@ export function EditorCanvas({
   imageUrl,
   width,
   height,
-  unskewTransform = null,
+  correctionTransform = null,
+  meshGrid = null,
+  showMeshGrid = false,
+  onUpdateMeshVertex,
   curves,
   placementCurveId,
   addPointMode,
@@ -104,7 +123,10 @@ export function EditorCanvas({
 }: Props) {
   const axisBounds = calibration ? getAxisBounds(calibration) : null
   const [image, setImage] = useState<HTMLImageElement | null>(null)
-  const [warpedCanvas, setWarpedCanvas] = useState<HTMLCanvasElement | null>(null)
+  const [warpedPreviewImage, setWarpedPreviewImage] = useState<HTMLImageElement | null>(null)
+  const [warpingPreview, setWarpingPreview] = useState(false)
+  const previewReady = !!(correctionTransform && warpedPreviewImage)
+  const activeTransform = previewReady ? correctionTransform : null
   const [scale, setScale] = useState(1)
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 })
   const [stageDraggable, setStageDraggable] = useState(true)
@@ -112,6 +134,8 @@ export function EditorCanvas({
   const [marqueeBox, setMarqueeBox] = useState<ImageBox | null>(null)
   const [groupDrag, setGroupDrag] = useState<GroupDrag | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const konvaImageRef = useRef<Konva.Image>(null)
+  const previewFramedRef = useRef(false)
   const spaceDownRef = useRef(false)
   const [spacePan, setSpacePan] = useState(false)
   const suppressNextClickRef = useRef(false)
@@ -127,30 +151,88 @@ export function EditorCanvas({
 
   const selectedSet = new Set(selectedPointIds)
   const multiSelected = selectedPointIds.length > 1
-  const displayWidth = unskewTransform ? Math.round(unskewTransform.width) : width
-  const displayHeight = unskewTransform ? Math.round(unskewTransform.height) : height
-  const matrix = unskewTransform?.matrix
+  const logicalWidth = previewReady ? correctionTransform!.width : width
+  const logicalHeight = previewReady ? correctionTransform!.height : height
+  const texScaleX =
+    previewReady && warpedPreviewImage ? warpedPreviewImage.naturalWidth / logicalWidth : 1
+  const texScaleY =
+    previewReady && warpedPreviewImage ? warpedPreviewImage.naturalHeight / logicalHeight : 1
+  const displayWidth = previewReady && warpedPreviewImage ? warpedPreviewImage.naturalWidth : width
+  const displayHeight = previewReady && warpedPreviewImage ? warpedPreviewImage.naturalHeight : height
   const fitScale = Math.min(
     viewSize.w / Math.max(displayWidth, 1),
     viewSize.h / Math.max(displayHeight, 1),
     1,
   )
-  const totalScale = scale * fitScale
+  const contentBBox = useMemo(() => {
+    if (!previewReady || !warpedPreviewImage || !correctionTransform) return null
+    const logical = estimatePreviewContentBBox(
+      warpedPreviewImage,
+      Math.round(logicalWidth),
+      Math.round(logicalHeight),
+    )
+    if (!logical) return null
+    return {
+      x: logical.x * texScaleX,
+      y: logical.y * texScaleY,
+      w: logical.w * texScaleX,
+      h: logical.h * texScaleY,
+      frac: logical.frac,
+    }
+  }, [previewReady, warpedPreviewImage, correctionTransform, logicalWidth, logicalHeight, texScaleX, texScaleY])
+  const CONTENT_PAD = 24
+  const correctionFitScale = useMemo(() => {
+    if (!previewReady || !correctionTransform || !contentBBox) return null
+    return Math.min(
+      viewSize.w / Math.max(contentBBox.w + CONTENT_PAD * 2, 1),
+      viewSize.h / Math.max(contentBBox.h + CONTENT_PAD * 2, 1),
+      1,
+    )
+  }, [previewReady, correctionTransform, contentBBox, viewSize])
+  const activeFitScale = correctionFitScale ?? fitScale
+  const totalScale = scale * activeFitScale
+
+  const toLayerCoords = useCallback(
+    (logical: [number, number]): [number, number] => [
+      logical[0] * texScaleX,
+      logical[1] * texScaleY,
+    ],
+    [texScaleX, texScaleY],
+  )
 
   const toDisplayCoords = useCallback(
-    (original: [number, number]): [number, number] => {
-      if (!matrix) return original
-      return applyHomography(matrix, original, false)
-    },
-    [matrix],
+    (original: [number, number]): [number, number] =>
+      toLayerCoords(mapPointToDisplay(original, activeTransform)),
+    [activeTransform, toLayerCoords],
   )
 
   const toOriginalCoords = useCallback(
-    (display: [number, number]): [number, number] => {
-      if (!matrix) return display
-      return applyHomography(matrix, display, true)
+    (layer: [number, number]): [number, number] => {
+      const logical: [number, number] = [layer[0] / texScaleX, layer[1] / texScaleY]
+      return mapPointToOriginal(logical, activeTransform)
     },
-    [matrix],
+    [activeTransform, texScaleX, texScaleY],
+  )
+
+  const axisMarkToLayer = useCallback(
+    (key: AxisBoundKey, pixel: [number, number]): [number, number] => {
+      if (!previewReady || !calibration || !correctionTransform || !isMeshTransform(correctionTransform)) {
+        return toDisplayCoords(pixel)
+      }
+      return toLayerCoords(mapAxisBoundToDisplay(key, pixel, calibration, correctionTransform))
+    },
+    [previewReady, calibration, correctionTransform, toDisplayCoords, toLayerCoords],
+  )
+
+  const axisMarkFromLayer = useCallback(
+    (key: AxisBoundKey, layer: [number, number]): [number, number] => {
+      if (!previewReady || !calibration || !correctionTransform || !isMeshTransform(correctionTransform)) {
+        return toOriginalCoords(layer)
+      }
+      const logical: [number, number] = [layer[0] / texScaleX, layer[1] / texScaleY]
+      return mapDisplayToAxisBound(key, logical, calibration, correctionTransform)
+    },
+    [previewReady, calibration, correctionTransform, toOriginalCoords, texScaleX, texScaleY],
   )
 
   useEffect(() => {
@@ -161,23 +243,60 @@ export function EditorCanvas({
   }, [imageUrl])
 
   useEffect(() => {
-    if (!image || !unskewTransform) {
-      setWarpedCanvas(null)
+    if (!image || !correctionTransform) {
+      setWarpedPreviewImage(null)
+      setWarpingPreview(false)
       return
     }
+    setWarpedPreviewImage(null)
+    setWarpingPreview(true)
     let cancelled = false
-    warpImageToCanvas(image, unskewTransform).then((canvas) => {
-      if (!cancelled) setWarpedCanvas(canvas)
-    })
+    const useMesh = isMeshTransform(correctionTransform)
+    void (async () => {
+      try {
+        const sourceSize = { width, height }
+        const canvas = useMesh
+          ? await warpImageMeshToCanvas(image, correctionTransform, sourceSize)
+          : await warpImageToCanvas(image, correctionTransform, sourceSize)
+        if (cancelled) return
+        const previewImg = await canvasToDisplayImage(canvas)
+        if (cancelled) return
+        setWarpedPreviewImage(previewImg)
+      } catch (err) {
+        if (cancelled) return
+        setWarpedPreviewImage(null)
+      } finally {
+        if (!cancelled) setWarpingPreview(false)
+      }
+    })()
     return () => {
       cancelled = true
     }
-  }, [image, unskewTransform])
+  }, [image, correctionTransform, width, height])
 
   useEffect(() => {
+    previewFramedRef.current = false
     setStagePos({ x: 0, y: 0 })
     setScale(1)
-  }, [imageUrl, width, height, unskewTransform])
+  }, [imageUrl, width, height, correctionTransform])
+
+  useEffect(() => {
+    if (!previewReady || !warpedPreviewImage || !correctionTransform || !contentBBox || !correctionFitScale)
+      return
+    if (previewFramedRef.current) return
+    previewFramedRef.current = true
+    const cx = contentBBox.x + contentBBox.w / 2
+    const cy = contentBBox.y + contentBBox.h / 2
+    setScale(1)
+    setStagePos({
+      x: viewSize.w / 2 - cx * correctionFitScale,
+      y: viewSize.h / 2 - cy * correctionFitScale,
+    })
+  }, [previewReady, warpedPreviewImage, correctionTransform, contentBBox, correctionFitScale, viewSize])
+
+  useEffect(() => {
+    konvaImageRef.current?.getLayer()?.batchDraw()
+  }, [warpedPreviewImage, image, correctionTransform])
 
   useEffect(() => {
     const el = containerRef.current
@@ -293,8 +412,8 @@ export function EditorCanvas({
     if (!pointer) return
     const direction = e.evt.deltaY > 0 ? -1 : 1
     const newScale = Math.min(5, Math.max(0.2, oldScale * (1 + direction * 0.1)))
-    const oldTotalScale = oldScale * fitScale
-    const newTotalScale = newScale * fitScale
+    const oldTotalScale = oldScale * activeFitScale
+    const newTotalScale = newScale * activeFitScale
     const mousePointTo = {
       x: (pointer.x - stagePos.x) / oldTotalScale,
       y: (pointer.y - stagePos.y) / oldTotalScale,
@@ -443,14 +562,19 @@ export function EditorCanvas({
     onMovePoint(pt.id, toOriginalCoords([e.target.x(), e.target.y()]))
   }
 
-  const imageSource = unskewTransform && warpedCanvas ? warpedCanvas : image
+  const imageSource = previewReady ? warpedPreviewImage : image
+  const previewImageKey = previewReady
+    ? `warped-${warpedPreviewImage!.naturalWidth}x${warpedPreviewImage!.naturalHeight}`
+    : 'original'
 
   return (
     <div className="flex h-full max-h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border border-slate-700 bg-slate-900">
       <PlotInteractionHint
         addPointMode={addPointMode}
         axisPlaceStep={axisPlaceStep}
-        unskewPreview={!!unskewTransform}
+        correctionPreview={previewReady}
+        warpingPreview={warpingPreview}
+        meshEditing={showMeshGrid}
       />
       <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden">
       <Stage
@@ -469,7 +593,13 @@ export function EditorCanvas({
       >
         <Layer onMouseDown={handleStageMouseDown}>
           {imageSource && (
-            <KonvaImage image={imageSource} width={displayWidth} height={displayHeight} />
+            <KonvaImage
+              ref={konvaImageRef}
+              key={previewImageKey}
+              image={imageSource}
+              width={displayWidth}
+              height={displayHeight}
+            />
           )}
           {curves.map(
             (curve) =>
@@ -515,18 +645,27 @@ export function EditorCanvas({
                 <CalibrationMark
                   key={key}
                   label={key.toUpperCase()}
-                  pixel={toDisplayCoords(bound.pixel)}
+                  pixel={axisMarkToLayer(key, bound.pixel)}
                   color={key.startsWith('x') ? '#22d3ee' : '#e879f9'}
                   scale={totalScale}
                   active={axisPlaceStep === key}
                   onDragStart={() => setStageDraggable(false)}
                   onDragEnd={(px) => {
                     setStageDraggable(true)
-                    onMoveCalibrationMark(key, toOriginalCoords(px))
+                    onMoveCalibrationMark(key, axisMarkFromLayer(key, px))
                   }}
                 />
               ),
             )}
+          {showMeshGrid && meshGrid && onUpdateMeshVertex && (
+            <MeshGridOverlay
+              mesh={meshGrid}
+              scale={totalScale}
+              onUpdateVertex={onUpdateMeshVertex}
+              onDragStart={() => setStageDraggable(false)}
+              onDragEnd={() => setStageDraggable(true)}
+            />
+          )}
         </Layer>
       </Stage>
       </div>
@@ -537,11 +676,15 @@ export function EditorCanvas({
 function PlotInteractionHint({
   addPointMode,
   axisPlaceStep,
-  unskewPreview,
+  correctionPreview,
+  warpingPreview,
+  meshEditing,
 }: {
   addPointMode: boolean
   axisPlaceStep: AxisBoundKey | null
-  unskewPreview?: boolean
+  correctionPreview?: boolean
+  warpingPreview?: boolean
+  meshEditing?: boolean
 }) {
   let text: string
   const panHint = 'Middle-drag or Space + left-drag: pan · Wheel: zoom'
@@ -549,10 +692,13 @@ function PlotInteractionHint({
     text = `Click on the plot: ${AXIS_PLACE_LABELS[axisPlaceStep]} · ${panHint}`
   } else if (addPointMode) {
     text = `Left-click to place points on the first visible curve. Delete/Backspace: undo last point. ${panHint}`
+  } else if (meshEditing) {
+    text = `Drag boundary vertices to match plot curvature · Drag tangent handles to adjust edge direction · ${panHint}`
   } else {
     text = `Left-click point: select · Shift/Ctrl + click: add/remove from selection · Left-drag empty area: box-select · Shift/Ctrl + drag box: add to selection · Drag selected point(s): move · Delete/Backspace or double-click: delete · Left-click empty: clear selection · ${panHint}`
   }
-  if (unskewPreview) text = `Unskew preview · ${text}`
+  if (warpingPreview) text = `Building correction preview… · ${text}`
+  else if (correctionPreview) text = `Correction preview · ${text}`
 
   return (
     <p

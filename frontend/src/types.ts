@@ -50,6 +50,20 @@ export interface ImageSource {
 export interface WorkspaceState {
   active_curve_id?: string | null
   resample_count?: number
+  unskew_mode?: 'perspective' | 'mesh'
+  mesh?: MeshGridPayload | null
+}
+
+export interface MeshVertexPayload {
+  row: number
+  col: number
+  position: [number, number]
+  tangent_h?: [number, number]
+  tangent_v?: [number, number]
+}
+
+export interface MeshGridPayload {
+  vertices: MeshVertexPayload[]
 }
 
 export interface Session {

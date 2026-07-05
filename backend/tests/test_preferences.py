@@ -53,3 +53,33 @@ def test_patch_preferences_persists_manual_mode_and_calibration():
 
     get_res = client.get(f"/sessions/{session_id}")
     assert get_res.json()["manual_calibration"] is True
+
+
+def test_patch_preferences_persists_mesh_workspace():
+    res = client.post("/sessions", files={"file": ("plot.png", _png_bytes(), "image/png")})
+    session_id = res.json()["id"]
+    cal = _sample_calibration()
+    client.patch(f"/sessions/{session_id}/preferences", json={"calibration": cal})
+
+    mesh = {
+        "vertices": [
+            {"row": 0, "col": 0, "position": [12.0, 12.0]},
+            {"row": 3, "col": 3, "position": [100.0, 70.0]},
+        ]
+    }
+    patch = client.patch(
+        f"/sessions/{session_id}/preferences",
+        json={
+            "workspace": {
+                "unskew_mode": "mesh",
+                "mesh": mesh,
+            }
+        },
+    )
+    assert patch.status_code == 200
+    body = patch.json()
+    assert body["workspace"]["unskew_mode"] == "mesh"
+    assert body["workspace"]["mesh"]["vertices"][0]["position"] == [12.0, 12.0]
+
+    get_res = client.get(f"/sessions/{session_id}")
+    assert get_res.json()["workspace"]["mesh"]["vertices"][0]["position"] == [12.0, 12.0]

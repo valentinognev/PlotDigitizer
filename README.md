@@ -25,9 +25,10 @@ PlotDigitizer uses a **manual-first pipeline**:
 1. **Upload** a plot image (including photos taken at an angle).
 2. **Calibrate** axes manually: click four bounds on the plot (X min, X max, Y min, Y max) and
    enter the corresponding numeric values (linear or log per axis).
-3. **Unskew** *(optional)*: preview and apply perspective correction from those same axis bounds
-   to straighten rotated or skewed photos; the full image is kept (content outside axis limits
-   remains visible).
+3. **Unskew** *(optional)*: preview and apply correction from those same axis bounds
+   to straighten rotated or skewed photos. Choose **Perspective** (homography) for mild
+   skew, or **Mesh** (4×4 boundary grid) for curved or wavy paper edges; the full image
+   is kept (content outside axis limits remains visible).
 4. **Place points** on each curve on the canvas; drag, select, delete, and reassign as needed.
 5. **Refine** with OpenCV: **Improve** traces the line between your seed points; **Densify**
    interpolates evenly spaced points along the curve.
@@ -123,9 +124,10 @@ cd backend && .venv/bin/pytest -q
 2. Click **Place bounds** in the Calibration panel, then click the plot four times: X min, X max,
    Y min, Y max.
 3. Enter the **numeric axis values** (and choose linear/log per axis).
-4. *(Optional, skewed/rotated photos)* In the **Unskew** panel, click **Preview corrected** to
-   review the straightened image, then **Apply** to commit (or **Cancel preview** to revert the
-   view). Axis bounds must cross; invalid geometry shows a toast.
+4. *(Optional, skewed/rotated photos)* In the **Unskew** panel, choose **Perspective** or
+   **Mesh**, adjust the mesh boundary if needed, click **Preview corrected** to review the
+   straightened image, then **Apply** to commit (or **Cancel preview** to revert the view).
+   Axis bounds must cross; invalid geometry shows a toast.
 5. **Add curves** and turn on **Place points** to click seed points on each curve.
 6. Use **Improve** (OpenCV trace) or **Densify** to refine a curve.
 7. **Drag** points to correct positions; use box-select, Delete, and curve reassignment as needed.
@@ -144,5 +146,5 @@ cd backend && .venv/bin/pytest -q
 
 ## Status
 
-**v2.1** — manual digitization with optional image unskew for camera photos. Current version: see
-[`UPDATES.md`](UPDATES.md).
+**v2.2** — manual digitization with optional image unskew (perspective or mesh) for camera
+photos. Current version: see [`UPDATES.md`](UPDATES.md).
