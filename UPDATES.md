@@ -43,7 +43,7 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 ## [2.4.1] — 2026-09-04
 ### Fixed
 - Pick-colour exits to select (workspace `canvas_mode` persisted; in-flight prefs writes invalidated).
-- Mask overlay cache-busts on filter/grid changes (`stamp` query), not only image revision.
+- Mask overlay reloads only after the filter/grid PATCH (`maskEpoch` stamp), so slider drags do not fetch a stale PNG.
 - Filter threshold sliders stay enabled while PATCHes debounce; no `run()` busy lock.
 
 ## [2.4.0] — 2026-09-04 — Colour filter, grid removal and subpixel snap

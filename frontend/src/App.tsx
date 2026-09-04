@@ -81,6 +81,7 @@ export default function App() {
   const [scaleBarStep, setScaleBarStep] = useState<'a' | 'b' | null>(null)
   const [canvasMode, setCanvasMode] = useState<CanvasMode>('select')
   const [maskView, setMaskView] = useState<MaskView>('none')
+  const [maskEpoch, setMaskEpoch] = useState(0)
   const [showAxesChecker, setShowAxesChecker] = useState(true)
   const [axesCheckerChangedAt, setAxesCheckerChangedAt] = useState(0)
   const [nowMs, setNowMs] = useState(() => Date.now())
@@ -221,6 +222,7 @@ export default function App() {
     setDraftCalibration(session?.calibration ?? null)
     setAxisPlaceStep(null)
     setUnskewPreview(false)
+    setMaskEpoch(0)
   }, [session?.id])
 
   useEffect(() => {
@@ -270,6 +272,7 @@ export default function App() {
         .then((saved) => {
           if (seq !== filterSeq.current) return
           setSession((prev) => mergeSessionUpdate(prev, saved))
+          setMaskEpoch((n) => n + 1)
         })
         .catch((e) => {
           if (seq !== filterSeq.current) return
@@ -297,6 +300,7 @@ export default function App() {
         workspace: { ...(saved.workspace ?? {}), canvas_mode: 'select' },
       })
       setCanvasMode('select')
+      setMaskEpoch((n) => n + 1)
       return {
         ...withMode,
         curves: withMode.curves ?? saved.curves,
@@ -320,6 +324,9 @@ export default function App() {
       return patchCurveFilter(session.id, activeCurveId, {
         ...base,
         remove_grid: enabled,
+      }).then((saved) => {
+        setMaskEpoch((n) => n + 1)
+        return saved
       })
     }, enabled ? 'Detecting grid…' : 'Updating filter…')
   }
@@ -384,7 +391,6 @@ export default function App() {
       meshOverride?: MeshGridState | null
       modeOverride?: UnskewMode
       showAxesCheckerOverride?: boolean
-      canvasModeOverride?: CanvasMode
     }) => {
       const sessionId = session?.id
       if (!sessionId) return
@@ -397,7 +403,7 @@ export default function App() {
         resample_count: resampleCount,
         unskew_mode: mode,
         mesh: meshState ? meshToPayload(meshState) : null,
-        canvas_mode: options?.canvasModeOverride ?? canvasMode,
+        canvas_mode: canvasMode,
         show_axes_checker: options?.showAxesCheckerOverride ?? showAxesChecker,
         show_mask: maskView !== 'none',
       }
@@ -1157,10 +1163,7 @@ export default function App() {
                       session.id,
                       activeCurveId,
                       session.image_meta.revision ?? 0,
-                      JSON.stringify({
-                        filter: activeCurve?.filter ?? null,
-                        grid: session.workspace?.grid ?? null,
-                      }),
+                      maskEpoch,
                     )
                   : null
               }
