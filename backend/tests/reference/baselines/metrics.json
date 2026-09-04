@@ -1,9 +1,19 @@
 {
+  "calibration.polar.guidelines_polar.r_rel": 2.460320479624002e-06,
+  "calibration.polar.guidelines_polar.theta_deg": 0.00047297616207231385,
+  "calibration.polar.guidelines_polar_log.r_rel": 4.74949172921036e-06,
+  "calibration.polar.guidelines_polar_log.theta_deg": 0.00046783927132310055,
+  "calibration.polar.polar_linear_linear_3curve.r_rel": 4.294121873203846e-05,
+  "calibration.polar.polar_linear_linear_3curve.theta_deg": 0.0004996323218051657,
+  "calibration.polar.polar_linear_linear_nonzero_center.r_rel": 1.6629957601767816e-05,
+  "calibration.polar.polar_linear_linear_nonzero_center.theta_deg": 0.0004990676058866939,
   "calibration.reference.extrapolate_functions_smooth.rel_max": 0.0001273998746319377,
   "calibration.reference.extrapolate_functions_straight.rel_max": 0.0001273998746319377,
   "calibration.reference.extrapolate_relations_smooth.rel_max": 0.0030284730442397116,
   "calibration.reference.extrapolate_relations_straight.rel_max": 0.0003801371042545901,
   "calibration.reference.guidelines_cartesian.rel_max": 7.609094957457237e-05,
   "calibration.reference.guidelines_cartesian_log.rel_max": 0.00013986922143624742,
+  "calibration.reference.guidelines_polar.rel_max": 2.4594287694465784e-06,
+  "calibration.reference.guidelines_polar_log.rel_max": 4.828373397957146e-06,
   "calibration.reference.points_along_axes.rel_max": 5.310288504415696e-05
 }

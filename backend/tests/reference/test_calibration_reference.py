@@ -43,6 +43,11 @@ def _calibration_from_doc(doc) -> Calibration:
     scale_x = "log" if doc.scale_x == "log" else "linear"
     scale_y = "log" if doc.scale_y == "log" else "linear"
     coords = "polar" if doc.coords_type == "polar" else "cartesian"
+    origin_radius = 0.0
+    if coords == "polar":
+        radii = [float(ap.graph_y) for ap in doc.axis_points if ap.graph_y is not None]
+        if radii:
+            origin_radius = min(radii)
     return Calibration(
         x=CalibrationAxis(scale=scale_x, ref_points=[]),
         y=CalibrationAxis(scale=scale_y, ref_points=[]),
@@ -50,6 +55,7 @@ def _calibration_from_doc(doc) -> Calibration:
         model="affine",
         axis_points=axis_points,
         theta_units="degrees",
+        origin_radius=origin_radius,
     )
 
 
@@ -188,8 +194,6 @@ def test_reference_doc_matches_expected_csv(name: str, plotdig_ref_dir: Path):
     doc = docs[name]
     if not doc.expected_csv or not doc.axis_points or not doc.curve_points:
         pytest.skip(f"{name} missing axis points, curve points, or expected CSV")
-    if doc.coords_type == "polar":
-        pytest.skip("polar adapter is Task 5")
     cal = _calibration_from_doc(doc)
     validate_calibration(cal)
 
