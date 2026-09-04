@@ -152,25 +152,26 @@ def match_points(
     blocked = list(exclude or [])
     accepted: list[MatchCandidate] = []
     seen: set[int] = set()
-    snap_fallback = min(7, max(3, min(ph, pw)))
-    if snap_fallback % 2 == 0:
-        snap_fallback -= 1
+    side = max(ph, pw)
+    window = min(7, max(3, side))
+    if window % 2 == 0:
+        window -= 1
     for pix, score in raw:
         clab = _label_at(labels, pix, max(int(sample_radius), 1))
         if clab == 0:
-            refined = snap_to_ink(mask_u8, pix, window=snap_fallback)
-            clab = _label_at(labels, refined, max(int(sample_radius), 1))
+            guess = snap_to_ink(mask_u8, pix, window=window)
+            clab = _label_at(labels, guess, max(int(sample_radius), 1))
         if clab == 0 or clab in seen:
             continue
         cbw = int(stats[clab, cv2.CC_STAT_WIDTH])
         cbh = int(stats[clab, cv2.CC_STAT_HEIGHT])
         if cbw > max_point_size or cbh > max_point_size:
             continue
-        centroid = (float(centroids[clab][0]), float(centroids[clab][1]))
-        window = max(cbw, cbh, 3)
-        if window % 2 == 0:
-            window += 1
-        refined = snap_to_ink(mask_u8, centroid, window=window)
+        solo = np.where(labels == clab, mask_u8, 0)
+        refined = snap_to_ink(solo, pix, window=window)
+        # Merged markers exceed the specified 7px window; use the isolated CC centre.
+        if max(cbw, cbh) > window:
+            refined = (float(centroids[clab][0]), float(centroids[clab][1]))
         if _too_close(refined, blocked, exclusion_r):
             continue
         seen.add(clab)

@@ -108,6 +108,20 @@ def test_max_point_size_rejects_gridline():
     assert none == []
 
 
+def test_nearby_marker_does_not_pull_centroid():
+    """A full-bbox snap on the unmasked image would include the neighbor bar."""
+    mask = _blank(w=120, h=80)
+    left = (40.0, 40.0)
+    right = (50.0, 40.0)
+    cv2.rectangle(mask, (39, 30), (41, 50), 255, thickness=-1)
+    cv2.rectangle(mask, (49, 30), (51, 50), 255, thickness=-1)
+    out = match_points(mask, left, sample_radius=6, max_point_size=24)
+    assert len(out) >= 1
+    assert math.hypot(out[0].pixel[0] - left[0], out[0].pixel[1] - left[1]) <= 1.5
+    for cand in out:
+        assert abs(cand.pixel[0] - 45.0) > 2.0
+
+
 def test_two_shapes_separable_by_sample():
     mask = _blank(w=240, h=160)
     circles = [(40.0, 40.0), (90.0, 40.0), (140.0, 40.0)]
