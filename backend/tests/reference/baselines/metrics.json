@@ -1,1 +1,9 @@
-{}
+{
+  "calibration.reference.extrapolate_functions_smooth.rel_max": 0.0001273998746319377,
+  "calibration.reference.extrapolate_functions_straight.rel_max": 0.0001273998746319377,
+  "calibration.reference.extrapolate_relations_smooth.rel_max": 0.0030284730442397116,
+  "calibration.reference.extrapolate_relations_straight.rel_max": 0.0003801371042545901,
+  "calibration.reference.guidelines_cartesian.rel_max": 7.609094957457237e-05,
+  "calibration.reference.guidelines_cartesian_log.rel_max": 0.00013986922143624742,
+  "calibration.reference.points_along_axes.rel_max": 5.310288504415696e-05
+}
