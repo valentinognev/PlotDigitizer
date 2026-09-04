@@ -122,7 +122,7 @@ def set_calibration(session_id: str, body: CalibrationUpdate) -> SessionPublic:
     try:
         validate_calibration(body.calibration)
     except CalibrationError as exc:
-        raise _error(exc, "calibration_invalid", "Fix reference points") from exc
+        raise _error(exc, "calibration_invalid", exc.hint or "Fix reference points") from exc
     session_store.push_history(stored, "calibration")
     stored.session.calibration = body.calibration
     stored.session.manual_calibration = True
@@ -137,7 +137,7 @@ def patch_preferences(session_id: str, body: SessionPreferencesPatch) -> Session
         try:
             validate_calibration(body.calibration)
         except CalibrationError as exc:
-            raise _error(exc, "calibration_invalid", "Fix reference points") from exc
+            raise _error(exc, "calibration_invalid", exc.hint or "Fix reference points") from exc
         stored.session.calibration = body.calibration
         stored.session.manual_calibration = True
     if body.manual_calibration is not None:
