@@ -17,6 +17,7 @@ interface Props {
   onReassignPoints: (pointIds: string[], toCurveId: string) => void
   onImprove: (curveId: string) => void
   onResample: (curveId: string) => void
+  onRemoveFromPlot: (curveId: string) => void
 }
 
 export function CurveList({
@@ -34,6 +35,7 @@ export function CurveList({
   onReassignPoints,
   onImprove,
   onResample,
+  onRemoveFromPlot,
 }: Props) {
   const updateCurve = (id: string, patch: Partial<Curve>) => {
     onCurveChange(curves.map((c) => (c.id === id ? { ...c, ...patch } : c)))
@@ -236,6 +238,28 @@ export function CurveList({
                 onClick={() => onImprove(curve.id)}
               >
                 Improve
+              </button>
+              <button
+                type="button"
+                disabled={busy || curve.points.length < 2}
+                title={
+                  curve.points.length < 2
+                    ? 'Place at least 2 points before erasing this curve from the image'
+                    : 'Erase this curve from the plot image (Undo restores the image)'
+                }
+                className="rounded bg-rose-900/70 px-2 py-1 text-[11px] hover:bg-rose-800 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => {
+                  if (
+                    !window.confirm(
+                      `Erase "${curve.label}" from the plot image? This can be undone.`,
+                    )
+                  ) {
+                    return
+                  }
+                  onRemoveFromPlot(curve.id)
+                }}
+              >
+                Remove from plot
               </button>
             </div>
             {selectedPointIds.length > 0 && (

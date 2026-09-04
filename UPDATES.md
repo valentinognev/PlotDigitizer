@@ -40,6 +40,15 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [2.5.0] — 2026-09-04 — Segment-fill auto-digitize
+### Added
+- Column-run segment builder (`cv/segments.py`): compact polylines from the per-curve binary mask; collinear fold; min-length drop.
+- Segment fill: click a stroke to drop arc-length samples at `point_separation`; optional 30° corner vertices; snap-to-ink on the curve mask.
+- Segment API (`POST .../segments`, `POST .../segment-fill`) and AutoDigitizePanel with `segment-fill` canvas hover/click.
+- Remove-from-plot control on each curve (confirm + undo) so overlapping strokes can be erased before the next fill.
+### Changed
+- Improve v2 snaps through the shared colour-filter / grid-removal mask instead of a 9×9 dark-quartile colour sample; four-arg public entry point unchanged.
+
 ## [2.4.1] — 2026-09-04
 ### Fixed
 - Pick-colour exits to select (workspace `canvas_mode` persisted; in-flight prefs writes invalidated).

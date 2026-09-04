@@ -10,6 +10,7 @@ import {
   listCurveSegments,
   loadProject,
   patchCurveFilter,
+  removeCurveFromPlot,
   patchCurves,
   patchSessionPreferences,
   resampleSession,
@@ -1290,6 +1291,13 @@ export default function App() {
               run(
                 () => resampleSession(session.id, curveId, resampleCount),
                 'Densifying curve…',
+              )
+            }
+            onRemoveFromPlot={(curveId) =>
+              session &&
+              run(
+                () => removeCurveFromPlot(session.id, curveId),
+                'Removing curve from plot…',
               )
             }
           />

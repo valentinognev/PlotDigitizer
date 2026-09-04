@@ -353,3 +353,9 @@ export async function fillCurveSegment(
     body: JSON.stringify(body),
   })
 }
+
+export async function removeCurveFromPlot(id: string, curveId: string): Promise<Session> {
+  return request<Session>(`/sessions/${id}/curves/${curveId}/remove-from-plot`, {
+    method: 'POST',
+  })
+}

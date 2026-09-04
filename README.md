@@ -31,7 +31,8 @@ PlotDigitizer uses a **manual-first pipeline**:
    is kept (content outside axis limits remains visible).
 4. **Place points** on each curve on the canvas; drag, select, delete, and reassign as needed.
 5. **Refine** with OpenCV: **Improve** traces the line between your seed points; **Densify**
-   interpolates evenly spaced points along the curve.
+   interpolates evenly spaced points along the curve; **Segment fill** lets you click a stroke
+   to drop evenly spaced samples along it.
 6. Watch the **preview chart** update live in data-space.
 7. **Export** CSV / JSON, or save a full **project** (`.pdproj.json`) for later restore.
 
@@ -46,13 +47,13 @@ current calibration, so re-calibrating instantly remaps all points.
 ┌──────────────────────────── Frontend (React + Tailwind) ────────────────────────────┐
 │  EditorCanvas (Konva)          PreviewChart (Plotly)                                   │
 │  image + draggable points  ──▶  live replot in data-space                              │
-│  UnskewPanel · FilterPanel · CalibrationPanel · CurveList · ExportPanel                  │
+│  UnskewPanel · FilterPanel · CalibrationPanel · AutoDigitizePanel · CurveList · ExportPanel │
 └───────────────────────────────────────┬───────────────────────────────────────────────┘
                                          │ typed REST (JSON)
 ┌────────────────────────────── Backend (Python + FastAPI) ──────────────────────────────┐
 │  api/         sessions router (upload, curves, calibration, unskew, CV, export, …)   │
 │  pipeline/    orchestrates CV improve, resample, remove-from-plot, unskew apply    │
-│  cv/          trace · improve · resample · erase · unskew · color_filter · grid_removal · snap │
+│  cv/          trace · improve · resample · erase · unskew · color_filter · grid_removal · snap · segments │
 │  calibration/ pixel ↔ data 2D transform (orthogonal / affine / projective; cartesian, polar, map)                                   │
 │  export/      CSV, JSON, project save/load, curve import                             │
 │  store/       in-memory SessionStore + last-session persistence                       │
@@ -130,10 +131,12 @@ cd backend && .venv/bin/pytest -q
    straightened image, then **Apply** to commit (or **Cancel preview** to revert the view).
    Axis bounds must cross; invalid geometry shows a toast.
 5. **Add curves** and turn on **Place points** to click seed points on each curve.
-6. Use **Improve** (OpenCV trace) or **Densify** to refine a curve.
-7. **Drag** points to correct positions; use box-select, Delete, and curve reassignment as needed.
-8. Watch the **preview chart** update in data-space.
-9. **Export** CSV/JSON or **Save JSON** project when satisfied.
+6. Use **Improve** (OpenCV trace), **Densify**, or **Segment fill** (click a stroke) to refine a curve.
+7. *(Optional)* **Remove from plot** erases the active curve from the working image (Undo restores
+   it) so overlapping strokes can be traced next.
+8. **Drag** points to correct positions; use box-select, Delete, and curve reassignment as needed.
+9. Watch the **preview chart** update in data-space.
+10. **Export** CSV/JSON or **Save JSON** project when satisfied.
 
 ---
 
