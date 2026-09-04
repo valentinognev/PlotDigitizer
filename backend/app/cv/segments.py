@@ -5,6 +5,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from app.cv.snap import snap_to_ink
+
 CORNER_TURN_DEG = 30.0
 COLLINEAR_FOLD_DEG = 8.0
 COLLINEAR_FOLD_DIST_PX = 0.75
@@ -423,3 +425,109 @@ def segment_at(
             best_d = d
             best = seg
     return best
+
+
+def _local_direction(
+    points: list[tuple[float, float]], index: int
+) -> tuple[float, float] | None:
+    if len(points) < 2:
+        return None
+    if index <= 0:
+        a, b = points[0], points[1]
+    elif index >= len(points) - 1:
+        a, b = points[-2], points[-1]
+    else:
+        a, b = points[index - 1], points[index + 1]
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    norm = math.hypot(dx, dy)
+    if norm < 1e-9:
+        return None
+    return (dx / norm, dy / norm)
+
+
+def _sort_unique_along(
+    samples: list[tuple[float, float]],
+    poly: list[tuple[float, float]],
+    lengths: list[float],
+) -> list[tuple[float, float]]:
+    keyed: list[tuple[float, tuple[float, float]]] = []
+    for pt in samples:
+        best_s = 0.0
+        best_d = math.inf
+        for i in range(len(poly) - 1):
+            ax, ay = poly[i]
+            bx, by = poly[i + 1]
+            dx, dy = bx - ax, by - ay
+            len2 = dx * dx + dy * dy
+            if len2 < 1e-12:
+                s = lengths[i]
+                d = math.hypot(pt[0] - ax, pt[1] - ay)
+            else:
+                t = max(0.0, min(1.0, ((pt[0] - ax) * dx + (pt[1] - ay) * dy) / len2))
+                qx, qy = ax + t * dx, ay + t * dy
+                s = lengths[i] + t * (lengths[i + 1] - lengths[i])
+                d = math.hypot(pt[0] - qx, pt[1] - qy)
+            if d < best_d:
+                best_d = d
+                best_s = s
+        keyed.append((best_s, pt))
+    keyed.sort(key=lambda item: item[0])
+    out: list[tuple[float, float]] = []
+    for _s, pt in keyed:
+        if out and math.hypot(pt[0] - out[-1][0], pt[1] - out[-1][1]) < 0.5:
+            continue
+        out.append(pt)
+    return out
+
+
+def fill_segment(
+    seg: Segment,
+    separation: float = 25.0,
+    fill_corners: bool = False,
+    *,
+    mask: np.ndarray | None = None,
+) -> list[tuple[float, float]]:
+    points = seg.points
+    if not points:
+        return []
+    if len(points) == 1:
+        pt = points[0]
+        if mask is not None:
+            pt = snap_to_ink(mask, pt)
+        return [pt]
+
+    lengths = _arc_length_prefix(points)
+    total = lengths[-1]
+    if total < 1e-9:
+        pt = points[0]
+        if mask is not None:
+            pt = snap_to_ink(mask, pt)
+        return [pt]
+
+    sep = max(float(separation), 1e-6)
+    samples: list[tuple[float, float]] = []
+    d = 0.0
+    while d < total - 1e-9:
+        samples.append(_point_at_arclength(points, lengths, d))
+        d += sep
+    end = points[-1]
+    if not samples or math.hypot(samples[-1][0] - end[0], samples[-1][1] - end[1]) > 0.5:
+        samples.append(end)
+    if math.hypot(samples[0][0] - points[0][0], samples[0][1] - points[0][1]) > 0.5:
+        samples.insert(0, points[0])
+
+    if fill_corners:
+        extra: list[tuple[float, float]] = []
+        for i in range(1, len(points) - 1):
+            if _turn_deg(points[i - 1], points[i], points[i + 1]) >= CORNER_TURN_DEG:
+                extra.append(points[i])
+        samples = _sort_unique_along(samples + extra, points, lengths)
+
+    if mask is not None:
+        snapped: list[tuple[float, float]] = []
+        for i, pt in enumerate(samples):
+            snapped.append(
+                snap_to_ink(mask, pt, direction=_local_direction(samples, i))
+            )
+        samples = snapped
+    return samples
