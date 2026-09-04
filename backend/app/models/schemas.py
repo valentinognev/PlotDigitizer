@@ -10,6 +10,17 @@ Scale = Literal["linear", "log"]
 Origin = Literal["ai", "user"]
 CurveStyle = Literal["solid", "dashed", "dotted", "unknown"]
 CalibrationSource = Literal["manual"]
+FilterMode = Literal["intensity", "foreground", "hue", "saturation", "value"]
+
+
+class ColorFilter(BaseModel):
+    mode: FilterMode = "intensity"
+    low: float = Field(default=0.0, ge=0.0, le=1.0)
+    high: float = Field(default=0.4, ge=0.0, le=1.0)
+    sample_color: str | None = None
+    remove_grid: bool = False
+
+
 CoordsType = Literal["cartesian", "polar", "map"]
 ThetaUnits = Literal["degrees", "radians", "gradians", "turns"]
 TransformModel = Literal["auto", "orthogonal", "affine", "projective"]

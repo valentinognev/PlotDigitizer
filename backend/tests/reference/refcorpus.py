@@ -12,6 +12,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from app.models.schemas import ColorFilter, FilterMode
+
 DEFAULT_REF_DIR = Path("/home/valentin/Projects/t/engauge-digitizer")
 _PNG_MAGIC = b"\x89PNG"
 
@@ -364,3 +366,49 @@ def sample_image(ref_dir: Path, name: str) -> np.ndarray:
 
     pil = Image.open(path).convert("RGB")
     return cv2.cvtColor(np.asarray(pil), cv2.COLOR_RGB2BGR)
+
+
+_ENGAUGE_MODE_INT: dict[int, FilterMode] = {
+    0: "foreground",
+    1: "hue",
+    2: "intensity",
+    3: "saturation",
+    4: "value",
+}
+
+
+def color_filter_from_engauge(attrs: dict[str, object]) -> ColorFilter:
+    mode_str = attrs.get("ModeString")
+    if isinstance(mode_str, str) and mode_str.lower() in {
+        "intensity",
+        "foreground",
+        "hue",
+        "saturation",
+        "value",
+    }:
+        mode: FilterMode = mode_str.lower()  # type: ignore[assignment]
+    else:
+        mode = _ENGAUGE_MODE_INT.get(int(attrs.get("Mode", 2)), "intensity")
+
+    def _num(key: str, default: float) -> float:
+        val = attrs.get(key, default)
+        return float(val)
+
+    if mode == "hue":
+        low = _num("HueLow", 180.0) / 360.0
+        high = _num("HueHigh", 360.0) / 360.0
+    elif mode == "foreground":
+        low = _num("ForegroundLow", 0.0) / 100.0
+        high = _num("ForegroundHigh", 10.0) / 100.0
+    elif mode == "saturation":
+        low = _num("SaturationLow", 50.0) / 100.0
+        high = _num("SaturationHigh", 100.0) / 100.0
+    elif mode == "value":
+        low = _num("ValueLow", 0.0) / 100.0
+        high = _num("ValueHigh", 50.0) / 100.0
+    else:
+        low = _num("IntensityLow", 0.0) / 100.0
+        high = _num("IntensityHigh", 50.0) / 100.0
+    low = min(max(low, 0.0), 1.0)
+    high = min(max(high, 0.0), 1.0)
+    return ColorFilter(mode=mode, low=low, high=high)
