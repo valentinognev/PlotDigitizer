@@ -10,6 +10,9 @@ Scale = Literal["linear", "log"]
 Origin = Literal["ai", "user"]
 CurveStyle = Literal["solid", "dashed", "dotted", "unknown"]
 CalibrationSource = Literal["manual"]
+CoordsType = Literal["cartesian", "polar", "map"]
+ThetaUnits = Literal["degrees", "radians", "gradians", "turns"]
+TransformModel = Literal["auto", "orthogonal", "affine", "projective"]
 
 DEFAULT_POINT_COUNT = 9
 DEFAULT_MESH_SECTIONS = 3
@@ -27,10 +30,30 @@ class CalibrationAxis(BaseModel):
     ref_points: list[RefPoint] = Field(default_factory=list)
 
 
+class AxisPoint(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    pixel: tuple[float, float]
+    x_value: float | None = None  # cartesian X, or polar θ
+    y_value: float | None = None  # cartesian Y, or polar R
+
+
+class ScaleBar(BaseModel):
+    pixel_a: tuple[float, float]
+    pixel_b: tuple[float, float]
+    length: float
+    units: str = ""
+
+
 class Calibration(BaseModel):
     x: CalibrationAxis
     y: CalibrationAxis
     source: CalibrationSource = "manual"
+    coords_type: CoordsType = "cartesian"
+    model: TransformModel = "auto"
+    axis_points: list[AxisPoint] = Field(default_factory=list)
+    theta_units: ThetaUnits = "degrees"
+    origin_radius: float = 0.0
+    scale_bar: ScaleBar | None = None
 
 
 class Point(BaseModel):
