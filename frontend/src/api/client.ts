@@ -79,7 +79,9 @@ export async function waitForBackend(maxAttempts = 20, delayMs = 300): Promise<b
 
 export async function applyUnskew(
   id: string,
-  body: { mode: 'perspective' } | { mode: 'mesh'; mesh: { vertices: unknown[] } } = {
+  body:
+    | { mode: 'perspective'; calibration?: Calibration }
+    | { mode: 'mesh'; mesh: { sections?: number; vertices: unknown[] }; calibration?: Calibration } = {
     mode: 'perspective',
   },
 ): Promise<Session> {

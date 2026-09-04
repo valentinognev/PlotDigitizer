@@ -27,7 +27,7 @@ PlotDigitizer uses a **manual-first pipeline**:
    enter the corresponding numeric values (linear or log per axis).
 3. **Unskew** *(optional)*: preview and apply correction from those same axis bounds
    to straighten rotated or skewed photos. Choose **Perspective** (homography) for mild
-   skew, or **Mesh** (4×4 boundary grid) for curved or wavy paper edges; the full image
+   skew, or **Mesh** (adjustable boundary grid, default 3×3 cells) for curved or wavy paper edges; the full image
    is kept (content outside axis limits remains visible).
 4. **Place points** on each curve on the canvas; drag, select, delete, and reassign as needed.
 5. **Refine** with OpenCV: **Improve** traces the line between your seed points; **Densify**
@@ -147,4 +147,4 @@ cd backend && .venv/bin/pytest -q
 ## Status
 
 **v2.2** — manual digitization with optional image unskew (perspective or mesh) for camera
-photos. Current version: see [`UPDATES.md`](UPDATES.md).
+photos; mesh subdivisions are adjustable (default 3 per edge). Current version: see [`UPDATES.md`](UPDATES.md).

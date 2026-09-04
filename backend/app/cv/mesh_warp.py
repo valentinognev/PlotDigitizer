@@ -16,8 +16,20 @@ from app.cv.unskew import (
 from app.models.schemas import Calibration, MeshVertexPayload, Session
 
 
-GRID_SIZE = 4
+GRID_SIZE = 4  # legacy default grid vertices (= DEFAULT_MESH_SECTIONS + 1)
+DEFAULT_MESH_SECTIONS = 3
+MIN_MESH_SECTIONS = 2
+MAX_MESH_SECTIONS = 8
 Point = tuple[float, float]
+
+
+def mesh_grid_size(sections: int) -> int:
+    return sections + 1
+
+
+def _is_boundary(i: int, j: int, size: int) -> bool:
+    last = size - 1
+    return i == 0 or i == last or j == 0 or j == last
 
 
 @dataclass(frozen=True)
@@ -81,12 +93,13 @@ def _hermite(p0: Point, m0: Point, p1: Point, m1: Point, t: float) -> Point:
     )
 
 
-def _hermite_edge4(pts: tuple[Point, Point, Point, Point], tangents: tuple[Point, Point, Point, Point], t: float) -> Point:
-    seg = t * 3
-    i = min(2, int(seg))
+def _hermite_edge(pts: tuple[Point, ...], tangents: tuple[Point, ...], t: float) -> Point:
+    num_segments = len(pts) - 1
+    seg = t * num_segments
+    i = min(num_segments - 1, int(seg))
     local = seg - i
-    m0 = _scale(tangents[i], 1 / 3)
-    m1 = _scale(tangents[i + 1], 1 / 3)
+    m0 = _scale(tangents[i], 1 / num_segments)
+    m1 = _scale(tangents[i + 1], 1 / num_segments)
     return _hermite(pts[i], m0, pts[i + 1], m1, local)
 
 
@@ -97,11 +110,13 @@ class _MeshVertex:
     tangent_v: Point | None = None
 
 
-def _is_boundary(i: int, j: int) -> bool:
-    return i == 0 or i == GRID_SIZE - 1 or j == 0 or j == GRID_SIZE - 1
+def _is_boundary_vertex(i: int, j: int, size: int) -> bool:
+    return _is_boundary(i, j, size)
 
 
-def init_mesh_from_calibration(cal: Calibration) -> list[list[_MeshVertex]]:
+def init_mesh_from_calibration(cal: Calibration, sections: int = DEFAULT_MESH_SECTIONS) -> list[list[_MeshVertex]]:
+    n = sections
+    size = n + 1
     xmin, xmax, ymin, ymax = bounds_pixels_from_calibration(cal)
     origin = _line_intersection(xmin, xmax, ymin, ymax)
     br = _project_on_line(xmax, xmin, xmax)
@@ -111,30 +126,32 @@ def init_mesh_from_calibration(cal: Calibration) -> list[list[_MeshVertex]]:
         origin[1] + (br[1] - origin[1]) + (tl[1] - origin[1]),
     )
 
-    corners: list[list[Point]] = [
-        [tl, _lerp(tl, tr, 1 / 3), _lerp(tl, tr, 2 / 3), tr],
-        [_lerp(tl, origin, 1 / 3), (0.0, 0.0), (0.0, 0.0), _lerp(tr, br, 1 / 3)],
-        [_lerp(tl, origin, 2 / 3), (0.0, 0.0), (0.0, 0.0), _lerp(tr, br, 2 / 3)],
-        [origin, _lerp(origin, br, 1 / 3), _lerp(origin, br, 2 / 3), br],
-    ]
+    def boundary_position(i: int, j: int) -> Point:
+        if i == 0:
+            return _lerp(tl, tr, j / n)
+        if i == n:
+            return _lerp(origin, br, j / n)
+        if j == 0:
+            return _lerp(tl, origin, i / n)
+        return _lerp(tr, br, i / n)
 
     vertices: list[list[_MeshVertex]] = []
-    for i in range(GRID_SIZE):
+    for i in range(size):
         row: list[_MeshVertex] = []
-        for j in range(GRID_SIZE):
-            if not _is_boundary(i, j):
+        for j in range(size):
+            if not _is_boundary_vertex(i, j, size):
                 row.append(_MeshVertex((0.0, 0.0)))
                 continue
-            pos = corners[i][j]
+            pos = boundary_position(i, j)
             vtx = _MeshVertex(pos)
-            if j < GRID_SIZE - 1:
-                vtx.tangent_h = _sub(corners[i][j + 1], pos)
+            if j < n:
+                vtx.tangent_h = _sub(boundary_position(i, j + 1), pos)
             elif j > 0:
-                vtx.tangent_h = _sub(pos, corners[i][j - 1])
-            if i < GRID_SIZE - 1:
-                vtx.tangent_v = _sub(corners[i + 1][j], pos)
+                vtx.tangent_h = _sub(pos, boundary_position(i, j - 1))
+            if i < n:
+                vtx.tangent_v = _sub(boundary_position(i + 1, j), pos)
             elif i > 0:
-                vtx.tangent_v = _sub(pos, corners[i - 1][j])
+                vtx.tangent_v = _sub(pos, boundary_position(i - 1, j))
             row.append(vtx)
         vertices.append(row)
     return vertices
@@ -157,32 +174,33 @@ def mesh_from_payload(
     return vertices
 
 
-def _boundary_row(mesh: list[list[_MeshVertex]], i: int) -> tuple[Point, Point, Point, Point]:
-    return tuple(mesh[i][j].position for j in range(4))  # type: ignore[return-value]
+def _boundary_row(mesh: list[list[_MeshVertex]], i: int) -> tuple[Point, ...]:
+    return tuple(mesh[i][j].position for j in range(len(mesh)))
 
 
-def _boundary_col(mesh: list[list[_MeshVertex]], j: int) -> tuple[Point, Point, Point, Point]:
-    return tuple(mesh[i][j].position for i in range(4))  # type: ignore[return-value]
+def _boundary_col(mesh: list[list[_MeshVertex]], j: int) -> tuple[Point, ...]:
+    return tuple(mesh[i][j].position for i in range(len(mesh)))
 
 
-def _row_tangents_h(mesh: list[list[_MeshVertex]], i: int) -> tuple[Point, Point, Point, Point]:
-    return tuple(mesh[i][j].tangent_h or (0.0, 0.0) for j in range(4))  # type: ignore[return-value]
+def _row_tangents_h(mesh: list[list[_MeshVertex]], i: int) -> tuple[Point, ...]:
+    return tuple(mesh[i][j].tangent_h or (0.0, 0.0) for j in range(len(mesh)))
 
 
-def _col_tangents_v(mesh: list[list[_MeshVertex]], j: int) -> tuple[Point, Point, Point, Point]:
-    return tuple(mesh[i][j].tangent_v or (0.0, 0.0) for i in range(4))  # type: ignore[return-value]
+def _col_tangents_v(mesh: list[list[_MeshVertex]], j: int) -> tuple[Point, ...]:
+    return tuple(mesh[i][j].tangent_v or (0.0, 0.0) for i in range(len(mesh)))
 
 
 def eval_coons(mesh: list[list[_MeshVertex]], u: float, v: float) -> Point:
-    top = _hermite_edge4(_boundary_row(mesh, 0), _row_tangents_h(mesh, 0), u)
-    bottom = _hermite_edge4(_boundary_row(mesh, 3), _row_tangents_h(mesh, 3), u)
-    left = _hermite_edge4(_boundary_col(mesh, 0), _col_tangents_v(mesh, 0), v)
-    right = _hermite_edge4(_boundary_col(mesh, 3), _col_tangents_v(mesh, 3), v)
+    last = len(mesh) - 1
+    top = _hermite_edge(_boundary_row(mesh, 0), _row_tangents_h(mesh, 0), u)
+    bottom = _hermite_edge(_boundary_row(mesh, last), _row_tangents_h(mesh, last), u)
+    left = _hermite_edge(_boundary_col(mesh, 0), _col_tangents_v(mesh, 0), v)
+    right = _hermite_edge(_boundary_col(mesh, last), _col_tangents_v(mesh, last), v)
 
     p00 = mesh[0][0].position
-    p03 = mesh[0][3].position
-    p30 = mesh[3][0].position
-    p33 = mesh[3][3].position
+    p03 = mesh[0][last].position
+    p30 = mesh[last][0].position
+    p33 = mesh[last][last].position
 
     bilinear = (
         (1 - u) * (1 - v) * p00[0]
@@ -203,11 +221,13 @@ def eval_coons(mesh: list[list[_MeshVertex]], u: float, v: float) -> Point:
 
 
 def resolve_mesh_grid(mesh: list[list[_MeshVertex]]) -> list[list[Point]]:
+    size = len(mesh)
+    sections = size - 1
     grid: list[list[Point]] = []
-    for i in range(GRID_SIZE):
+    for i in range(size):
         row: list[Point] = []
-        for j in range(GRID_SIZE):
-            row.append(eval_coons(mesh, j / 3, i / 3))
+        for j in range(size):
+            row.append(eval_coons(mesh, j / sections, i / sections))
         grid.append(row)
     return grid
 
@@ -222,12 +242,13 @@ def _eval_cell(grid: list[list[Point]], ci: int, cj: int, s: float, t: float) ->
 
 
 def eval_mesh_uv(grid: list[list[Point]], u: float, v: float) -> Point:
+    sections = len(grid) - 1
     uu = max(0.0, min(1.0, u))
     vv = max(0.0, min(1.0, v))
-    uf = uu * 3
-    vf = vv * 3
-    ci = min(2, int(vf))
-    cj = min(2, int(uf))
+    uf = uu * sections
+    vf = vv * sections
+    ci = min(sections - 1, int(vf))
+    cj = min(sections - 1, int(uf))
     s = uf - cj
     t = vf - ci
     return _eval_cell(grid, ci, cj, s, t)
@@ -244,8 +265,9 @@ def _quad_area(a: Point, b: Point, c: Point, d: Point) -> float:
 
 def validate_mesh(mesh: list[list[_MeshVertex]]) -> list[list[Point]]:
     grid = resolve_mesh_grid(mesh)
-    for i in range(3):
-        for j in range(3):
+    sections = len(mesh) - 1
+    for i in range(sections):
+        for j in range(sections):
             if _quad_area(grid[i][j], grid[i][j + 1], grid[i + 1][j + 1], grid[i + 1][j]) < 1:
                 raise UnskewError("Degenerate mesh cell")
     return grid
@@ -339,10 +361,11 @@ def _mesh_blend_factor(u: float, v: float) -> float:
 
 
 def _eval_mesh_uv_extrapolated(grid: list[list[Point]], u: float, v: float) -> Point:
-    uf = u * 3
-    vf = v * 3
-    ci = max(0, min(2, int(math.floor(vf))))
-    cj = max(0, min(2, int(math.floor(uf))))
+    sections = len(grid) - 1
+    uf = u * sections
+    vf = v * sections
+    ci = max(0, min(sections - 1, int(math.floor(vf))))
+    cj = max(0, min(sections - 1, int(math.floor(uf))))
     s = uf - cj
     t = vf - ci
     return _eval_cell(grid, ci, cj, s, t)
@@ -481,9 +504,14 @@ def run_mesh_warp_apply(
     session: Session,
     image_bytes: bytes,
     mesh_vertices: list[MeshVertexPayload],
+    sections: int = DEFAULT_MESH_SECTIONS,
+    *,
+    calibration: Calibration | None = None,
 ) -> tuple[Session, bytes]:
-    if session.calibration is None:
+    cal = calibration or session.calibration
+    if cal is None:
         raise ValueError("Calibration required for mesh warp")
+    session.calibration = cal
 
     arr = np.frombuffer(image_bytes, dtype=np.uint8)
     img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
@@ -491,9 +519,9 @@ def run_mesh_warp_apply(
         raise ValueError("Invalid image")
 
     img_h, img_w = img.shape[:2]
-    base = init_mesh_from_calibration(session.calibration)
+    base = init_mesh_from_calibration(cal, sections)
     mesh = mesh_from_payload(mesh_vertices, base)
-    params, grid = compute_mesh_warp_params(mesh, session.calibration, img_w, img_h)
+    params, grid = compute_mesh_warp_params(mesh, cal, img_w, img_h)
 
     warped = warp_image_mesh(img, params, grid)
     ok, buf = cv2.imencode(".png", warped)

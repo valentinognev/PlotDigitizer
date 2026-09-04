@@ -15,7 +15,9 @@ export { UnskewError }
 export type Point = [number, number]
 export type UnskewMode = 'perspective' | 'mesh'
 
-const GRID_SIZE = 4
+export const DEFAULT_MESH_SECTIONS = 3
+export const MIN_MESH_SECTIONS = 2
+export const MAX_MESH_SECTIONS = 8
 
 export interface MeshVertex {
   position: Point
@@ -26,8 +28,10 @@ export interface MeshVertex {
 }
 
 export interface MeshGridState {
-  rows: typeof GRID_SIZE
-  cols: typeof GRID_SIZE
+  /** Number of mesh cells along each axis (grid vertices = sections + 1). */
+  sections: number
+  rows: number
+  cols: number
   /** Boundary vertices only; interior is derived via Coons interpolation. */
   vertices: MeshVertex[][]
 }
@@ -35,7 +39,7 @@ export interface MeshGridState {
 export interface MeshWarpTransform {
   mode: 'mesh'
   mesh: MeshGridState
-  /** Resolved 4×4 vertex positions in source image space. */
+  /** Resolved vertex positions in source image space. */
   grid: Point[][]
   plotWidth: number
   plotHeight: number
@@ -78,21 +82,23 @@ function hermite(p0: Point, m0: Point, p1: Point, m1: Point, t: number): Point {
   ]
 }
 
-function hermiteEdge4(
-  pts: [Point, Point, Point, Point],
-  tangents: [Point, Point, Point, Point],
-  t: number,
-): Point {
-  const seg = t * 3
-  const i = Math.min(2, Math.floor(seg))
+function hermiteEdge(pts: Point[], tangents: Point[], t: number): Point {
+  const numSegments = pts.length - 1
+  const seg = t * numSegments
+  const i = Math.min(numSegments - 1, Math.floor(seg))
   const local = seg - i
-  const m0 = scale(tangents[i], 1 / 3)
-  const m1 = scale(tangents[i + 1], 1 / 3)
+  const m0 = scale(tangents[i], 1 / numSegments)
+  const m1 = scale(tangents[i + 1], 1 / numSegments)
   return hermite(pts[i], m0, pts[i + 1], m1, local)
 }
 
-function isBoundary(i: number, j: number): boolean {
-  return i === 0 || i === GRID_SIZE - 1 || j === 0 || j === GRID_SIZE - 1
+export function meshGridSize(mesh: MeshGridState): number {
+  return mesh.sections + 1
+}
+
+function isBoundaryVertex(i: number, j: number, size: number): boolean {
+  const last = size - 1
+  return i === 0 || i === last || j === 0 || j === last
 }
 
 function defaultTangentAlong(p0: Point, p1: Point): Point {
@@ -138,10 +144,11 @@ export function plotQuadsMatch(a: PlotQuad | null, b: PlotQuad | null): boolean 
 
 /** Mesh's own boundary quad (its four corner vertices), independent of calibration. */
 export function meshPlotQuad(mesh: MeshGridState): PlotQuad {
+  const last = mesh.sections
   return {
-    bl: mesh.vertices[3][0].position,
-    br: mesh.vertices[3][3].position,
-    tr: mesh.vertices[0][3].position,
+    bl: mesh.vertices[last][0].position,
+    br: mesh.vertices[last][last].position,
+    tr: mesh.vertices[0][last].position,
     tl: mesh.vertices[0][0].position,
   }
 }
@@ -167,11 +174,16 @@ export function remeshToPlotQuad(mesh: MeshGridState, from: PlotQuad, to: PlotQu
       return out
     }),
   )
-  return { rows: mesh.rows, cols: mesh.cols, vertices }
+  return { sections: mesh.sections, rows: mesh.rows, cols: mesh.cols, vertices }
 }
 
 /** Build initial mesh from calibration plot quad (same corners as perspective unskew). */
-export function initMeshFromCalibration(calibration: Calibration): MeshGridState {
+export function initMeshFromCalibration(
+  calibration: Calibration,
+  sections: number = DEFAULT_MESH_SECTIONS,
+): MeshGridState {
+  const n = sections
+  const size = n + 1
   const bounds = getAxisBounds(calibration)
   if (!bounds) throw new UnskewError('Calibration bounds unavailable')
 
@@ -188,32 +200,67 @@ export function initMeshFromCalibration(calibration: Calibration): MeshGridState
     origin[1] + (br[1] - origin[1]) + (tl[1] - origin[1]),
   ]
 
-  const corners: Point[][] = [
-    [tl, lerp(tl, tr, 1 / 3), lerp(tl, tr, 2 / 3), tr],
-    [lerp(tl, origin, 1 / 3), [0, 0], [0, 0], lerp(tr, br, 1 / 3)],
-    [lerp(tl, origin, 2 / 3), [0, 0], [0, 0], lerp(tr, br, 2 / 3)],
-    [origin, lerp(origin, br, 1 / 3), lerp(origin, br, 2 / 3), br],
-  ]
+  const boundaryPosition = (i: number, j: number): Point => {
+    if (i === 0) return lerp(tl, tr, j / n)
+    if (i === n) return lerp(origin, br, j / n)
+    if (j === 0) return lerp(tl, origin, i / n)
+    return lerp(tr, br, i / n)
+  }
 
   const vertices: MeshVertex[][] = []
-  for (let i = 0; i < GRID_SIZE; i++) {
+  for (let i = 0; i < size; i++) {
     const row: MeshVertex[] = []
-    for (let j = 0; j < GRID_SIZE; j++) {
-      if (!isBoundary(i, j)) {
+    for (let j = 0; j < size; j++) {
+      if (!isBoundaryVertex(i, j, size)) {
         row.push({ position: [0, 0] })
         continue
       }
-      const pos = corners[i][j]
+      const pos = boundaryPosition(i, j)
       const vtx: MeshVertex = { position: pos }
-      if (j < GRID_SIZE - 1) vtx.tangentH = defaultTangentAlong(pos, corners[i][j + 1])
-      else if (j > 0) vtx.tangentH = defaultTangentAlong(pos, corners[i][j - 1])
-      if (i < GRID_SIZE - 1) vtx.tangentV = defaultTangentAlong(pos, corners[i + 1][j])
-      else if (i > 0) vtx.tangentV = defaultTangentAlong(pos, corners[i - 1][j])
+      if (j < n) vtx.tangentH = defaultTangentAlong(pos, boundaryPosition(i, j + 1))
+      else if (j > 0) vtx.tangentH = defaultTangentAlong(pos, boundaryPosition(i, j - 1))
+      if (i < n) vtx.tangentV = defaultTangentAlong(pos, boundaryPosition(i + 1, j))
+      else if (i > 0) vtx.tangentV = defaultTangentAlong(pos, boundaryPosition(i - 1, j))
       row.push(vtx)
     }
     vertices.push(row)
   }
-  return { rows: GRID_SIZE, cols: GRID_SIZE, vertices }
+  return { sections: n, rows: size, cols: size, vertices }
+}
+
+/** Change mesh subdivision count, preserving the current boundary shape via Coons resampling. */
+export function resizeMeshSections(mesh: MeshGridState, newSections: number): MeshGridState {
+  const clamped = Math.max(MIN_MESH_SECTIONS, Math.min(MAX_MESH_SECTIONS, newSections))
+  if (clamped === mesh.sections) return mesh
+
+  const size = clamped + 1
+  const vertices: MeshVertex[][] = []
+  for (let i = 0; i < size; i++) {
+    const row: MeshVertex[] = []
+    for (let j = 0; j < size; j++) {
+      if (!isBoundaryVertex(i, j, size)) {
+        row.push({ position: [0, 0] })
+        continue
+      }
+      const u = j / clamped
+      const v = i / clamped
+      const pos = evalCoons(mesh, u, v)
+      const vtx: MeshVertex = { position: pos }
+      if (j < clamped) {
+        vtx.tangentH = defaultTangentAlong(pos, evalCoons(mesh, (j + 1) / clamped, v))
+      } else if (j > 0) {
+        vtx.tangentH = defaultTangentAlong(pos, evalCoons(mesh, (j - 1) / clamped, v))
+      }
+      if (i < clamped) {
+        vtx.tangentV = defaultTangentAlong(pos, evalCoons(mesh, u, (i + 1) / clamped))
+      } else if (i > 0) {
+        vtx.tangentV = defaultTangentAlong(pos, evalCoons(mesh, u, (i - 1) / clamped))
+      }
+      row.push(vtx)
+    }
+    vertices.push(row)
+  }
+  return { sections: clamped, rows: size, cols: size, vertices }
 }
 
 function lineIntersection(p1: Point, p2: Point, p3: Point, p4: Point): Point {
@@ -239,53 +286,38 @@ function projectOnLine(point: Point, lineA: Point, lineB: Point): Point {
   return [lineA[0] + t * dx, lineA[1] + t * dy]
 }
 
-function boundaryRow(mesh: MeshGridState, i: number): [Point, Point, Point, Point] {
-  return [
-    mesh.vertices[i][0].position,
-    mesh.vertices[i][1].position,
-    mesh.vertices[i][2].position,
-    mesh.vertices[i][3].position,
-  ]
+function boundaryRow(mesh: MeshGridState, i: number): Point[] {
+  const size = meshGridSize(mesh)
+  return Array.from({ length: size }, (_, j) => mesh.vertices[i][j].position)
 }
 
-function boundaryCol(mesh: MeshGridState, j: number): [Point, Point, Point, Point] {
-  return [
-    mesh.vertices[0][j].position,
-    mesh.vertices[1][j].position,
-    mesh.vertices[2][j].position,
-    mesh.vertices[3][j].position,
-  ]
+function boundaryCol(mesh: MeshGridState, j: number): Point[] {
+  const size = meshGridSize(mesh)
+  return Array.from({ length: size }, (_, i) => mesh.vertices[i][j].position)
 }
 
-function rowTangentsH(mesh: MeshGridState, i: number): [Point, Point, Point, Point] {
-  return [
-    mesh.vertices[i][0].tangentH ?? [0, 0],
-    mesh.vertices[i][1].tangentH ?? [0, 0],
-    mesh.vertices[i][2].tangentH ?? [0, 0],
-    mesh.vertices[i][3].tangentH ?? [0, 0],
-  ]
+function rowTangentsH(mesh: MeshGridState, i: number): Point[] {
+  const size = meshGridSize(mesh)
+  return Array.from({ length: size }, (_, j) => mesh.vertices[i][j].tangentH ?? [0, 0])
 }
 
-function colTangentsV(mesh: MeshGridState, j: number): [Point, Point, Point, Point] {
-  return [
-    mesh.vertices[0][j].tangentV ?? [0, 0],
-    mesh.vertices[1][j].tangentV ?? [0, 0],
-    mesh.vertices[2][j].tangentV ?? [0, 0],
-    mesh.vertices[3][j].tangentV ?? [0, 0],
-  ]
+function colTangentsV(mesh: MeshGridState, j: number): Point[] {
+  const size = meshGridSize(mesh)
+  return Array.from({ length: size }, (_, i) => mesh.vertices[i][j].tangentV ?? [0, 0])
 }
 
 /** Coons patch evaluation: (u,v) ∈ [0,1]² → source image position. */
 export function evalCoons(mesh: MeshGridState, u: number, v: number): Point {
-  const top = hermiteEdge4(boundaryRow(mesh, 0), rowTangentsH(mesh, 0), u)
-  const bottom = hermiteEdge4(boundaryRow(mesh, 3), rowTangentsH(mesh, 3), u)
-  const left = hermiteEdge4(boundaryCol(mesh, 0), colTangentsV(mesh, 0), v)
-  const right = hermiteEdge4(boundaryCol(mesh, 3), colTangentsV(mesh, 3), v)
+  const last = mesh.sections
+  const top = hermiteEdge(boundaryRow(mesh, 0), rowTangentsH(mesh, 0), u)
+  const bottom = hermiteEdge(boundaryRow(mesh, last), rowTangentsH(mesh, last), u)
+  const left = hermiteEdge(boundaryCol(mesh, 0), colTangentsV(mesh, 0), v)
+  const right = hermiteEdge(boundaryCol(mesh, last), colTangentsV(mesh, last), v)
 
   const p00 = mesh.vertices[0][0].position
-  const p03 = mesh.vertices[0][3].position
-  const p30 = mesh.vertices[3][0].position
-  const p33 = mesh.vertices[3][3].position
+  const p03 = mesh.vertices[0][last].position
+  const p30 = mesh.vertices[last][0].position
+  const p33 = mesh.vertices[last][last].position
 
   const bilinear =
     (1 - u) * (1 - v) * p00[0] +
@@ -304,13 +336,15 @@ export function evalCoons(mesh: MeshGridState, u: number, v: number): Point {
   ]
 }
 
-/** Resolve full 4×4 grid positions at uniform (i/3, j/3). */
+/** Resolve full grid positions at uniform spacing. */
 export function resolveMeshGrid(mesh: MeshGridState): Point[][] {
+  const size = meshGridSize(mesh)
+  const n = mesh.sections
   const grid: Point[][] = []
-  for (let i = 0; i < GRID_SIZE; i++) {
+  for (let i = 0; i < size; i++) {
     const row: Point[] = []
-    for (let j = 0; j < GRID_SIZE; j++) {
-      row.push(evalCoons(mesh, j / 3, i / 3))
+    for (let j = 0; j < size; j++) {
+      row.push(evalCoons(mesh, j / n, i / n))
     }
     grid.push(row)
   }
@@ -330,12 +364,13 @@ function evalCell(grid: Point[][], ci: number, cj: number, s: number, t: number)
 }
 
 export function evalMeshUV(grid: Point[][], u: number, v: number): Point {
+  const sections = grid.length - 1
   const uu = Math.max(0, Math.min(1, u))
   const vv = Math.max(0, Math.min(1, v))
-  const uf = uu * 3
-  const vf = vv * 3
-  const ci = Math.min(2, Math.floor(vf))
-  const cj = Math.min(2, Math.floor(uf))
+  const uf = uu * sections
+  const vf = vv * sections
+  const ci = Math.min(sections - 1, Math.floor(vf))
+  const cj = Math.min(sections - 1, Math.floor(uf))
   const s = uf - cj
   const t = vf - ci
   return evalCell(grid, ci, cj, s, t)
@@ -353,8 +388,9 @@ function quadArea(a: Point, b: Point, c: Point, d: Point): number {
 
 export function validateMesh(mesh: MeshGridState): void {
   const grid = resolveMeshGrid(mesh)
-  for (let i = 0; i < 3; i++) {
-    for (let j = 0; j < 3; j++) {
+  const n = mesh.sections
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
       const area = quadArea(grid[i][j], grid[i][j + 1], grid[i + 1][j + 1], grid[i + 1][j])
       if (area < 1) throw new UnskewError('Degenerate mesh cell')
     }
@@ -367,9 +403,10 @@ export function isMeshWithinImage(
   imageHeight: number,
 ): boolean {
   const margin = 50
-  for (let i = 0; i < GRID_SIZE; i++) {
-    for (let j = 0; j < GRID_SIZE; j++) {
-      if (!isBoundary(i, j)) continue
+  const size = meshGridSize(mesh)
+  for (let i = 0; i < size; i++) {
+    for (let j = 0; j < size; j++) {
+      if (!isBoundaryVertex(i, j, size)) continue
       const [x, y] = mesh.vertices[i][j].position
       if (
         x < -margin ||
@@ -478,10 +515,11 @@ function meshBlendFactor(u: number, v: number): number {
 /** Like evalMeshUV, but doesn't clamp (u,v) — extrapolates linearly past the
  *  boundary cells so the mesh's local shape keeps influencing nearby pixels. */
 function evalMeshUVExtrapolated(grid: Point[][], u: number, v: number): Point {
-  const uf = u * 3
-  const vf = v * 3
-  const ci = Math.max(0, Math.min(2, Math.floor(vf)))
-  const cj = Math.max(0, Math.min(2, Math.floor(uf)))
+  const sections = grid.length - 1
+  const uf = u * sections
+  const vf = v * sections
+  const ci = Math.max(0, Math.min(sections - 1, Math.floor(vf)))
+  const cj = Math.max(0, Math.min(sections - 1, Math.floor(uf)))
   const s = uf - cj
   const t = vf - ci
   return evalCell(grid, ci, cj, s, t)
@@ -672,11 +710,12 @@ export interface MeshVertexPayload {
   tangent_v?: [number, number]
 }
 
-export function meshToPayload(mesh: MeshGridState): { vertices: MeshVertexPayload[] } {
+export function meshToPayload(mesh: MeshGridState): { sections: number; vertices: MeshVertexPayload[] } {
+  const size = meshGridSize(mesh)
   const out: MeshVertexPayload[] = []
-  for (let i = 0; i < GRID_SIZE; i++) {
-    for (let j = 0; j < GRID_SIZE; j++) {
-      if (!isBoundary(i, j)) continue
+  for (let i = 0; i < size; i++) {
+    for (let j = 0; j < size; j++) {
+      if (!isBoundaryVertex(i, j, size)) continue
       const v = mesh.vertices[i][j]
       const entry: MeshVertexPayload = { row: i, col: j, position: v.position }
       if (v.tangentH) entry.tangent_h = v.tangentH
@@ -684,13 +723,15 @@ export function meshToPayload(mesh: MeshGridState): { vertices: MeshVertexPayloa
       out.push(entry)
     }
   }
-  return { vertices: out }
+  return { sections: mesh.sections, vertices: out }
 }
 
 export function meshFromPayload(
-  payload: { vertices: MeshVertexPayload[] },
+  payload: { sections?: number; vertices: MeshVertexPayload[] },
   base: MeshGridState,
 ): MeshGridState {
+  const sections = payload.sections ?? base.sections
+  const size = sections + 1
   const vertices = base.vertices.map((row) => row.map((v) => ({ ...v, position: [...v.position] as Point })))
   for (const v of payload.vertices) {
     const cell = vertices[v.row]?.[v.col]
@@ -699,16 +740,26 @@ export function meshFromPayload(
     if (v.tangent_h) cell.tangentH = v.tangent_h
     if (v.tangent_v) cell.tangentV = v.tangent_v
   }
-  return { rows: GRID_SIZE, cols: GRID_SIZE, vertices }
+  return { sections, rows: size, cols: size, vertices }
+}
+
+export function inferMeshSectionsFromPayload(payload: { sections?: number; vertices: MeshVertexPayload[] }): number {
+  if (payload.sections != null) return payload.sections
+  let maxIndex = 0
+  for (const v of payload.vertices) {
+    maxIndex = Math.max(maxIndex, v.row, v.col)
+  }
+  return maxIndex > 0 ? maxIndex : DEFAULT_MESH_SECTIONS
 }
 
 export function restoreMeshFromWorkspace(
   calibration: Calibration,
-  payload: { vertices: MeshVertexPayload[] },
+  payload: { sections?: number; vertices: MeshVertexPayload[] },
   imageWidth: number,
   imageHeight: number,
 ): MeshGridState {
-  const merged = meshFromPayload(payload, initMeshFromCalibration(calibration))
+  const sections = inferMeshSectionsFromPayload(payload)
+  const merged = meshFromPayload(payload, initMeshFromCalibration(calibration, sections))
   return sanitizeMeshForImage(merged, calibration, imageWidth, imageHeight)
 }
 

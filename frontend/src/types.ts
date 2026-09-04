@@ -63,6 +63,7 @@ export interface MeshVertexPayload {
 }
 
 export interface MeshGridPayload {
+  sections?: number
   vertices: MeshVertexPayload[]
 }
 

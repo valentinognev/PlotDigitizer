@@ -38,13 +38,17 @@ import {
 import { mergePreferencesUpdate, mergeSessionUpdate } from './lib/sessionMerge'
 import {
   computeMeshWarpTransform,
+  DEFAULT_MESH_SECTIONS,
   initMeshFromCalibration,
   isMeshReady,
   isMeshWithinImage,
+  MAX_MESH_SECTIONS,
   meshToPayload,
+  MIN_MESH_SECTIONS,
   plotQuadFromCalibration,
   plotQuadsMatch,
   remeshToPlotQuad,
+  resizeMeshSections,
   restoreMeshFromWorkspace,
   sanitizeMeshForImage,
   type CorrectionTransform,
@@ -373,6 +377,27 @@ export default function App() {
     [session?.id, syncSessionUi],
   )
 
+  /** Await any debounced calibration/workspace patch before apply or other server-critical ops. */
+  const flushPreferencesQuiet = useCallback(async (): Promise<void> => {
+    const sessionId = session?.id
+    if (!sessionId) return
+    clearTimeout(prefsDebounce.current)
+    const toSend = { ...pendingPrefsPatch.current }
+    if (Object.keys(toSend).length === 0) return
+    pendingPrefsPatch.current = {}
+    const seq = ++prefsSeq.current
+    try {
+      const saved = await patchSessionPreferences(sessionId, toSend)
+      if (seq !== prefsSeq.current) return
+      setSession((prev) => mergePreferencesUpdate(prev, saved))
+      if (saved.calibration) setDraftCalibration(saved.calibration)
+    } catch (e) {
+      if (seq !== prefsSeq.current) return
+      toast(e instanceof Error ? e.message : 'Calibration save failed')
+      throw e
+    }
+  }, [session?.id])
+
   const syncCurves = (curves: Session['curves']) => {
     patchCurvesQuiet({ curves }, (current) => ({ ...current, curves }))
     const active = curves.find((c) => c.id === activeCurveId)
@@ -515,7 +540,7 @@ export default function App() {
       meshSyncedQuadRef.current = calibQuad
     }
 
-    if (!isMeshWithinImage(next, imageWidth, imageHeight)) {
+    if (!unskewPreview && !isMeshWithinImage(next, imageWidth, imageHeight)) {
       next = sanitizeMeshForImage(next, calibration, imageWidth, imageHeight)
       toast('Mesh reset — saved vertices were outside the image bounds')
     }
@@ -524,7 +549,7 @@ export default function App() {
       setMeshGrid(next)
       saveWorkspaceQuiet({ meshOverride: next })
     }
-  }, [calibration, meshGrid, imageWidth, imageHeight, saveWorkspaceQuiet])
+  }, [calibration, meshGrid, imageWidth, imageHeight, unskewPreview, saveWorkspaceQuiet])
 
   const axisBounds = calibration ? getAxisBounds(calibration) : null
   const canToggleUnskewPreview = !!session && !!axisBounds && !busy
@@ -572,16 +597,19 @@ export default function App() {
               : 'Ready — enable preview to see correction'
   const canApplyUnskew = unskewPreview && correctionReady && !busy
 
-  const ensureMeshGrid = useCallback(() => {
-    if (!calibration) return null
-    try {
-      const grid = initMeshFromCalibration(calibration)
-      meshSyncedQuadRef.current = plotQuadFromCalibration(calibration)
-      return grid
-    } catch {
-      return null
-    }
-  }, [calibration])
+  const ensureMeshGrid = useCallback(
+    (sections: number = meshGrid?.sections ?? DEFAULT_MESH_SECTIONS) => {
+      if (!calibration) return null
+      try {
+        const grid = initMeshFromCalibration(calibration, sections)
+        meshSyncedQuadRef.current = plotQuadFromCalibration(calibration)
+        return grid
+      } catch {
+        return null
+      }
+    },
+    [calibration, meshGrid?.sections],
+  )
 
   const handleUnskewModeChange = (mode: UnskewMode) => {
     setUnskewMode(mode)
@@ -627,12 +655,14 @@ export default function App() {
   }
 
   const handleApplyUnskew = () => {
-    if (!session) return
+    if (!session || !calibration) return
     run(async () => {
+      await flushPreferencesQuiet()
+      const calPayload = { ...calibration, source: 'manual' as const }
       const body =
         unskewMode === 'mesh' && meshGrid
-          ? { mode: 'mesh' as const, mesh: meshToPayload(meshGrid) }
-          : { mode: 'perspective' as const }
+          ? { mode: 'mesh' as const, mesh: meshToPayload(meshGrid), calibration: calPayload }
+          : { mode: 'perspective' as const, calibration: calPayload }
       const s = await applyUnskew(session.id, body)
       setUnskewPreview(false)
       setMeshGrid(null)
@@ -653,7 +683,8 @@ export default function App() {
 
   const handleResetMesh = () => {
     if (!calibration) return
-    const grid = ensureMeshGrid()
+    const sections = meshGrid?.sections ?? DEFAULT_MESH_SECTIONS
+    const grid = ensureMeshGrid(sections)
     if (!grid) {
       toast('Cannot reset mesh — check calibration bounds')
       return
@@ -661,6 +692,32 @@ export default function App() {
     setMeshGrid(grid)
     saveWorkspaceQuiet({ meshOverride: grid })
     toast('Mesh reset to calibration bounds')
+  }
+
+  const handleMeshSectionsChange = (delta: number) => {
+    if (!calibration) return
+    const current = meshGrid?.sections ?? DEFAULT_MESH_SECTIONS
+    const next = current + delta
+    if (next < MIN_MESH_SECTIONS || next > MAX_MESH_SECTIONS) return
+
+    if (!meshGrid) {
+      const grid = ensureMeshGrid(next)
+      if (!grid) {
+        toast('Cannot initialize mesh — check calibration bounds')
+        return
+      }
+      setMeshGrid(grid)
+      saveWorkspaceQuiet({ meshOverride: grid })
+      return
+    }
+
+    try {
+      const grid = resizeMeshSections(meshGrid, next)
+      setMeshGrid(grid)
+      saveWorkspaceQuiet({ meshOverride: grid })
+    } catch {
+      toast('Cannot resize mesh — check boundary geometry')
+    }
   }
 
   const handleCalibrationChange = (cal: Calibration) => {
@@ -768,6 +825,10 @@ export default function App() {
           onApply={handleApplyUnskew}
           onCancelPreview={() => setUnskewPreview(false)}
           onResetMesh={handleResetMesh}
+          meshSections={unskewMode === 'mesh' ? (meshGrid?.sections ?? DEFAULT_MESH_SECTIONS) : undefined}
+          minMeshSections={MIN_MESH_SECTIONS}
+          maxMeshSections={MAX_MESH_SECTIONS}
+          onMeshSectionsChange={handleMeshSectionsChange}
         />
         <CalibrationPanel
           calibration={calibration}

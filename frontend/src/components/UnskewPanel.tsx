@@ -13,6 +13,10 @@ interface Props {
   busy: boolean
   canResetMesh?: boolean
   onResetMesh?: () => void
+  meshSections?: number
+  minMeshSections?: number
+  maxMeshSections?: number
+  onMeshSectionsChange?: (delta: number) => void
 }
 
 export function UnskewPanel({
@@ -28,6 +32,10 @@ export function UnskewPanel({
   busy,
   canResetMesh = false,
   onResetMesh,
+  meshSections,
+  minMeshSections = 2,
+  maxMeshSections = 8,
+  onMeshSectionsChange,
 }: Props) {
   return (
     <section className="min-w-0 shrink rounded-lg border border-slate-700 bg-slate-800/50 px-2 py-1 text-[11px]">
@@ -57,6 +65,30 @@ export function UnskewPanel({
             Mesh
           </button>
         </div>
+        {mode === 'mesh' && meshSections != null && onMeshSectionsChange && (
+          <div
+            className="flex shrink-0 items-center gap-0.5 rounded border border-slate-600 text-[10px]"
+            title="Mesh subdivisions per edge (default 3)"
+          >
+            <button
+              type="button"
+              disabled={busy || meshSections <= minMeshSections}
+              onClick={() => onMeshSectionsChange(-1)}
+              className="px-1.5 py-0.5 text-slate-300 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              −
+            </button>
+            <span className="min-w-[1.25rem] text-center tabular-nums text-slate-200">{meshSections}</span>
+            <button
+              type="button"
+              disabled={busy || meshSections >= maxMeshSections}
+              onClick={() => onMeshSectionsChange(1)}
+              className="px-1.5 py-0.5 text-slate-300 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              +
+            </button>
+          </div>
+        )}
         <button
           type="button"
           title={previewActive ? 'Turn off corrected preview' : 'Show corrected preview on canvas'}

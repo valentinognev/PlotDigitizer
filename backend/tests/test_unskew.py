@@ -172,3 +172,33 @@ def test_unskew_apply_no_calibration():
     assert apply_res.status_code == 400
     detail = apply_res.json()["detail"]["error"]
     assert detail["code"] == "unskew_no_calibration"
+
+
+def test_unskew_apply_uses_request_calibration_not_stale_session():
+    """Apply must warp with the calibration sent in the request (preview parity)."""
+    p = json.loads(FIXTURE.read_text())["axis_points"]
+    stale = _skewed_calibration()
+    shifted = _skewed_calibration()
+    shifted["x"]["ref_points"][1]["pixel"] = [p["xmax"][0], p["xmax"][1] + 80]
+
+    res = client.post("/sessions", files={"file": ("plot.png", _png_bytes(), "image/png")})
+    session_id = res.json()["id"]
+    client.patch(
+        f"/sessions/{session_id}/preferences",
+        json={"calibration": stale, "manual_calibration": True},
+    )
+    with_stale = client.post(f"/sessions/{session_id}/unskew/apply").json()
+
+    res = client.post("/sessions", files={"file": ("plot.png", _png_bytes(), "image/png")})
+    session_id2 = res.json()["id"]
+    client.patch(
+        f"/sessions/{session_id2}/preferences",
+        json={"calibration": stale, "manual_calibration": True},
+    )
+    with_shifted = client.post(
+        f"/sessions/{session_id2}/unskew/apply",
+        json={"mode": "perspective", "calibration": shifted},
+    ).json()
+
+    assert with_stale["image_meta"]["width"] != with_shifted["image_meta"]["width"]
+    assert with_shifted["image_meta"]["width"] == 777

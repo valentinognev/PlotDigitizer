@@ -12,6 +12,9 @@ CurveStyle = Literal["solid", "dashed", "dotted", "unknown"]
 CalibrationSource = Literal["manual"]
 
 DEFAULT_POINT_COUNT = 9
+DEFAULT_MESH_SECTIONS = 3
+MIN_MESH_SECTIONS = 2
+MAX_MESH_SECTIONS = 8
 
 
 class RefPoint(BaseModel):
@@ -64,14 +67,15 @@ class ImageSource(BaseModel):
 
 
 class MeshVertexPayload(BaseModel):
-    row: int = Field(ge=0, le=3)
-    col: int = Field(ge=0, le=3)
+    row: int = Field(ge=0, le=MAX_MESH_SECTIONS)
+    col: int = Field(ge=0, le=MAX_MESH_SECTIONS)
     position: tuple[float, float]
     tangent_h: tuple[float, float] | None = None
     tangent_v: tuple[float, float] | None = None
 
 
 class MeshGridPayload(BaseModel):
+    sections: int = Field(default=DEFAULT_MESH_SECTIONS, ge=MIN_MESH_SECTIONS, le=MAX_MESH_SECTIONS)
     vertices: list[MeshVertexPayload]
 
 
@@ -164,3 +168,6 @@ class ExportFormat(BaseModel):
 class UnskewApplyRequest(BaseModel):
     mode: Literal["perspective", "mesh"] = "perspective"
     mesh: MeshGridPayload | None = None
+    # When set, warp uses these bounds (must match the client preview). Session calibration
+    # is updated to this value on apply so marks stay aligned with the committed image.
+    calibration: Calibration | None = None

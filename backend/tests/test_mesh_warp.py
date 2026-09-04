@@ -54,26 +54,29 @@ def _calibration() -> Calibration:
     )
 
 
-def test_init_mesh_has_12_boundary_vertices():
+def test_init_mesh_has_boundary_vertices():
     cal = _calibration()
     mesh = init_mesh_from_calibration(cal)
+    sections = len(mesh) - 1
     boundary = sum(
         1
-        for i in range(4)
-        for j in range(4)
-        if i == 0 or i == 3 or j == 0 or j == 3
+        for i in range(len(mesh))
+        for j in range(len(mesh))
+        if i == 0 or i == sections or j == 0 or j == sections
     )
-    assert boundary == 12
+    assert sections == 3
+    assert boundary == 4 * sections
     validate_mesh(mesh)
 
 
 def test_coons_corners_match_boundary():
     cal = _calibration()
     mesh = init_mesh_from_calibration(cal)
+    last = len(mesh) - 1
     assert eval_coons(mesh, 0, 0) == mesh[0][0].position
-    assert eval_coons(mesh, 1, 0) == mesh[0][3].position
-    assert eval_coons(mesh, 0, 1) == mesh[3][0].position
-    assert eval_coons(mesh, 1, 1) == mesh[3][3].position
+    assert eval_coons(mesh, 1, 0) == mesh[0][last].position
+    assert eval_coons(mesh, 0, 1) == mesh[last][0].position
+    assert eval_coons(mesh, 1, 1) == mesh[last][last].position
 
 
 def test_mesh_top_maps_near_ymax():
@@ -205,7 +208,10 @@ def test_mesh_axis_bounds_track_warp_with_adjusted_mesh():
     ]
     apply_res = client.post(
         f"/sessions/{session_id}/unskew/apply",
-        json={"mode": "mesh", "mesh": {"vertices": [v.model_dump() for v in vertices]}},
+        json={
+            "mode": "mesh",
+            "mesh": {"sections": 3, "vertices": [v.model_dump() for v in vertices]},
+        },
     )
     assert apply_res.status_code == 200
     body = apply_res.json()

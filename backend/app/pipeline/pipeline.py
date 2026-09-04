@@ -97,15 +97,23 @@ def run_unskew_apply(
     request: UnskewApplyRequest | None = None,
 ) -> tuple[Session, bytes]:
     req = request or UnskewApplyRequest()
+    cal = req.calibration or session.calibration
+    if cal is None:
+        raise ValueError("Calibration required for unskew")
+    session.calibration = cal
+
     if req.mode == "mesh":
         if req.mesh is None:
             raise ValueError("Mesh payload required for mesh mode")
         from app.cv.mesh_warp import run_mesh_warp_apply
 
-        return run_mesh_warp_apply(session, image_bytes, req.mesh.vertices)
-
-    if session.calibration is None:
-        raise ValueError("Calibration required for unskew")
+        return run_mesh_warp_apply(
+            session,
+            image_bytes,
+            req.mesh.vertices,
+            req.mesh.sections,
+            calibration=cal,
+        )
 
     arr = np.frombuffer(image_bytes, dtype=np.uint8)
     img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
@@ -113,7 +121,7 @@ def run_unskew_apply(
         raise ValueError("Invalid image")
 
     img_h, img_w = img.shape[:2]
-    xmin, xmax, ymin, ymax = bounds_pixels_from_calibration(session.calibration)
+    xmin, xmax, ymin, ymax = bounds_pixels_from_calibration(cal)
     result = compute_unskew_homography(
         xmin,
         xmax,

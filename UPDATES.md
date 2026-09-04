@@ -40,6 +40,21 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [2.2.2] — 2026-07-05
+### Changed
+- Mesh overlay: removed tangent handle controls on boundary nodes; only draggable position
+  handles remain.
+
+## [2.2.1] — 2026-07-05
+### Added
+- **Configurable mesh sections:** Unskew mesh mode now exposes − / + controls to change subdivisions
+  per edge (default 3, range 2–8); resizing preserves the current boundary shape via Coons
+  resampling. `sections` is persisted in workspace mesh payload and sent on apply.
+
+### Changed
+- Mesh grid math (frontend `meshWarp.ts`, backend `mesh_warp.py`) generalized from fixed 4×4 to
+  variable `(sections + 1)²` vertex grids.
+
 ## [2.2.0] — 2026-07-05
 ### Added
 - **Mesh unskew mode:** 4×4 boundary grid (Coons patch) for curved or wavy paper beyond simple
