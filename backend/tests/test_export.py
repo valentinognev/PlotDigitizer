@@ -7,11 +7,13 @@ from app.calibration.calibration import CalibrationError
 from app.export.export import export_csv, export_json
 from app.export.project_io import is_project_payload, load_project_from_text
 from app.models.schemas import (
+    AxisPoint,
     Calibration,
     CalibrationAxis,
     Curve,
     Point,
     RefPoint,
+    ScaleBar,
     Session,
     SessionPublic,
 )
@@ -131,3 +133,65 @@ def test_improve_and_resample_reject_scatter():
         run_cv_improve(session, TINY_PNG_BYTES, session.curves[0].id)
     with pytest.raises(ValueError, match="scatter"):
         run_resample(session, TINY_PNG_BYTES, session.curves[0].id, 12)
+
+
+def _polar_cal() -> Calibration:
+    return Calibration(
+        x=CalibrationAxis(scale="linear", ref_points=[]),
+        y=CalibrationAxis(scale="linear", ref_points=[]),
+        coords_type="polar",
+        model="affine",
+        theta_units="degrees",
+        origin_radius=0.0,
+        axis_points=[
+            AxisPoint(pixel=(100.0, 100.0), x_value=0.0, y_value=0.0),
+            AxisPoint(pixel=(180.0, 100.0), x_value=0.0, y_value=10.0),
+            AxisPoint(pixel=(100.0, 20.0), x_value=90.0, y_value=10.0),
+        ],
+    )
+
+
+def _map_cal() -> Calibration:
+    return Calibration(
+        x=CalibrationAxis(scale="linear", ref_points=[]),
+        y=CalibrationAxis(scale="linear", ref_points=[]),
+        coords_type="map",
+        scale_bar=ScaleBar(pixel_a=(0.0, 100.0), pixel_b=(100.0, 100.0), length=50.0, units="km"),
+    )
+
+
+def test_csv_headers_cartesian_unchanged():
+    out = export_csv(_session_ready())
+    header = [ln for ln in out.splitlines() if ln and not ln.startswith("#")][0]
+    assert header == "curve_id,curve_label,x,y"
+
+
+def test_csv_headers_and_values_polar():
+    from app.calibration.coords import pixel_to_data
+
+    session = _session_ready()
+    session.calibration = _polar_cal()
+    session.curves[0].points = [Point(pixel=(180.0, 100.0), origin="user")]
+    out = export_csv(session)
+    lines = [ln for ln in out.splitlines() if ln]
+    assert lines[0] == "curve_id,curve_label,theta,R"
+    theta, radius = pixel_to_data(session.calibration, (180.0, 100.0))
+    parts = lines[1].split(",")
+    assert abs(float(parts[2]) - theta) < 1e-9
+    assert abs(float(parts[3]) - radius) < 1e-9
+
+
+def test_csv_headers_and_values_map_includes_units():
+    from app.calibration.coords import pixel_to_data
+
+    session = _session_ready()
+    session.calibration = _map_cal()
+    session.curves[0].points = [Point(pixel=(50.0, 50.0), origin="user")]
+    out = export_csv(session)
+    lines = out.splitlines()
+    assert lines[0] == "# units: km"
+    assert lines[1] == "curve_id,curve_label,x,y"
+    x, y = pixel_to_data(session.calibration, (50.0, 50.0))
+    parts = lines[2].split(",")
+    assert abs(float(parts[2]) - x) < 1e-9
+    assert abs(float(parts[3]) - y) < 1e-9

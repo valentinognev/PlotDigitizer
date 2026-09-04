@@ -74,20 +74,31 @@ def _data_rows_from_json(text: str) -> list[dict[str, Any]]:
 
 
 def _data_rows_from_csv(text: str) -> list[dict[str, Any]]:
-    reader = csv.DictReader(io.StringIO(text))
+    stripped = "\n".join(
+        line for line in text.splitlines() if line.strip() and not line.lstrip().startswith("#")
+    )
+    reader = csv.DictReader(io.StringIO(stripped))
     if not reader.fieldnames:
         raise ImportError("CSV file is empty")
     fields = {f.lower().strip() for f in reader.fieldnames}
-    required = {"curve_label", "x", "y"}
-    if not required.issubset(fields):
-        raise ImportError('CSV must have columns: curve_label, x, y (curve_id optional)')
+    has_xy = {"x", "y"}.issubset(fields)
+    has_polar = {"theta", "r"}.issubset(fields)
+    if not {"curve_label"}.issubset(fields) or not (has_xy or has_polar):
+        raise ImportError(
+            "CSV must have columns: curve_label, x, y (curve_id optional) "
+            "or curve_label, theta, R for polar"
+        )
     rows: list[dict[str, Any]] = []
     for row in reader:
         id_key = next((k for k in row if k.lower().strip() == "curve_id"), None)
         label_key = next((k for k in row if k.lower().strip() == "curve_label"), "curve_label")
-        x_key = next((k for k in row if k.lower().strip() == "x"), "x")
-        y_key = next((k for k in row if k.lower().strip() == "y"), "y")
         origin_key = next((k for k in row if k.lower().strip() == "origin"), None)
+        if has_polar:
+            x_key = next(k for k in row if k.lower().strip() == "theta")
+            y_key = next(k for k in row if k.lower().strip() == "r")
+        else:
+            x_key = next(k for k in row if k.lower().strip() == "x")
+            y_key = next(k for k in row if k.lower().strip() == "y")
         try:
             x = float(row[x_key])
             y = float(row[y_key])

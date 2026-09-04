@@ -161,3 +161,42 @@ def test_legacy_curve_json_import_still_works():
     assert len(curves) == 1
     assert curves[0].label == "A"
     assert len(curves[0].points) == 2
+
+
+def test_project_roundtrip_precision_fields():
+    session = _session_ready()
+    session.calibration.coords_type = "polar"
+    session.calibration.theta_units = "radians"
+    session.calibration.origin_radius = 1.5
+    session.calibration.scale_bar = None
+    session.curves[0].connect_as = "scatter"
+    if session.curves[0].filter is None:
+        from app.models.schemas import ColorFilter
+
+        session.curves[0].filter = ColorFilter(mode="intensity", low=0.1, high=0.4)
+    dumped = export_json(session, image_bytes=TINY_PNG_BYTES)
+    restored, _img = load_project_from_text(dumped)
+    assert restored.calibration is not None
+    assert restored.calibration.coords_type == "polar"
+    assert restored.calibration.theta_units == "radians"
+    assert restored.calibration.origin_radius == 1.5
+    assert restored.curves[0].connect_as == "scatter"
+    assert restored.curves[0].filter is not None
+    assert restored.curves[0].filter.low == 0.1
+
+
+def test_project_roundtrip_map_scale_bar():
+    from app.models.schemas import ScaleBar
+
+    session = _session_ready()
+    session.calibration.coords_type = "map"
+    session.calibration.scale_bar = ScaleBar(
+        pixel_a=(0.0, 10.0), pixel_b=(10.0, 10.0), length=5.0, units="m"
+    )
+    dumped = export_json(session, image_bytes=TINY_PNG_BYTES)
+    restored, _img = load_project_from_text(dumped)
+    assert restored.calibration is not None
+    assert restored.calibration.coords_type == "map"
+    assert restored.calibration.scale_bar is not None
+    assert restored.calibration.scale_bar.length == 5.0
+    assert restored.calibration.scale_bar.units == "m"

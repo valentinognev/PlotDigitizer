@@ -111,3 +111,57 @@ def test_import_endpoint_replaces_curves():
     assert len(body["curves"]) == 1
     assert body["curves"][0]["label"] == "A"
     assert len(body["curves"][0]["points"]) == 2
+
+
+_POLAR_CSV = """curve_id,curve_label,theta,R
+c1,A,0.0,10.0
+c1,A,90.0,10.0
+"""
+
+_MAP_CSV = """# units: km
+curve_id,curve_label,x,y
+c1,A,2.5,2.5
+"""
+
+
+def test_import_polar_csv_columns():
+    import math
+
+    from app.calibration.coords import data_to_pixel
+    from app.models.schemas import AxisPoint
+
+    cal = Calibration(
+        x=CalibrationAxis(scale="linear", ref_points=[]),
+        y=CalibrationAxis(scale="linear", ref_points=[]),
+        coords_type="polar",
+        model="affine",
+        theta_units="degrees",
+        origin_radius=0.0,
+        axis_points=[
+            AxisPoint(pixel=(100.0, 100.0), x_value=0.0, y_value=0.0),
+            AxisPoint(pixel=(180.0, 100.0), x_value=0.0, y_value=10.0),
+            AxisPoint(pixel=(100.0, 20.0), x_value=90.0, y_value=10.0),
+        ],
+    )
+    curves = import_curves_from_text(_POLAR_CSV, calibration=cal, filename="p.csv")
+    assert len(curves) == 1
+    assert len(curves[0].points) == 2
+    exp0 = data_to_pixel(cal, (0.0, 10.0))
+    exp1 = data_to_pixel(cal, (90.0, 10.0))
+    p0, p1 = curves[0].points[0].pixel, curves[0].points[1].pixel
+    assert math.hypot(p0[0] - exp0[0], p0[1] - exp0[1]) < 2.0
+    assert math.hypot(p1[0] - exp1[0], p1[1] - exp1[1]) < 2.0
+
+
+def test_import_map_csv_skips_units_comment():
+    session = _session_ready()
+    curves = import_curves_from_text(_MAP_CSV, calibration=session.calibration, filename="m.csv")
+    assert len(curves) == 1
+    assert len(curves[0].points) == 1
+
+
+def test_import_legacy_xy_csv_still_works():
+    session = _session_ready()
+    curves = import_curves_from_text(_LEGACY_CSV, calibration=session.calibration, filename="plot.csv")
+    assert len(curves) == 1
+    assert len(curves[0].points) == 2
