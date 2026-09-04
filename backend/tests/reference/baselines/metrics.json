@@ -37,6 +37,9 @@
   "improve_v1_ref_gnuplot_xy_rms": 2.1880867622662397,
   "improve_v1_synth_line_rms": 0.0430117905584646,
   "improve_v1_synth_sine_rms": 0.018909416795518712,
+  "improve_v2_ref_gnuplot_xy_rms": 2.1917545859020358,
+  "improve_v2_synth_line_rms": 0.014243069569413954,
+  "improve_v2_synth_sine_rms": 0.006342371803164327,
   "segment_fill_ref_gnuplot_xlogy_rms": 1.7918684955685107,
   "segment_fill_ref_gnuplot_xy_rms": 0.15457331378665795,
   "segment_fill_synth_sine_rms": 0.00427717418230258

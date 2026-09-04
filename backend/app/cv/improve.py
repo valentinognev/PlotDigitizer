@@ -3,10 +3,11 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
+from app.cv.color_filter import build_filter_mask
 from app.cv.order import order_points_along_curve
 from app.cv.resample import resample_path
-from app.cv.trace import build_trace_mask
-from app.models.schemas import Point
+from app.cv.snap import snap_to_ink
+from app.models.schemas import ColorFilter, Point
 
 
 def _bbox_from_hints(
@@ -29,7 +30,6 @@ def _corridor_mask(
     shape: tuple[int, ...],
     radius: int = 30,
 ) -> np.ndarray:
-    """Build corridor along hint polyline in placement order (not sorted by x)."""
     mask = np.zeros(shape[:2], dtype=np.uint8)
     pts = np.array(
         [[int(round(x)), int(round(y))] for x, y in hints],
@@ -61,7 +61,7 @@ def _sample_color_from_hints(
     hints: list[tuple[float, float]],
     fallback_hex: str,
 ) -> tuple[str, int]:
-    """Read the actual line color from darkest pixels under each hint (ink vs paper)."""
+    """Kept for erase.py; not used by Improve v2 thresholding."""
     height, width = img.shape[:2]
     dark_samples: list[np.ndarray] = []
     center_samples: list[np.ndarray] = []
@@ -96,33 +96,53 @@ def _sample_color_from_hints(
     return hex_color, tolerance
 
 
+def _local_direction(
+    points: list[tuple[float, float]], index: int
+) -> tuple[float, float] | None:
+    if len(points) < 2:
+        return None
+    if index <= 0:
+        a, b = points[0], points[1]
+    elif index >= len(points) - 1:
+        a, b = points[-2], points[-1]
+    else:
+        a, b = points[index - 1], points[index + 1]
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    norm = float(np.hypot(dx, dy))
+    if norm < 1e-9:
+        return None
+    return (dx / norm, dy / norm)
+
+
 def _snap_polyline_to_mask(
     hints: list[tuple[float, float]],
     mask: np.ndarray,
     target_count: int,
-    search_radius: float = 25.0,
 ) -> list[Point]:
-    """Walk the user hint polyline and snap each sample to the nearest traced pixel."""
     dense_n = max(target_count * 4, len(hints) * 2, 20)
     guide = [p.pixel for p in resample_path(hints, dense_n)]
-
+    if int(cv2.countNonZero(mask)) < 10:
+        return resample_path(hints, target_count)
     ys, xs = np.where(mask > 0)
     if len(xs) == 0:
         return resample_path(hints, target_count)
-
     trace = np.stack([xs.astype(np.float64), ys.astype(np.float64)], axis=1)
-    r2 = search_radius * search_radius
+    r2 = 25.0 * 25.0
     snapped: list[tuple[float, float]] = []
-
-    for gx, gy in guide:
+    for i, pt in enumerate(guide):
+        gx, gy = pt
         d2 = (trace[:, 0] - gx) ** 2 + (trace[:, 1] - gy) ** 2
         near = d2 < r2
         if np.any(near):
             idx = int(np.argmin(np.where(near, d2, np.inf)))
-            snapped.append((float(trace[idx, 0]), float(trace[idx, 1])))
+            recovered = (float(trace[idx, 0]), float(trace[idx, 1]))
         else:
-            snapped.append((gx, gy))
-
+            recovered = (gx, gy)
+        snapped.append(
+            snap_to_ink(
+                mask, recovered, window=7, direction=_local_direction(guide, i)
+            )
+        )
     return resample_path(snapped, target_count)
 
 
@@ -131,31 +151,25 @@ def improve_curve_from_hints(
     color_hex: str,
     hint_points: list[tuple[float, float]],
     target_count: int,
+    mask: np.ndarray | None = None,
 ) -> list[Point]:
-    """Trace a curve inside the bbox and corridor defined by user hint points."""
     hint_points = order_points_along_curve(hint_points)
     arr = np.frombuffer(image_bytes, dtype=np.uint8)
     img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     if img is None:
         return resample_path(hint_points, target_count)
 
-    height, width = img.shape[:2]
-    region = _bbox_from_hints(hint_points, width, height)
+    if mask is None:
+        mask = build_filter_mask(img, ColorFilter())
+
     corridor = _corridor_mask(hint_points, img.shape)
-    sampled_hex, tolerance = _sample_color_from_hints(img, hint_points, color_hex)
-
-    if _is_near_white(sampled_hex):
+    x, y, w, h = _bbox_from_hints(hint_points, img.shape[1], img.shape[0])
+    roi = np.zeros_like(mask)
+    roi[y : y + h, x : x + w] = 255
+    masked = cv2.bitwise_and(mask, corridor)
+    masked = cv2.bitwise_and(masked, roi)
+    if int(cv2.countNonZero(masked)) < 10:
         return resample_path(hint_points, target_count)
 
-    mask, mask_meta = build_trace_mask(
-        img,
-        sampled_hex,
-        region=region,
-        corridor_mask=corridor,
-        allow_canny=False,
-        color_tolerance=tolerance,
-    )
-    if mask_meta["after_corridor_px"] < 10:
-        return resample_path(hint_points, target_count)
-
-    return _snap_polyline_to_mask(hint_points, mask, target_count)
+    # color_hex stays in the signature for callers; thresholding uses `mask`.
+    return _snap_polyline_to_mask(hint_points, masked, target_count)

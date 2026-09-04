@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import math
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -57,29 +59,11 @@ def _rms_for_hints(plot, hints, target=24) -> float:
     return _y_rms(pred, plot.truth)
 
 
-def test_improve_v1_records_synth_sine_rms():
-    plot = _sine_plot()
-    hints = _offset_hints(plot)
-    err = _rms_for_hints(plot, hints)
-    assert_not_worse("improve_v1_synth_sine_rms", err, lower_is_better=True)
-
-
-def test_improve_v1_records_synth_line_rms():
-    plot = render_plot(
-        lambda x: 0.5 * x,
-        x_range=(0.0, 10.0),
-        y_range=(-1.0, 6.0),
-        size=(800, 600),
-        line_width=2,
-        line_color=(0, 0, 255),
-        grid=None,
-    )
-    hints = []
-    for x in (1.0, 4.0, 7.0, 9.0):
-        px, py = plot.pixel_of(x, 0.5 * x)
-        hints.append((px, py + 3.0))
-    err = _rms_for_hints(plot, hints, target=16)
-    assert_not_worse("improve_v1_synth_line_rms", err, lower_is_better=True)
+def test_improve_v1_baseline_keys_remain_frozen():
+    data = json.loads(BASELINE.read_text())
+    assert "improve_v1_synth_sine_rms" in data
+    assert "improve_v1_synth_line_rms" in data
+    # Must not remeasure — v2 lives in improve.py now.
 
 
 def test_improve_white_corridor_falls_back_to_resample():
@@ -102,3 +86,60 @@ def test_improve_signature_still_accepts_four_positional_args():
     hints = _offset_hints(plot)
     points = improve_curve_from_hints(_encode(plot), "#0000ff", hints, 12)
     assert len(points) == 12
+
+
+BASELINE = Path(__file__).resolve().parent / "reference" / "baselines" / "metrics.json"
+
+
+def _v1(name: str) -> float:
+    data = json.loads(BASELINE.read_text())
+    assert name in data, f"missing frozen v1 key {name}"
+    return float(data[name])
+
+
+def test_improve_v2_sine_strictly_better_than_v1():
+    plot = _sine_plot()
+    err = _rms_for_hints(plot, _offset_hints(plot))
+    v1 = _v1("improve_v1_synth_sine_rms")
+    assert err < v1
+    assert_not_worse("improve_v2_synth_sine_rms", err, lower_is_better=True)
+
+
+def test_improve_v2_line_strictly_better_than_v1():
+    plot = render_plot(
+        lambda x: 0.5 * x,
+        x_range=(0.0, 10.0),
+        y_range=(-1.0, 6.0),
+        size=(800, 600),
+        line_width=2,
+        line_color=(0, 0, 255),
+        grid=None,
+    )
+    hints = []
+    for x in (1.0, 4.0, 7.0, 9.0):
+        px, py = plot.pixel_of(x, 0.5 * x)
+        hints.append((px, py + 3.0))
+    err = _rms_for_hints(plot, hints, target=16)
+    v1 = _v1("improve_v1_synth_line_rms")
+    assert err < v1
+    assert_not_worse("improve_v2_synth_line_rms", err, lower_is_better=True)
+
+
+def test_run_cv_improve_still_replaces_points_via_pipeline():
+    plot = _sine_plot()
+    image_bytes = _encode(plot)
+    hints = _offset_hints(plot)
+    session = Session(
+        image_meta={"width": 800, "height": 600, "scale_factor": 1.0},
+        curves=[
+            Curve(
+                id="c1",
+                label="A",
+                color="#0000ff",
+                target_point_count=10,
+                points=[Point(pixel=h, origin="user") for h in hints],
+            )
+        ],
+    )
+    result = run_cv_improve(session, image_bytes, "c1")
+    assert len(result.curves[0].points) == 10

@@ -46,11 +46,13 @@ def run_cv_improve(
         raise ValueError("At least 2 tuned points are required to improve a curve")
 
     hint_points = [p.pixel for p in curve.points]
+    shared_mask = build_curve_mask(session, image_bytes, curve_id)
     new_points = improve_curve_from_hints(
         image_bytes,
         curve.cv_color,
         hint_points,
         curve.target_point_count,
+        mask=shared_mask,
     )
     session.curves = _replace_curve_points(session.curves, curve_id, new_points)
     return session
