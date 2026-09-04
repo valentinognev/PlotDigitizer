@@ -40,6 +40,10 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [2.4.0] — 2026-09-04 — Colour filter, grid removal and subpixel snap
+### Added
+- Precision toolkit phase 2: per-curve colour filter (intensity / foreground / hue / saturation / value), optional grid detection + removal with stump healing, subpixel ink snap, FilterPanel with pick-colour mode and mask overlay. Shared compose point `build_curve_mask` for later auto-digitize tools.
+
 ## [2.3.2] — 2026-09-04
 ### Fixed
 - `PATCH /preferences` persists incomplete Precise/polar/map calibration drafts (no `validate_calibration`); Save still validates. Quiet prefs errors with `calibration_invalid` no longer revert the in-progress draft.

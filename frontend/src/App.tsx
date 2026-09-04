@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   applyUnskew,
+  detectGrid,
   getLastSession,
   waitForBackend,
   cvImproveCurve,
   importCurves,
   loadProject,
+  patchCurveFilter,
   patchCurves,
   patchSessionPreferences,
   resampleSession,
   setCalibration,
   shouldRevertSessionOnPrefsError,
+  suggestFilter,
   undoSession,
   redoSession,
   uploadSession,
@@ -18,6 +21,7 @@ import {
 import { ProgressBar } from './components/ProgressBar'
 import { CalibrationPanel } from './components/CalibrationPanel'
 import { UnskewPanel } from './components/UnskewPanel'
+import { FilterPanel, type MaskView } from './components/FilterPanel'
 import { CurveList } from './components/CurveList'
 import { EditorCanvas } from './components/EditorCanvas'
 import { ExportPanel } from './components/ExportPanel'
@@ -58,10 +62,11 @@ import {
   type PlotQuad,
   type UnskewMode,
 } from './lib/meshWarp'
+import { maskPreviewUrl } from './lib/colorFilter'
 import { isUnskewReady, unskewFromCalibration } from './lib/unskew'
 import { appendAxisPoint, restoreAxisUiFlags, setScaleBarPixel } from './lib/axesChecker'
 import { getAxisBounds, isCalibrationValid, updateAxisBound, areCalibrationPixelsInImage, type AxisBoundKey } from './lib/transform'
-import type { Calibration, CanvasMode, Session } from './types'
+import type { Calibration, CanvasMode, ColorFilter, Session } from './types'
 
 function toast(message: string) {
   const el = document.getElementById('toast')
@@ -75,6 +80,7 @@ export default function App() {
   const [preciseMode, setPreciseMode] = useState(false)
   const [scaleBarStep, setScaleBarStep] = useState<'a' | 'b' | null>(null)
   const [canvasMode, setCanvasMode] = useState<CanvasMode>('select')
+  const [maskView, setMaskView] = useState<MaskView>('none')
   const [showAxesChecker, setShowAxesChecker] = useState(true)
   const [axesCheckerChangedAt, setAxesCheckerChangedAt] = useState(0)
   const [nowMs, setNowMs] = useState(() => Date.now())
@@ -241,6 +247,51 @@ export default function App() {
       setBusyMessage(null)
     }
   }, [syncSessionUi])
+
+  const activeCurve = session?.curves.find((c) => c.id === activeCurveId) ?? null
+
+  const commitFilter = (next: ColorFilter) => {
+    if (!session || !activeCurveId) return
+    run(() => patchCurveFilter(session.id, activeCurveId, next), 'Saving filter…')
+  }
+
+  const handlePickColor = () => {
+    setAxisPlaceStep(null)
+    setCanvasMode('pick-color')
+  }
+
+  const handlePickedPixel = (pixel: [number, number]) => {
+    if (!session || !activeCurveId) return
+    run(async () => {
+      const suggested = await suggestFilter(session.id, pixel, activeCurveId)
+      const merged: ColorFilter = {
+        ...suggested,
+        remove_grid: activeCurve?.filter?.remove_grid ?? false,
+      }
+      const saved = await patchCurveFilter(session.id, activeCurveId, merged)
+      setCanvasMode('select')
+      return saved
+    }, 'Sampling colour…')
+  }
+
+  const handleToggleGrid = (enabled: boolean) => {
+    if (!session || !activeCurveId) return
+    run(async () => {
+      if (enabled && !session.workspace?.grid) {
+        await detectGrid(session.id, activeCurveId)
+      }
+      const base = activeCurve?.filter ?? {
+        mode: 'intensity' as const,
+        low: 0,
+        high: 0.4,
+        remove_grid: false,
+      }
+      return patchCurveFilter(session.id, activeCurveId, {
+        ...base,
+        remove_grid: enabled,
+      })
+    }, enabled ? 'Detecting grid…' : 'Updating filter…')
+  }
 
   const handleUpload = async (file: File) => {
     setBusy(true)
@@ -959,6 +1010,29 @@ export default function App() {
           maxMeshSections={MAX_MESH_SECTIONS}
           onMeshSectionsChange={handleMeshSectionsChange}
         />
+        <FilterPanel
+          filter={activeCurve?.filter ?? null}
+          disabled={!session || !activeCurve}
+          busy={busy}
+          picking={canvasMode === 'pick-color'}
+          maskView={maskView}
+          grid={session?.workspace?.grid ?? null}
+          onFilterChange={commitFilter}
+          onPickColor={handlePickColor}
+          onMaskViewChange={(view) => {
+            setMaskView(view)
+            if (session) {
+              patchSessionPreferences(session.id, {
+                workspace: {
+                  ...(session.workspace ?? {}),
+                  show_mask: view !== 'none',
+                  canvas_mode: canvasMode,
+                },
+              }).catch(() => {})
+            }
+          }}
+          onToggleGrid={handleToggleGrid}
+        />
         <CalibrationPanel
           calibration={calibration}
           axisPlaceStep={axisPlaceStep}
@@ -1040,6 +1114,13 @@ export default function App() {
               onClearSelection={() => setSelectedPointIds([])}
               selectedPointIds={selectedPointIds}
               onDeletePoint={(id) => handleDeletePoints([id])}
+              onPickColor={handlePickedPixel}
+              maskUrl={
+                session && activeCurveId && maskView !== 'none'
+                  ? maskPreviewUrl(session.id, activeCurveId, session.image_meta.revision ?? 0)
+                  : null
+              }
+              maskView={maskView}
             />
           </div>
           <div className="min-h-0 overflow-hidden">

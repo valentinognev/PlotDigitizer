@@ -1,6 +1,25 @@
 export type Scale = 'linear' | 'log'
 export type Origin = 'ai' | 'user'
 export type CurveStyle = 'solid' | 'dashed' | 'dotted' | 'unknown'
+export type FilterMode = 'intensity' | 'foreground' | 'hue' | 'saturation' | 'value'
+
+export interface ColorFilter {
+  mode: FilterMode
+  low: number
+  high: number
+  sample_color?: string | null
+  remove_grid?: boolean
+}
+
+export interface GridGeometrySettings {
+  start_x: number
+  step_x: number
+  count_x: number
+  start_y: number
+  step_y: number
+  count_y: number
+  close_distance?: number
+}
 export type CoordsType = 'cartesian' | 'polar' | 'map'
 export type ThetaUnits = 'degrees' | 'radians' | 'gradians' | 'turns'
 export type TransformModel = 'auto' | 'orthogonal' | 'affine' | 'projective'
@@ -57,6 +76,7 @@ export interface Curve {
   visible: boolean
   target_point_count?: number
   points: Point[]
+  filter?: ColorFilter | null
 }
 
 export interface ImageMeta {
@@ -78,6 +98,8 @@ export interface WorkspaceState {
   mesh?: MeshGridPayload | null
   canvas_mode?: CanvasMode
   show_axes_checker?: boolean
+  show_mask?: boolean
+  grid?: GridGeometrySettings | null
 }
 
 export interface MeshVertexPayload {

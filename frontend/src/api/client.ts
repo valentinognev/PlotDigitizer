@@ -1,4 +1,12 @@
-import type { Calibration, Curve, Session, WorkspaceState } from '../types'
+import type {
+  Calibration,
+  ColorFilter,
+  Curve,
+  GridGeometrySettings,
+  Session,
+  WorkspaceState,
+} from '../types'
+import { maskPreviewUrl } from '../lib/colorFilter'
 
 const DEFAULT_TIMEOUT_MS = 120_000
 
@@ -263,4 +271,53 @@ export async function triggerSessionExport(
   }
 
   submitExportForm(sessionId, format)
+}
+
+export async function suggestFilter(
+  id: string,
+  pixel: [number, number],
+  curveId?: string,
+): Promise<ColorFilter> {
+  return request<ColorFilter>(`/sessions/${id}/filter/suggest`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pixel, curve_id: curveId ?? null }),
+  })
+}
+
+export async function patchCurveFilter(
+  id: string,
+  curveId: string,
+  filter: ColorFilter,
+): Promise<Session> {
+  return request<Session>(`/sessions/${id}/curves/${curveId}/filter`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(filter),
+  })
+}
+
+export async function detectGrid(id: string, curveId?: string): Promise<GridGeometrySettings | null> {
+  return request<GridGeometrySettings | null>(`/sessions/${id}/grid/detect`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ curve_id: curveId ?? null }),
+  })
+}
+
+export async function snapPixels(
+  id: string,
+  curveId: string,
+  pixels: [number, number][],
+): Promise<[number, number][]> {
+  const body = await request<{ pixels: [number, number][] }>(`/sessions/${id}/snap`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ curve_id: curveId, pixels }),
+  })
+  return body.pixels
+}
+
+export function sessionMaskUrl(sessionId: string, curveId: string, rev: number): string {
+  return maskPreviewUrl(sessionId, curveId, rev)
 }

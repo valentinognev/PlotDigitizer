@@ -18,6 +18,8 @@ import {
 import { warpImageToCanvas, canvasToDisplayImage, estimatePreviewContentBBox } from '../lib/unskew'
 import { MeshGridOverlay } from './MeshGridOverlay'
 import { AxesCheckerOverlay } from './AxesCheckerOverlay'
+import { MaskOverlay } from './MaskOverlay'
+import type { MaskView } from './FilterPanel'
 import type { Calibration, CanvasMode, Curve, Point } from '../types'
 
 interface Props {
@@ -49,6 +51,9 @@ interface Props {
   onClearSelection: () => void
   selectedPointIds: string[]
   onDeletePoint: (pointId: string) => void
+  onPickColor?: (pixel: [number, number]) => void
+  maskUrl?: string | null
+  maskView?: MaskView
 }
 
 type GroupDrag = {
@@ -133,6 +138,9 @@ export function EditorCanvas({
   onClearSelection,
   selectedPointIds,
   onDeletePoint,
+  onPickColor,
+  maskUrl = null,
+  maskView = 'none',
 }: Props) {
   const axisBounds = calibration ? getAxisBounds(calibration) : null
   const [image, setImage] = useState<HTMLImageElement | null>(null)
@@ -350,8 +358,7 @@ export function EditorCanvas({
   }, [])
 
   useEffect(() => {
-    if (canvasMode === 'select') setStageDraggable(true)
-    else if (!spaceDownRef.current) setStageDraggable(false)
+    setStageDraggable(canvasMode === 'select' || spaceDownRef.current)
   }, [canvasMode])
 
   useEffect(() => {
@@ -467,6 +474,11 @@ export function EditorCanvas({
       setStageDraggable(false)
       return
     }
+    if (canvasMode === 'pick-color' && onPickColor) {
+      onPickColor(toOriginalCoords([x, y]))
+      setStageDraggable(false)
+      return
+    }
 
     setMarquee({
       start: [x, y],
@@ -489,8 +501,8 @@ export function EditorCanvas({
     }
     if (e.target.getClassName() === 'Text') return
     if (!isBackgroundTarget(e.target)) return
-    if (axisPlaceStep) return
-    if (canvasMode === 'select') onClearSelection()
+    if (axisPlaceStep || canvasMode !== 'select') return
+    onClearSelection()
   }
 
   const handleMouseMove = (e: KonvaEventObject<MouseEvent>) => {
@@ -610,13 +622,21 @@ export function EditorCanvas({
         onDragEnd={handleStageDragEnd}
       >
         <Layer onMouseDown={handleStageMouseDown}>
-          {imageSource && (
+          {imageSource && maskView !== 'mask' && (
             <KonvaImage
               ref={konvaImageRef}
               key={previewImageKey}
               image={imageSource}
               width={displayWidth}
               height={displayHeight}
+            />
+          )}
+          {maskUrl && maskView !== 'none' && (
+            <MaskOverlay
+              url={maskUrl}
+              width={displayWidth}
+              height={displayHeight}
+              opacity={maskView === 'mask' ? 1 : 0.45}
             />
           )}
           {curves.map(
@@ -760,6 +780,8 @@ function PlotInteractionHint({
   const panHint = 'Middle-drag or Space + left-drag: pan · Wheel: zoom'
   if (axisPlaceStep) {
     text = `Click on the plot: ${AXIS_PLACE_LABELS[axisPlaceStep]} · ${panHint}`
+  } else if (canvasMode === 'pick-color') {
+    text = `Click the plot to sample a curve colour. ${panHint}`
   } else if (canvasMode === 'axis') {
     text = `Left-click to place an axis point (type values in the Calibration panel). ${panHint}`
   } else if (canvasMode === 'place') {

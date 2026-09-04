@@ -46,13 +46,13 @@ current calibration, so re-calibrating instantly remaps all points.
 ┌──────────────────────────── Frontend (React + Tailwind) ────────────────────────────┐
 │  EditorCanvas (Konva)          PreviewChart (Plotly)                                   │
 │  image + draggable points  ──▶  live replot in data-space                              │
-│  UnskewPanel · CalibrationPanel · CurveList · ExportPanel                              │
+│  UnskewPanel · FilterPanel · CalibrationPanel · CurveList · ExportPanel                  │
 └───────────────────────────────────────┬───────────────────────────────────────────────┘
                                          │ typed REST (JSON)
 ┌────────────────────────────── Backend (Python + FastAPI) ──────────────────────────────┐
 │  api/         sessions router (upload, curves, calibration, unskew, CV, export, …)   │
 │  pipeline/    orchestrates CV improve, resample, remove-from-plot, unskew apply    │
-│  cv/          trace · improve · resample · erase · unskew (OpenCV + NumPy)           │
+│  cv/          trace · improve · resample · erase · unskew · color_filter · grid_removal · snap │
 │  calibration/ pixel ↔ data 2D transform (orthogonal / affine / projective; cartesian, polar, map)                                   │
 │  export/      CSV, JSON, project save/load, curve import                             │
 │  store/       in-memory SessionStore + last-session persistence                       │
