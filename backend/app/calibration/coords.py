@@ -8,7 +8,7 @@ from app.calibration.transform import (
     build_constraints,
     solve_transform,
 )
-from app.models.schemas import Calibration
+from app.models.schemas import Calibration, ScaleBar
 
 _RESOLVE_EPS = 0.5
 _TWO_PI = 2.0 * math.pi
@@ -38,12 +38,49 @@ def _radians_to_theta(rad: float, units: str) -> float:
     raise CalibrationError(f"Unknown theta units: {units}")
 
 
-def _transform_of(cal: Calibration) -> Transform2D:
-    if cal.coords_type == "map":
+def _map_scale(bar: ScaleBar) -> float:
+    dx = bar.pixel_b[0] - bar.pixel_a[0]
+    dy = bar.pixel_b[1] - bar.pixel_a[1]
+    dist = math.hypot(dx, dy)
+    if dist < 1e-12:
         raise CalibrationError(
-            "Map adapter is not available yet",
-            hint="Use cartesian or polar calibration",
+            "Scale bar pixels coincide",
+            hint="Place two distinct scale-bar endpoints",
         )
+    if bar.length <= 0:
+        raise CalibrationError(
+            "Scale bar length must be positive",
+            hint="Enter the physical length between the two pixels",
+        )
+    return float(bar.length) / dist
+
+
+def _require_scale_bar(cal: Calibration) -> ScaleBar:
+    if cal.scale_bar is None:
+        raise CalibrationError(
+            "Map calibration requires a scale bar",
+            hint="Place two pixels and enter the physical length",
+        )
+    return cal.scale_bar
+
+
+def _map_pixel_to_data(cal: Calibration, pixel: tuple[float, float]) -> tuple[float, float]:
+    bar = _require_scale_bar(cal)
+    s = _map_scale(bar)
+    x = (pixel[0] - bar.pixel_a[0]) * s
+    y = (bar.pixel_a[1] - pixel[1]) * s
+    return float(x), float(y)
+
+
+def _map_data_to_pixel(cal: Calibration, data: tuple[float, float]) -> tuple[float, float]:
+    bar = _require_scale_bar(cal)
+    s = _map_scale(bar)
+    px = bar.pixel_a[0] + data[0] / s
+    py = bar.pixel_a[1] - data[1] / s
+    return float(px), float(py)
+
+
+def _transform_of(cal: Calibration) -> Transform2D:
     constraints = build_constraints(cal)
     requested = cal.model
     if requested == "auto" and not cal.axis_points and cal.coords_type == "cartesian":
@@ -111,6 +148,10 @@ def _polar_to_linear(cal: Calibration, data: tuple[float, float]) -> tuple[float
 
 
 def validate_calibration(cal: Calibration) -> None:
+    if cal.coords_type == "map":
+        bar = _require_scale_bar(cal)
+        _map_scale(bar)
+        return
     if cal.coords_type == "polar":
         if len(cal.axis_points) < 3:
             raise CalibrationError(
@@ -134,6 +175,8 @@ def validate_calibration(cal: Calibration) -> None:
 
 
 def pixel_to_data(cal: Calibration, pixel: tuple[float, float]) -> tuple[float, float]:
+    if cal.coords_type == "map":
+        return _map_pixel_to_data(cal, pixel)
     t = _transform_of(cal)
     uv = t.to_linear(pixel)
     if cal.coords_type == "polar":
@@ -142,6 +185,8 @@ def pixel_to_data(cal: Calibration, pixel: tuple[float, float]) -> tuple[float, 
 
 
 def data_to_pixel(cal: Calibration, data: tuple[float, float]) -> tuple[float, float]:
+    if cal.coords_type == "map":
+        return _map_data_to_pixel(cal, data)
     t = _transform_of(cal)
     if cal.coords_type == "polar":
         return t.from_linear(_polar_to_linear(cal, data))
@@ -149,6 +194,9 @@ def data_to_pixel(cal: Calibration, data: tuple[float, float]) -> tuple[float, f
 
 
 def resolution_at(cal: Calibration, pixel: tuple[float, float]) -> tuple[float, float]:
+    if cal.coords_type == "map":
+        s = _map_scale(_require_scale_bar(cal))
+        return s, s
     a0 = pixel_to_data(cal, pixel)
     a1 = pixel_to_data(cal, (pixel[0] + _RESOLVE_EPS, pixel[1]))
     a2 = pixel_to_data(cal, (pixel[0], pixel[1] + _RESOLVE_EPS))
@@ -189,7 +237,13 @@ def _polar_checker(cal: Calibration) -> list[tuple[float, float]]:
         r_outer = max(radii) if radii else r_inner + 1.0
     t0 = min(thetas) if thetas else 0.0
     t1 = max(thetas) if thetas else (
-        360.0 if cal.theta_units == "degrees" else math.pi * 2 if cal.theta_units == "radians" else 400.0 if cal.theta_units == "gradians" else 1.0
+        360.0
+        if cal.theta_units == "degrees"
+        else math.pi * 2
+        if cal.theta_units == "radians"
+        else 400.0
+        if cal.theta_units == "gradians"
+        else 1.0
     )
     n = 32
     poly: list[tuple[float, float]] = []
@@ -203,10 +257,21 @@ def _polar_checker(cal: Calibration) -> list[tuple[float, float]]:
     return poly
 
 
+def _map_checker(cal: Calibration) -> list[tuple[float, float]]:
+    bar = _require_scale_bar(cal)
+    a = (float(bar.pixel_a[0]), float(bar.pixel_a[1]))
+    b = (float(bar.pixel_b[0]), float(bar.pixel_b[1]))
+    unit = data_to_pixel(cal, (bar.length, 0.0))
+    up = data_to_pixel(cal, (0.0, bar.length))
+    return [a, b, a, up, a, unit, a]
+
+
 def axes_checker_polyline(
     cal: Calibration,
     image_size: tuple[int, int],
 ) -> list[tuple[float, float]]:
+    if cal.coords_type == "map":
+        return _map_checker(cal)
     if cal.coords_type == "polar":
         return _polar_checker(cal)
     xmin, xmax, ymin, ymax = _data_limits(cal)
