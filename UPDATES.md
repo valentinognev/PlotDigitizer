@@ -40,6 +40,14 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [2.2.3] — 2026-09-04
+### Added
+- **Precision-toolkit test foundation (Phase 0):** Engauge reference-corpus parser
+  (`backend/tests/reference/`, optional `PLOTDIG_REF_DIR`, never vendored), analytic
+  synthetic plot generator (`backend/tests/synth/plotgen.py`), metrics/baseline harness
+  with `--update-baselines`, and frontend Vitest plus a committed orthogonal
+  Python↔TS transform-parity fixture.
+
 ## [2.2.2] — 2026-07-05
 ### Changed
 - Mesh overlay: removed tangent handle controls on boundary nodes; only draggable position

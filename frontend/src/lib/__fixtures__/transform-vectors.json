@@ -1,0 +1,391 @@
+{
+  "generated_by": "backend/tests/synth/gen_transform_vectors.py",
+  "tolerance": 1e-09,
+  "note": "Synthetic orthogonal (independent 1D) mapping only. Phase 1 extends this fixture with affine/projective/polar vectors. Never derived from PLOTDIG_REF_DIR.",
+  "cases": [
+    {
+      "name": "linear_orthogonal",
+      "calibration": {
+        "x": {
+          "scale": "linear",
+          "ref_points": [
+            {
+              "pixel": [
+                100.0,
+                400.0
+              ],
+              "value": 0.0
+            },
+            {
+              "pixel": [
+                500.0,
+                400.0
+              ],
+              "value": 10.0
+            }
+          ]
+        },
+        "y": {
+          "scale": "linear",
+          "ref_points": [
+            {
+              "pixel": [
+                100.0,
+                400.0
+              ],
+              "value": 0.0
+            },
+            {
+              "pixel": [
+                100.0,
+                100.0
+              ],
+              "value": 5.0
+            }
+          ]
+        },
+        "source": "manual"
+      },
+      "samples": [
+        {
+          "pixel": [
+            100.0,
+            400.0
+          ],
+          "data": [
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "pixel": [
+            300.0,
+            250.0
+          ],
+          "data": [
+            5.0,
+            2.5
+          ]
+        },
+        {
+          "pixel": [
+            500.0,
+            100.0
+          ],
+          "data": [
+            10.0,
+            5.0
+          ]
+        },
+        {
+          "pixel": [
+            220.0,
+            310.0
+          ],
+          "data": [
+            3.0,
+            1.5
+          ]
+        },
+        {
+          "pixel": [
+            480.0,
+            180.0
+          ],
+          "data": [
+            9.5,
+            3.666666666666667
+          ]
+        }
+      ]
+    },
+    {
+      "name": "log_x_linear_y",
+      "calibration": {
+        "x": {
+          "scale": "log",
+          "ref_points": [
+            {
+              "pixel": [
+                100.0,
+                400.0
+              ],
+              "value": 1.0
+            },
+            {
+              "pixel": [
+                500.0,
+                400.0
+              ],
+              "value": 100.0
+            }
+          ]
+        },
+        "y": {
+          "scale": "linear",
+          "ref_points": [
+            {
+              "pixel": [
+                100.0,
+                400.0
+              ],
+              "value": 0.0
+            },
+            {
+              "pixel": [
+                100.0,
+                100.0
+              ],
+              "value": 5.0
+            }
+          ]
+        },
+        "source": "manual"
+      },
+      "samples": [
+        {
+          "pixel": [
+            100.0,
+            400.0
+          ],
+          "data": [
+            1.0,
+            0.0
+          ]
+        },
+        {
+          "pixel": [
+            300.0,
+            250.0
+          ],
+          "data": [
+            10.0,
+            2.5
+          ]
+        },
+        {
+          "pixel": [
+            500.0,
+            100.0
+          ],
+          "data": [
+            100.0,
+            5.0
+          ]
+        },
+        {
+          "pixel": [
+            220.0,
+            310.0
+          ],
+          "data": [
+            3.981071705534973,
+            1.5
+          ]
+        },
+        {
+          "pixel": [
+            480.0,
+            180.0
+          ],
+          "data": [
+            79.43282347242814,
+            3.666666666666667
+          ]
+        }
+      ]
+    },
+    {
+      "name": "linear_x_log_y",
+      "calibration": {
+        "x": {
+          "scale": "linear",
+          "ref_points": [
+            {
+              "pixel": [
+                100.0,
+                400.0
+              ],
+              "value": 0.0
+            },
+            {
+              "pixel": [
+                500.0,
+                400.0
+              ],
+              "value": 10.0
+            }
+          ]
+        },
+        "y": {
+          "scale": "log",
+          "ref_points": [
+            {
+              "pixel": [
+                100.0,
+                400.0
+              ],
+              "value": 1.0
+            },
+            {
+              "pixel": [
+                100.0,
+                100.0
+              ],
+              "value": 100.0
+            }
+          ]
+        },
+        "source": "manual"
+      },
+      "samples": [
+        {
+          "pixel": [
+            100.0,
+            400.0
+          ],
+          "data": [
+            0.0,
+            1.0
+          ]
+        },
+        {
+          "pixel": [
+            300.0,
+            250.0
+          ],
+          "data": [
+            5.0,
+            10.000000000000005
+          ]
+        },
+        {
+          "pixel": [
+            500.0,
+            100.0
+          ],
+          "data": [
+            10.0,
+            100.0
+          ]
+        },
+        {
+          "pixel": [
+            220.0,
+            310.0
+          ],
+          "data": [
+            3.0,
+            3.981071705534973
+          ]
+        },
+        {
+          "pixel": [
+            480.0,
+            180.0
+          ],
+          "data": [
+            9.5,
+            29.286445646252375
+          ]
+        }
+      ]
+    },
+    {
+      "name": "log_log",
+      "calibration": {
+        "x": {
+          "scale": "log",
+          "ref_points": [
+            {
+              "pixel": [
+                100.0,
+                400.0
+              ],
+              "value": 1.0
+            },
+            {
+              "pixel": [
+                500.0,
+                400.0
+              ],
+              "value": 1000.0
+            }
+          ]
+        },
+        "y": {
+          "scale": "log",
+          "ref_points": [
+            {
+              "pixel": [
+                100.0,
+                400.0
+              ],
+              "value": 0.1
+            },
+            {
+              "pixel": [
+                100.0,
+                100.0
+              ],
+              "value": 10.0
+            }
+          ]
+        },
+        "source": "manual"
+      },
+      "samples": [
+        {
+          "pixel": [
+            100.0,
+            400.0
+          ],
+          "data": [
+            1.0,
+            0.09999999999999995
+          ]
+        },
+        {
+          "pixel": [
+            300.0,
+            250.0
+          ],
+          "data": [
+            31.622776601683793,
+            1.0
+          ]
+        },
+        {
+          "pixel": [
+            500.0,
+            100.0
+          ],
+          "data": [
+            1000.0,
+            10.0
+          ]
+        },
+        {
+          "pixel": [
+            220.0,
+            310.0
+          ],
+          "data": [
+            7.943282347242813,
+            0.39810717055349715
+          ]
+        },
+        {
+          "pixel": [
+            480.0,
+            180.0
+          ],
+          "data": [
+            707.9457843841374,
+            2.9286445646252357
+          ]
+        }
+      ]
+    }
+  ]
+}
