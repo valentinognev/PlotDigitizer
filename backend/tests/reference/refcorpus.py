@@ -25,17 +25,18 @@ BINARY_V5_DIGS = frozenset(
     }
 )
 
-# Polar + CmdAddPointAxis (3 each). Curated transform ground truth.
+# Polar + CmdAddPointAxis (3 each). Values are doc.name (xml stem, not filename).
 # Filtering iter_docs for coords_type=="polar" and axis_points also yields four
 # incidental .dig files (POLAR_AXIS_INCIDENTAL) that have zero CmdAddPointAxis.
 POLAR_WITH_AXIS_POINTS = (
-    "guidelines_polar.xml",
-    "guidelines_polar_log.xml",
-    "polar_linear_linear_3curve.xml",
-    "polar_linear_linear_nonzero_center.xml",
+    "guidelines_polar",
+    "guidelines_polar_log",
+    "polar_linear_linear_3curve",
+    "polar_linear_linear_nonzero_center",
 )
 
 # Polar with axis points via .dig <Point IsAxisPoint> only — not transform GT.
+# Values are doc.name (.dig suffix kept).
 POLAR_AXIS_INCIDENTAL = (
     "extract_image_only_2.dig",
     "guidelines_polar_linear_shear.dig",

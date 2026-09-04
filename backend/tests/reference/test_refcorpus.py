@@ -13,6 +13,7 @@ from PIL import Image
 from refcorpus import (
     BINARY_V5_DIGS,
     DEFAULT_REF_DIR,
+    POLAR_AXIS_INCIDENTAL,
     POLAR_WITH_AXIS_POINTS,
     ReferenceAxisPoint,
     ReferenceDoc,
@@ -273,11 +274,23 @@ def test_only_known_binaries_are_unparsed(plotdig_ref_dir: Path):
 
 
 @pytest.mark.reference
+def test_polar_constants_match_doc_names(plotdig_ref_dir: Path):
+    names = {d.name for d in iter_docs(plotdig_ref_dir)}
+    assert POLAR_WITH_AXIS_POINTS
+    assert POLAR_AXIS_INCIDENTAL
+    for name in POLAR_WITH_AXIS_POINTS:
+        assert name in names, name
+    for name in POLAR_AXIS_INCIDENTAL:
+        assert name in names, name
+
+
+@pytest.mark.reference
 def test_polar_docs_with_axis_points(plotdig_ref_dir: Path):
     """Last <Coords> wins. First TypeString is Cartesian on every polar doc."""
-    test_dir = plotdig_ref_dir / "test"
-    for filename in POLAR_WITH_AXIS_POINTS:
-        doc = load_doc(test_dir / filename)
+    docs = [d for d in iter_docs(plotdig_ref_dir) if d.name in POLAR_WITH_AXIS_POINTS]
+    assert docs
+    assert {d.name for d in docs} == set(POLAR_WITH_AXIS_POINTS)
+    for doc in docs:
         assert doc.coords_type == "polar", doc.name
         assert len(doc.axis_points) == 3, doc.name
 
