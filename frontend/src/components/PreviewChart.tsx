@@ -24,6 +24,12 @@ interface Props {
   calibration: Calibration | null
 }
 
+function hashStr(s: string): number {
+  let h = 0
+  for (let i = 0; i < s.length; i++) h += s.charCodeAt(i)
+  return h
+}
+
 function plotRevision(curves: Curve[], calibration: Calibration | null): number {
   let revision = 0
   if (calibration) {
@@ -31,11 +37,26 @@ function plotRevision(curves: Curve[], calibration: Calibration | null): number 
     revision += calibration.y.ref_points.length * 31
     revision += calibration.x.scale === 'log' ? 1 : 0
     revision += calibration.y.scale === 'log' ? 2 : 0
+    revision += hashStr(calibration.coords_type ?? 'cartesian') * 41
+    revision += hashStr(calibration.theta_units ?? 'degrees') * 43
+    revision += Math.round((calibration.origin_radius ?? 0) * 1000)
     for (const ref of calibration.x.ref_points) {
       revision += Math.round(ref.value * 10) + Math.round(ref.pixel[0])
     }
     for (const ref of calibration.y.ref_points) {
       revision += Math.round(ref.value * 10) + Math.round(ref.pixel[1])
+    }
+    for (const pt of calibration.axis_points ?? []) {
+      revision += Math.round(pt.pixel[0]) + Math.round(pt.pixel[1])
+      if (pt.x_value != null) revision += Math.round(pt.x_value * 10)
+      if (pt.y_value != null) revision += Math.round(pt.y_value * 10)
+    }
+    const bar = calibration.scale_bar
+    if (bar) {
+      revision += Math.round(bar.pixel_a[0]) + Math.round(bar.pixel_a[1])
+      revision += Math.round(bar.pixel_b[0]) + Math.round(bar.pixel_b[1])
+      revision += Math.round(bar.length * 10)
+      if (bar.units) revision += hashStr(bar.units)
     }
   }
   for (const curve of curves) {
@@ -96,6 +117,7 @@ export const PreviewChart = memo(function PreviewChart({ curves, calibration }: 
             </div>
           ) : (
             <Plot
+              key={calibration!.coords_type ?? 'cartesian'}
               data={traces}
               layout={layout ?? buildPreviewConfig(curves, calibration!, plotHeight).layout}
               revision={revision}
