@@ -40,6 +40,10 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [2.6.1] — 2026-09-04
+### Fixed
+- Pipeline reference tests score `fill_segment` samples vs expected CSV (achieved ~0.039 / ~0.131 / ~2.30°) instead of Phase 1 vertex calibration; `huge.png` match baseline floored at 0.3 s.
+
 ## [2.6.0] — 2026-09-04
 ### Added
 - **Scatter point-match:** OpenCV normalised-correlation marker finder (`cv/point_match.py`), non-mutating `POST /curves/{id}/point-match` plus undoable accept, ranked-ring canvas UX (Enter/click accept, Esc/right-click reject, Shift+Enter accept-at-or-above).
