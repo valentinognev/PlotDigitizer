@@ -160,3 +160,17 @@ def test_segment_at_chooses_closer_of_two_parallel_strokes():
     assert hit is not None
     ys = [p[1] for p in hit.points]
     assert sum(ys) / len(ys) < 40.0
+
+
+def test_y_junction_does_not_double_walk_the_stem():
+    """A stem with two arms must not appear as two full-trunk polylines."""
+    mask = np.zeros((120, 200), dtype=np.uint8)
+    cv2.line(mask, (20, 60), (90, 60), 255, 2)
+    cv2.line(mask, (90, 60), (170, 25), 255, 2)
+    cv2.line(mask, (90, 60), (170, 95), 255, 2)
+    segs = build_segments(mask, min_length=20.0)
+
+    def _covers_stem(seg) -> bool:
+        return any(p[0] < 70.0 and abs(p[1] - 60.0) <= 4.0 for p in seg.points)
+
+    assert sum(1 for s in segs if _covers_stem(s)) == 1

@@ -40,10 +40,6 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
-## [2.5.0] — 2026-09-04 — Segment builder
-### Added
-- Precision toolkit phase 3: `build_segments` / `segment_at` turn a binary stroke mask into compact polylines (column-run linking, collinear continuation at crossings, vertical-run expansion). Task 2 fill helpers `_arc_length_prefix` / `_point_at_arclength` live in the same module.
-
 ## [2.4.1] — 2026-09-04
 ### Fixed
 - Pick-colour exits to select (workspace `canvas_mode` persisted; in-flight prefs writes invalidated).

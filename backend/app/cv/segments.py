@@ -222,29 +222,31 @@ def _build_run_graph(mask: np.ndarray) -> list[_Run]:
                 if _overlaps((left.y0, left.y1), (right.y0, right.y1)):
                     left.right.append(right)
                     right.left.append(left)
-    _mark_corridors(all_runs)
+    _mark_corridors(cols)
     return all_runs
 
 
-def _mark_corridors(all_runs: list[_Run]) -> None:
-    seen: set[int] = set()
-    for seed in all_runs:
-        if id(seed) in seen or not seed.sole:
+def _mark_corridors(cols: list[list[_Run]]) -> None:
+    """Mark X-style merged blobs: a sole-run span with two-run ports on both sides.
+
+    A Y/T stem is sole-run on one side only, so it stays capacity-1.
+    """
+    counts = [len(col) for col in cols]
+    width = len(cols)
+    x = 0
+    while x < width:
+        if counts[x] != 1:
+            x += 1
             continue
-        stack = [seed]
-        comp: list[_Run] = []
-        while stack:
-            node = stack.pop()
-            if id(node) in seen or not node.sole:
-                continue
-            seen.add(id(node))
-            comp.append(node)
-            for nbr in _neighbors(node):
-                if nbr.sole and id(nbr) not in seen:
-                    stack.append(nbr)
-        if any(len(_neighbors(run)) >= 3 for run in comp):
-            for run in comp:
-                run.corridor = True
+        start = x
+        while x < width and counts[x] == 1:
+            x += 1
+        left_two = start > 0 and counts[start - 1] >= 2
+        right_two = x < width and counts[x] >= 2
+        if left_two and right_two:
+            for i in range(start, x):
+                for run in cols[i]:
+                    run.corridor = True
 
 
 def _run_height(run: _Run) -> int:
@@ -361,7 +363,11 @@ def _walk_path(
 
 
 def _should_start(run: _Run, unused: list[_Run]) -> bool:
-    if not unused or run.corridor:
+    if not unused:
+        return False
+    if len(_neighbors(run)) == 1:
+        return True
+    if run.corridor:
         return False
     if not _is_thin(run) and len(_neighbors(run)) > 1:
         return False
