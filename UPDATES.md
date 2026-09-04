@@ -40,6 +40,13 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [2.6.0] — 2026-09-04
+### Added
+- **Scatter point-match:** OpenCV normalised-correlation marker finder (`cv/point_match.py`), non-mutating `POST /curves/{id}/point-match` plus undoable accept, ranked-ring canvas UX (Enter/click accept, Esc/right-click reject, Shift+Enter accept-at-or-above).
+- **Scatter curves:** `Curve.connect_as` (`line` default, `scatter` markers-only in PreviewChart and EditorCanvas; Improve/Densify disabled; CSV keeps placement order).
+- **Polar/map preview and export:** Plotly `scatterpolar` (θ in calibration units, log radius via `Calibration.y.scale`, `origin_radius`); map axes in scale-bar units; CSV headers `theta,R` / `# units:`; project and import round-trip of the new calibration fields.
+- End-to-end reference pipeline regression (`tests/reference/test_pipeline_reference.py`) and `huge.png` 15s match budget.
+
 ## [2.5.0] — 2026-09-04 — Segment-fill auto-digitize
 ### Added
 - Column-run segment builder (`cv/segments.py`): compact polylines from the per-curve binary mask; collinear fold; min-length drop.

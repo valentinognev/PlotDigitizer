@@ -254,3 +254,54 @@ def test_point_match_unknown_curve_is_400():
         json={"pixel": [40.0, 40.0]},
     )
     assert res.status_code == 400
+
+
+def test_synthetic_pipeline_scatter_and_line_export():
+    from app.calibration.coords import pixel_to_data
+    from app.export.export import export_csv
+    from app.models.schemas import (
+        AxisPoint,
+        Calibration,
+        CalibrationAxis,
+        Curve,
+        Point,
+        Session,
+    )
+    from tests.synth.plotgen import render_plot
+
+    plot = render_plot(
+        lambda x: 0.5 * x,
+        x_range=(0.0, 10.0),
+        y_range=(0.0, 10.0),
+        size=(200, 200),
+        line_width=2,
+        line_color=(0, 0, 255),
+    )
+    cal = Calibration(
+        x=CalibrationAxis(scale="linear", ref_points=[]),
+        y=CalibrationAxis(scale="linear", ref_points=[]),
+        coords_type="cartesian",
+        model="auto",
+        axis_points=[
+            AxisPoint(pixel=ap.pixel, x_value=ap.x_value, y_value=ap.y_value)
+            for ap in plot.axis_points
+        ],
+    )
+    session = Session(
+        image_meta={"width": 200, "height": 200, "scale_factor": 1.0},
+        calibration=cal,
+        curves=[
+            Curve(
+                label="line",
+                connect_as="line",
+                points=[Point(pixel=plot.pixel_of(2.0, 1.0), origin="user")],
+            )
+        ],
+    )
+
+    text = export_csv(session)
+    assert text.splitlines()[0] == "curve_id,curve_label,x,y"
+    x, y = pixel_to_data(cal, plot.pixel_of(2.0, 1.0))
+    row = text.splitlines()[1].split(",")
+    assert abs(float(row[2]) - x) < 1e-9
+    assert abs(float(row[3]) - y) < 1e-9

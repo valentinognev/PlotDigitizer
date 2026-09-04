@@ -23,18 +23,13 @@ data-space preview, and project save/load — without relying on external AI ser
 PlotDigitizer uses a **manual-first pipeline**:
 
 1. **Upload** a plot image (including photos taken at an angle).
-2. **Calibrate** axes manually: click four bounds on the plot (X min, X max, Y min, Y max) and
-   enter the corresponding numeric values (linear or log per axis).
-3. **Unskew** *(optional)*: preview and apply correction from those same axis bounds
-   to straighten rotated or skewed photos. Choose **Perspective** (homography) for mild
-   skew, or **Mesh** (adjustable boundary grid, default 3×3 cells) for curved or wavy paper edges; the full image
-   is kept (content outside axis limits remains visible).
-4. **Place points** on each curve on the canvas; drag, select, delete, and reassign as needed.
-5. **Refine** with OpenCV: **Improve** traces the line between your seed points; **Densify**
-   interpolates evenly spaced points along the curve; **Segment fill** lets you click a stroke
-   to drop evenly spaced samples along it.
-6. Watch the **preview chart** update live in data-space.
-7. **Export** CSV / JSON, or save a full **project** (`.pdproj.json`) for later restore.
+2. **Calibrate** in Cartesian (four bounds or 3+ precise axis points, linear or log), **Polar** (θ units, radius scale, origin radius), or **Map** (two-point scale bar). Affine/projective models map rotated or perspective photos without resampling ink.
+3. **Unskew** *(optional)*: preview and apply perspective or mesh correction when you still want a straightened image.
+4. **Condition** the curve: per-curve colour filter and optional grid removal; toggle the binary mask overlay.
+5. **Place** points on each curve, or **auto-digitize**: segment-fill along ink, or **point-match** for scatter markers (sample one marker, accept/reject ranked candidates).
+6. **Refine** line curves with **Improve** (mask corridor) and **Densify**. Scatter curves (`connect_as: scatter`) stay markers-only.
+7. Watch the **preview chart** in data space (cartesian, polar θ/R, or map units).
+8. **Export** CSV / JSON, or save a **project** (`.pdproj.json`). CSV columns follow the coordinate system (`x,y` / `theta,R` / `x,y` plus units).
 
 **Pixel coordinates are the source of truth.** Data-space values are always derived through the
 current calibration, so re-calibrating instantly remaps all points.
@@ -47,14 +42,14 @@ current calibration, so re-calibrating instantly remaps all points.
 ┌──────────────────────────── Frontend (React + Tailwind) ────────────────────────────┐
 │  EditorCanvas (Konva)          PreviewChart (Plotly)                                   │
 │  image + draggable points  ──▶  live replot in data-space                              │
-│  UnskewPanel · FilterPanel · CalibrationPanel · AutoDigitizePanel · CurveList · ExportPanel │
+│  UnskewPanel · CalibrationPanel · FilterPanel · AutoDigitizePanel · CurveList · ExportPanel                              │
 └───────────────────────────────────────┬───────────────────────────────────────────────┘
                                          │ typed REST (JSON)
 ┌────────────────────────────── Backend (Python + FastAPI) ──────────────────────────────┐
 │  api/         sessions router (upload, curves, calibration, unskew, CV, export, …)   │
 │  pipeline/    orchestrates CV improve, resample, remove-from-plot, unskew apply    │
-│  cv/          trace · improve · resample · erase · unskew · color_filter · grid_removal · snap · segments │
-│  calibration/ pixel ↔ data 2D transform (orthogonal / affine / projective; cartesian, polar, map)                                   │
+│  cv/          trace · improve · resample · erase · unskew · color_filter · grid_removal · snap · segments · point_match │
+│  calibration/ 2D transform + cartesian / polar / map adapters (linear / log)                                              │
 │  export/      CSV, JSON, project save/load, curve import                             │
 │  store/       in-memory SessionStore + last-session persistence                       │
 └──────────────────────────────────────────────────────────────────────────────────────┘
@@ -150,6 +145,6 @@ cd backend && .venv/bin/pytest -q
 
 ## Status
 
-**v2.3.0** — affine / projective / polar / map calibration plus optional image unskew
-(perspective or mesh) for camera photos; mesh subdivisions are adjustable (default 3 per
-edge). Current version: see [`UPDATES.md`](UPDATES.md).
+**v2.6** — precision toolkit: affine/projective/polar/map calibration, colour-filter + grid
+conditioning, segment-fill and point-match auto-digitize, scatter curves, polar/map preview and
+export. Current version: see [`UPDATES.md`](UPDATES.md).
