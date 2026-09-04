@@ -110,3 +110,48 @@ def test_detect_grid_recovers_synth_plot_grid():
     assert geom.step_y == pytest.approx((y_bot - y_top) / (ny + 1), abs=1.0)
     assert geom.count_x >= nx - 1
     assert geom.count_y >= ny - 1
+
+
+def test_remove_grid_erases_lines_and_heals_crossing():
+    from app.cv.grid_removal import GridGeometry, remove_grid
+
+    h, w = 80, 120
+    mask = np.zeros((h, w), dtype=np.uint8)
+    mask[30, 10:110] = 255  # horizontal curve
+    for x in (20, 50, 80):
+        mask[:, x] = 255  # vertical grid
+    geom = GridGeometry(start_x=20.0, step_x=30.0, count_x=3, start_y=0.0, step_y=0.0, count_y=0)
+    out = remove_grid(mask, geom, close_distance=10)
+    assert out.dtype == np.uint8
+    assert out[10, 50] == 0
+    assert out[30, 50] == 255
+    assert out[30, 40] == 255
+
+
+def test_remove_grid_heals_vertical_curve_across_horizontal_grid():
+    from app.cv.grid_removal import GridGeometry, remove_grid
+
+    mask = np.zeros((90, 70), dtype=np.uint8)
+    mask[5:85, 35] = 255
+    for y in (20, 45, 70):
+        mask[y, :] = 255
+    geom = GridGeometry(start_x=0.0, step_x=0.0, count_x=0, start_y=20.0, step_y=25.0, count_y=3)
+    out = remove_grid(mask, geom, close_distance=10)
+    assert out[45, 10] == 0
+    assert out[45, 35] == 255
+
+
+def test_remove_grid_does_not_assume_function_of_x():
+    from app.cv.grid_removal import GridGeometry, remove_grid
+
+    # Closed ring crossing a vertical grid line twice — polar-like, not y=f(x).
+    mask = np.zeros((100, 100), dtype=np.uint8)
+    yy, xx = np.ogrid[:100, :100]
+    ring = np.abs(np.hypot(xx - 50, yy - 50) - 25) < 1.5
+    mask[ring] = 255
+    mask[:, 50] = 255
+    geom = GridGeometry(start_x=50.0, step_x=0.0, count_x=1, start_y=0.0, step_y=0.0, count_y=0)
+    out = remove_grid(mask, geom, close_distance=10)
+    assert out[50, 50] == 0
+    assert out[25, 50] == 255
+    assert out[75, 50] == 255
