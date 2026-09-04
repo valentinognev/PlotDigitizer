@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 import cv2
@@ -77,6 +77,33 @@ def _draw_polyline(
     cv2.polylines(img, [arr], False, color, thickness=int(width), lineType=cv2.LINE_8)
 
 
+def _draw_marker(
+    img: np.ndarray, px: float, py: float, spec: dict
+) -> None:
+    shape = str(spec.get("shape", "circle"))
+    size = int(spec.get("size", 5))
+    color = tuple(int(c) for c in spec.get("color", (0, 0, 255)))
+    x, y = int(round(px)), int(round(py))
+    if shape == "diamond":
+        pts = np.array(
+            [[x, y - size], [x + size, y], [x, y + size], [x - size, y]],
+            dtype=np.int32,
+        )
+        cv2.fillConvexPoly(img, pts, color)
+        return
+    if shape == "square":
+        cv2.rectangle(img, (x - size, y - size), (x + size, y + size), color, -1)
+        return
+    if shape == "triangle":
+        pts = np.array(
+            [[x, y - size], [x + size, y + size], [x - size, y + size]],
+            dtype=np.int32,
+        )
+        cv2.fillConvexPoly(img, pts, color)
+        return
+    cv2.circle(img, (x, y), size, color, -1, lineType=cv2.LINE_8)
+
+
 def render_plot(
     func: Callable[[float], float],
     *,
@@ -90,7 +117,7 @@ def render_plot(
     perspective: float | None = None,
     line_width: int = 2,
     line_color: tuple[int, int, int] = (0, 0, 255),
-    markers: int | None = None,
+    markers: int | Sequence[dict] | None = None,
     noise: float = 0.0,
     background: tuple[int, int, int] = (255, 255, 255),
 ) -> SynthPlot:
@@ -166,7 +193,12 @@ def render_plot(
     if pts:
         _draw_polyline(img, pts, line_color, line_width)
 
-    if markers is not None:
+    if isinstance(markers, Sequence) and not isinstance(markers, (str, bytes)):
+        for spec in markers:
+            xy = spec["xy"]
+            px, py = plot_xy(float(xy[0]), float(xy[1]))
+            _draw_marker(img, px, py, spec)
+    elif markers is not None:
         visible = [(x, y) for x, y in truth if ymin <= y <= ymax]
         if visible:
             radius = int(markers)

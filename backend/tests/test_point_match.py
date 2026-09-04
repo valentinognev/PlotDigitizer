@@ -1,0 +1,163 @@
+from __future__ import annotations
+
+import math
+
+import cv2
+import numpy as np
+import pytest
+
+from app.cv.point_match import match_points
+
+
+def _blank(w: int = 200, h: int = 160) -> np.ndarray:
+    return np.zeros((h, w), dtype=np.uint8)
+
+
+def _draw_circle(mask: np.ndarray, xy: tuple[float, float], radius: int = 5) -> None:
+    cv2.circle(mask, (int(round(xy[0])), int(round(xy[1]))), radius, 255, thickness=-1)
+
+
+def _draw_diamond(mask: np.ndarray, xy: tuple[float, float], radius: int = 6) -> None:
+    x, y = int(round(xy[0])), int(round(xy[1]))
+    pts = np.array(
+        [[x, y - radius], [x + radius, y], [x, y + radius], [x - radius, y]],
+        dtype=np.int32,
+    )
+    cv2.fillConvexPoly(mask, pts, 255)
+
+
+def _greedy_match(
+    candidates: list, truth: list[tuple[float, float]], cutoff: float
+) -> tuple[int, int, float]:
+    used = [False] * len(truth)
+    tp = 0
+    distances: list[float] = []
+    for cand in candidates:
+        cx, cy = cand.pixel
+        best_i = -1
+        best_d = cutoff + 1.0
+        for i, (tx, ty) in enumerate(truth):
+            if used[i]:
+                continue
+            d = math.hypot(cx - tx, cy - ty)
+            if d < best_d:
+                best_d = d
+                best_i = i
+        if best_i >= 0 and best_d <= cutoff:
+            used[best_i] = True
+            tp += 1
+            distances.append(best_d)
+    fp = len(candidates) - tp
+    mean_d = float(sum(distances) / len(distances)) if distances else 999.0
+    return tp, fp, mean_d
+
+
+def test_empty_mask_returns_empty():
+    out = match_points(_blank(), (40.0, 40.0), sample_radius=6)
+    assert out == []
+
+
+def test_ranked_best_first():
+    mask = _blank()
+    _draw_circle(mask, (40.0, 50.0), 5)
+    _draw_circle(mask, (140.0, 50.0), 5)
+    out = match_points(mask, (40.0, 50.0), sample_radius=6, max_point_size=24)
+    assert len(out) >= 2
+    scores = [c.score for c in out]
+    assert scores == sorted(scores, reverse=True)
+    assert out[0].score >= 0.95
+    assert math.hypot(out[0].pixel[0] - 40.0, out[0].pixel[1] - 50.0) <= 1.5
+
+
+def test_limit_caps_results():
+    mask = _blank(w=400, h=80)
+    centres = [(20.0 + 30.0 * i, 40.0) for i in range(10)]
+    for c in centres:
+        _draw_circle(mask, c, 4)
+    out = match_points(mask, centres[0], sample_radius=5, max_point_size=20, limit=3)
+    assert len(out) == 3
+
+
+def test_exclude_suppresses_placed_points():
+    mask = _blank()
+    a, b = (40.0, 50.0), (140.0, 50.0)
+    _draw_circle(mask, a, 5)
+    _draw_circle(mask, b, 5)
+    first = match_points(mask, a, sample_radius=6, max_point_size=24)
+    assert len(first) >= 2
+    excluded = [c.pixel for c in first]
+    again = match_points(
+        mask, a, sample_radius=6, max_point_size=24, exclude=excluded
+    )
+    for cand in again:
+        for ex in excluded:
+            assert math.hypot(cand.pixel[0] - ex[0], cand.pixel[1] - ex[1]) > 6.0
+
+
+def test_max_point_size_rejects_gridline():
+    mask = _blank(w=300, h=120)
+    cv2.line(mask, (10, 60), (290, 60), 255, thickness=2)
+    _draw_circle(mask, (60.0, 30.0), 5)
+    out = match_points(mask, (60.0, 30.0), sample_radius=6, max_point_size=16)
+    assert len(out) >= 1
+    for cand in out:
+        assert abs(cand.pixel[1] - 60.0) > 8.0
+    line_only = _blank(w=300, h=80)
+    cv2.line(line_only, (10, 40), (290, 40), 255, thickness=2)
+    none = match_points(line_only, (80.0, 40.0), sample_radius=8, max_point_size=12)
+    assert none == []
+
+
+def test_two_shapes_separable_by_sample():
+    mask = _blank(w=240, h=160)
+    circles = [(40.0, 40.0), (90.0, 40.0), (140.0, 40.0)]
+    diamonds = [(40.0, 110.0), (90.0, 110.0), (140.0, 110.0)]
+    for c in circles:
+        _draw_circle(mask, c, 5)
+    for d in diamonds:
+        _draw_diamond(mask, d, 7)
+    circ = match_points(mask, circles[0], sample_radius=7, max_point_size=24)
+    tp, fp, _ = _greedy_match(circ, circles, cutoff=3.0)
+    assert tp == 3
+    near_diamond = 0
+    for cand in circ[:3]:
+        if min(math.hypot(cand.pixel[0] - d[0], cand.pixel[1] - d[1]) for d in diamonds) <= 4.0:
+            near_diamond += 1
+    assert near_diamond == 0
+    dia = match_points(mask, diamonds[0], sample_radius=7, max_point_size=24)
+    tp_d, _, _ = _greedy_match(dia, diamonds, cutoff=3.0)
+    assert tp_d == 3
+
+
+def test_synthetic_scatter_precision_gates():
+    from metrics import assert_not_worse
+    from tests.synth.plotgen import render_plot
+
+    centres = [(1.5, 2.0), (3.0, 7.5), (5.0, 4.0), (7.2, 8.0), (8.5, 1.8)]
+    plot = render_plot(
+        lambda x: 5.0,
+        x_range=(0.0, 10.0),
+        y_range=(0.0, 10.0),
+        size=(400, 400),
+        line_width=1,
+        line_color=(255, 255, 255),
+        markers=[
+            {"xy": (x, y), "shape": "circle", "size": 9, "color": (0, 0, 255)}
+            for x, y in centres
+        ],
+    )
+    ink = np.any(plot.image != np.array([255, 255, 255], dtype=np.uint8), axis=2)
+    mask = np.where(ink, 255, 0).astype(np.uint8)
+    truth = [plot.pixel_of(x, y) for x, y in centres]
+    sample = truth[0]
+    out = match_points(mask, sample, sample_radius=7, max_point_size=24)
+    tp, fp, mean_d = _greedy_match(out, truth, cutoff=1.5)
+    n = len(truth)
+    recall = tp / n
+    fp_rate = fp / max(tp + fp, 1)
+    assert recall >= 0.95
+    assert fp_rate <= 0.02
+    assert mean_d <= 1.5
+    assert_not_worse("point_match.synthetic_scatter.recall", recall, lower_is_better=False)
+    assert_not_worse("point_match.synthetic_scatter.fp_rate", fp_rate, lower_is_better=True)
+    assert_not_worse("point_match.synthetic_scatter.centroid_px", mean_d, lower_is_better=True)
