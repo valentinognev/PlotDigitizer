@@ -107,6 +107,10 @@ class WorkspaceState(BaseModel):
     resample_count: int = Field(default=DEFAULT_POINT_COUNT, ge=2, le=200)
     unskew_mode: Literal["perspective", "mesh"] | None = None
     mesh: MeshGridPayload | None = None
+    canvas_mode: Literal[
+        "select", "place", "axis", "pick-color", "segment-fill", "point-match"
+    ] = "select"
+    show_axes_checker: bool = True
 
 
 class HistoryEntry(BaseModel):

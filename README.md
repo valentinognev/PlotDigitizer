@@ -53,7 +53,7 @@ current calibration, so re-calibrating instantly remaps all points.
 │  api/         sessions router (upload, curves, calibration, unskew, CV, export, …)   │
 │  pipeline/    orchestrates CV improve, resample, remove-from-plot, unskew apply    │
 │  cv/          trace · improve · resample · erase · unskew (OpenCV + NumPy)           │
-│  calibration/ pixel ↔ data transforms (linear / log)                                   │
+│  calibration/ pixel ↔ data 2D transform (orthogonal / affine / projective; cartesian, polar, map)                                   │
 │  export/      CSV, JSON, project save/load, curve import                             │
 │  store/       in-memory SessionStore + last-session persistence                       │
 └──────────────────────────────────────────────────────────────────────────────────────┘
@@ -122,7 +122,8 @@ cd backend && .venv/bin/pytest -q
 
 1. **Upload** a plot image.
 2. Click **Place bounds** in the Calibration panel, then click the plot four times: X min, X max,
-   Y min, Y max.
+   Y min, Y max. Optional: **Precise (3+ points)** for affine/projective, **Polar**, or **Map**
+   (scale bar) calibration.
 3. Enter the **numeric axis values** (and choose linear/log per axis).
 4. *(Optional, skewed/rotated photos)* In the **Unskew** panel, choose **Perspective** or
    **Mesh**, adjust the mesh boundary if needed, click **Preview corrected** to review the

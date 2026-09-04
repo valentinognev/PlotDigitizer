@@ -18,6 +18,7 @@ from app.models.schemas import (
     ScaleBar,
     Session,
     SessionPublic,
+    WorkspaceState,
 )
 
 
@@ -168,6 +169,18 @@ def test_axis_point_partial_values_allowed():
     pt = AxisPoint(pixel=(1.0, 2.0), x_value=3.0, y_value=None)
     assert pt.y_value is None
     assert pt.id  # uuid assigned
+
+
+def test_workspace_axes_checker_defaults():
+    ws = WorkspaceState()
+    assert ws.show_axes_checker is True
+    assert ws.canvas_mode == "select"
+
+
+def test_old_workspace_payload_still_validates():
+    ws = WorkspaceState.model_validate({"active_curve_id": "c1", "resample_count": 9})
+    assert ws.show_axes_checker is True
+    assert ws.canvas_mode == "select"
 
 
 def test_invalid_coords_type_rejected():

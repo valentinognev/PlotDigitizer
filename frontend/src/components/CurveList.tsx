@@ -1,6 +1,6 @@
 import { DEFAULT_POINT_COUNT } from '../lib/constants'
 import { paletteColor } from '../lib/colors'
-import type { Curve } from '../types'
+import type { CanvasMode, Curve } from '../types'
 
 interface Props {
   curves: Curve[]
@@ -11,8 +11,8 @@ interface Props {
   resampleCount: number
   onResampleCountChange: (n: number) => void
   onActiveChange: (id: string) => void
-  addPointMode: boolean
-  onAddPointModeChange: (enabled: boolean) => void
+  canvasMode: CanvasMode
+  onCanvasModeChange: (mode: CanvasMode) => void
   onCurveChange: (curves: Curve[]) => void
   onReassignPoints: (pointIds: string[], toCurveId: string) => void
   onImprove: (curveId: string) => void
@@ -28,8 +28,8 @@ export function CurveList({
   resampleCount,
   onResampleCountChange,
   onActiveChange,
-  addPointMode,
-  onAddPointModeChange,
+  canvasMode,
+  onCanvasModeChange,
   onCurveChange,
   onReassignPoints,
   onImprove,
@@ -101,9 +101,9 @@ export function CurveList({
                 ? 'Click the plot to place points on the first visible curve'
                 : 'Turn on show for at least one curve first'
             }
-            onClick={() => onAddPointModeChange(!addPointMode)}
+            onClick={() => onCanvasModeChange(canvasMode === 'place' ? 'select' : 'place')}
             className={`rounded px-2 py-0.5 text-[11px] disabled:opacity-50 ${
-              addPointMode
+              canvasMode === 'place'
                 ? 'bg-sky-600 hover:bg-sky-500'
                 : 'bg-slate-600 hover:bg-slate-500'
             }`}

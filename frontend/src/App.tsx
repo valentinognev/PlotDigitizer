@@ -58,8 +58,9 @@ import {
   type UnskewMode,
 } from './lib/meshWarp'
 import { isUnskewReady, unskewFromCalibration } from './lib/unskew'
+import { appendAxisPoint, setScaleBarPixel } from './lib/axesChecker'
 import { getAxisBounds, isCalibrationValid, updateAxisBound, areCalibrationPixelsInImage, type AxisBoundKey } from './lib/transform'
-import type { Calibration, Session } from './types'
+import type { Calibration, CanvasMode, Session } from './types'
 
 function toast(message: string) {
   const el = document.getElementById('toast')
@@ -70,7 +71,12 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [activeCurveId, setActiveCurveId] = useState<string | null>(null)
   const [selectedPointIds, setSelectedPointIds] = useState<string[]>([])
-  const [addPointMode, setAddPointMode] = useState(false)
+  const [preciseMode, setPreciseMode] = useState(false)
+  const [scaleBarStep, setScaleBarStep] = useState<'a' | 'b' | null>(null)
+  const [canvasMode, setCanvasMode] = useState<CanvasMode>('select')
+  const [showAxesChecker, setShowAxesChecker] = useState(true)
+  const [axesCheckerChangedAt, setAxesCheckerChangedAt] = useState(0)
+  const [nowMs, setNowMs] = useState(() => Date.now())
   const [axisPlaceStep, setAxisPlaceStep] = useState<AxisBoundKey | null>(null)
   const [resampleCount, setResampleCount] = useState(DEFAULT_POINT_COUNT)
   const [busy, setBusy] = useState(false)
@@ -115,6 +121,18 @@ export default function App() {
       setActiveCurveId(null)
     }
     if (ws?.resample_count !== undefined) setResampleCount(ws.resample_count)
+    if (ws?.show_axes_checker !== undefined) setShowAxesChecker(ws.show_axes_checker)
+    const CANVAS_MODES: readonly CanvasMode[] = [
+      'select',
+      'place',
+      'axis',
+      'pick-color',
+      'segment-fill',
+      'point-match',
+    ]
+    if (ws?.canvas_mode && CANVAS_MODES.includes(ws.canvas_mode)) {
+      setCanvasMode(ws.canvas_mode)
+    }
     setUnskewMode(ws?.unskew_mode ?? 'perspective')
     if (s.calibration && ws?.mesh) {
       try {
@@ -285,6 +303,8 @@ export default function App() {
         resample_count: resampleCount,
         unskew_mode: mode,
         mesh: meshState ? meshToPayload(meshState) : null,
+        canvas_mode: canvasMode,
+        show_axes_checker: showAxesChecker,
       }
 
       pendingPrefsPatch.current = {
@@ -312,7 +332,7 @@ export default function App() {
         flush()
       }
     },
-    [session?.id, activeCurveId, resampleCount, unskewMode, meshGrid],
+    [session?.id, activeCurveId, resampleCount, unskewMode, meshGrid, canvasMode, showAxesChecker],
   )
 
   useEffect(() => {
@@ -484,7 +504,7 @@ export default function App() {
       ) {
         return
       }
-      if (addPointMode && placementCurveId) {
+      if (canvasMode === 'place' && placementCurveId) {
         if (handleRemoveLastPlacedPoint()) e.preventDefault()
         return
       }
@@ -497,7 +517,7 @@ export default function App() {
   }, [
     selectedPointIds,
     handleDeletePoints,
-    addPointMode,
+    canvasMode,
     placementCurveId,
     handleRemoveLastPlacedPoint,
   ])
@@ -720,14 +740,28 @@ export default function App() {
     }
   }
 
+  const bumpChecker = () => {
+    const t = Date.now()
+    setAxesCheckerChangedAt(t)
+    setNowMs(t)
+  }
+
+  useEffect(() => {
+    if (!showAxesChecker) return
+    const id = window.setInterval(() => setNowMs(Date.now()), 250)
+    return () => window.clearInterval(id)
+  }, [showAxesChecker, axesCheckerChangedAt])
+
   const handleCalibrationChange = (cal: Calibration) => {
     savePreferencesQuiet({ calibration: { ...cal, source: 'manual' } }, { debounceMs: 300 })
+    bumpChecker()
   }
 
   const handleMoveCalibrationMark = (key: AxisBoundKey, pixel: [number, number]) => {
     if (!draftCalibration) return
     const next = updateAxisBound(draftCalibration, key, { pixel })
     savePreferencesQuiet({ calibration: next })
+    bumpChecker()
   }
 
   const startAxisPlacement = () => {
@@ -738,8 +772,100 @@ export default function App() {
     setDraftCalibration(cal)
     savePreferencesQuiet({ calibration: cal, manual_calibration: true })
     setAxisPlaceStep('xmin')
-    setAddPointMode(false)
+    setPreciseMode(false)
+    setScaleBarStep(null)
+    setCanvasMode('select')
     setSelectedPointIds([])
+  }
+
+  const startPrecisePlacement = () => {
+    if (!session) return
+    const w = session.image_meta.width
+    const h = session.image_meta.height
+    const cal = draftCalibration ?? createEmptyCalibration(w, h)
+    const coords = cal.coords_type === 'polar' ? ('polar' as const) : ('cartesian' as const)
+    const next = { ...cal, coords_type: coords, axis_points: cal.axis_points ?? [] }
+    setDraftCalibration(next)
+    setPreciseMode(true)
+    setAxisPlaceStep(null)
+    setScaleBarStep(null)
+    setCanvasMode('axis')
+    savePreferencesQuiet({
+      calibration: next,
+      manual_calibration: true,
+      workspace: { ...(session.workspace ?? {}), canvas_mode: 'axis', show_axes_checker: showAxesChecker },
+    })
+  }
+
+  const startScaleBarPlacement = () => {
+    if (!session) return
+    const w = session.image_meta.width
+    const h = session.image_meta.height
+    const cal = draftCalibration ?? createEmptyCalibration(w, h)
+    const next = { ...cal, coords_type: 'map' as const }
+    setDraftCalibration(next)
+    setScaleBarStep('a')
+    setPreciseMode(false)
+    setAxisPlaceStep(null)
+    setCanvasMode('axis')
+    savePreferencesQuiet({
+      calibration: next,
+      manual_calibration: true,
+      workspace: { ...(session.workspace ?? {}), canvas_mode: 'axis', show_axes_checker: showAxesChecker },
+    })
+  }
+
+  const handleAxisPointClick = (pixel: [number, number]) => {
+    if (!draftCalibration) return
+    const coords = draftCalibration.coords_type ?? 'cartesian'
+    if (coords === 'map' && scaleBarStep) {
+      const next = setScaleBarPixel(draftCalibration, scaleBarStep, pixel)
+      setDraftCalibration(next)
+      savePreferencesQuiet({ calibration: next, manual_calibration: true })
+      bumpChecker()
+      setScaleBarStep(scaleBarStep === 'a' ? 'b' : null)
+      if (scaleBarStep === 'b') setCanvasMode('select')
+      return
+    }
+    const next = appendAxisPoint(draftCalibration, pixel, null, null)
+    setDraftCalibration(next)
+    savePreferencesQuiet({ calibration: next, manual_calibration: true })
+    bumpChecker()
+  }
+
+  const handleMoveAxisPoint = (id: string, pixel: [number, number]) => {
+    if (!draftCalibration) return
+    const next = {
+      ...draftCalibration,
+      source: 'manual' as const,
+      axis_points: (draftCalibration.axis_points ?? []).map((p) =>
+        p.id === id ? { ...p, pixel } : p,
+      ),
+    }
+    setDraftCalibration(next)
+    savePreferencesQuiet({ calibration: next, manual_calibration: true })
+    bumpChecker()
+  }
+
+  const handleMoveScaleBar = (which: 'a' | 'b', pixel: [number, number]) => {
+    if (!draftCalibration) return
+    const next = setScaleBarPixel(draftCalibration, which, pixel)
+    setDraftCalibration(next)
+    savePreferencesQuiet({ calibration: next, manual_calibration: true })
+    bumpChecker()
+  }
+
+  const handleToggleAxesChecker = (show: boolean) => {
+    setShowAxesChecker(show)
+    if (!session) return
+    saveWorkspaceQuiet()
+    savePreferencesQuiet({
+      workspace: {
+        ...(session.workspace ?? {}),
+        show_axes_checker: show,
+        canvas_mode: canvasMode,
+      },
+    })
   }
 
   const handleAxisPlaceClick = (pixel: [number, number]) => {
@@ -750,6 +876,7 @@ export default function App() {
     const next = setAxisBoundPixel(base, axisPlaceStep, pixel)
     setDraftCalibration(next)
     savePreferencesQuiet({ calibration: next, manual_calibration: true })
+    bumpChecker()
 
     const idx = AXIS_PLACE_ORDER.indexOf(axisPlaceStep)
     if (idx < AXIS_PLACE_ORDER.length - 1) {
@@ -833,7 +960,13 @@ export default function App() {
         <CalibrationPanel
           calibration={calibration}
           axisPlaceStep={axisPlaceStep}
+          preciseMode={preciseMode}
+          scaleBarStep={scaleBarStep}
+          showAxesChecker={showAxesChecker}
+          onToggleAxesChecker={handleToggleAxesChecker}
           onStartAxisPlacement={startAxisPlacement}
+          onStartPrecisePlacement={startPrecisePlacement}
+          onStartScaleBarPlacement={startScaleBarPlacement}
           onChange={handleCalibrationChange}
           onSave={() =>
             session &&
@@ -856,7 +989,7 @@ export default function App() {
             run(async () => {
               const s = await loadProject(file)
               setSelectedPointIds([])
-              setAddPointMode(false)
+              setCanvasMode('select')
               setAxisPlaceStep(null)
               return s
             }, 'Opening project…')
@@ -886,7 +1019,13 @@ export default function App() {
               onUpdateMeshVertex={handleUpdateMeshVertex}
               curves={session?.curves ?? []}
               placementCurveId={placementCurveId}
-              addPointMode={addPointMode}
+              canvasMode={canvasMode}
+              onAxisPointClick={handleAxisPointClick}
+              onMoveAxisPoint={handleMoveAxisPoint}
+              onMoveScaleBar={handleMoveScaleBar}
+              showAxesChecker={showAxesChecker}
+              axesCheckerChangedAt={axesCheckerChangedAt}
+              axesCheckerNow={nowMs}
               axisPlaceStep={axisPlaceStep}
               calibration={calibration}
               onMoveCalibrationMark={handleMoveCalibrationMark}
@@ -916,10 +1055,10 @@ export default function App() {
             resampleCount={resampleCount}
             onResampleCountChange={setResampleCount}
             onActiveChange={setActiveCurveId}
-            addPointMode={addPointMode}
-            onAddPointModeChange={(enabled) => {
-              setAddPointMode(enabled)
-              if (enabled) setAxisPlaceStep(null)
+            canvasMode={canvasMode}
+            onCanvasModeChange={(mode) => {
+              setCanvasMode(mode)
+              if (mode === 'place') setAxisPlaceStep(null)
             }}
             onCurveChange={syncCurves}
             onReassignPoints={handleReassign}

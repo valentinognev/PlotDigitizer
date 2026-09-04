@@ -40,6 +40,12 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [2.3.0] — 2026-09-04 — Affine, projective, polar and map calibration
+### Added
+- 2D transform solver (orthogonal / affine / projective, `auto`) plus polar and map adapters; precise 3+ axis points; axes checker overlay; graph-units-per-pixel readout.
+### Changed
+- Four-bound cartesian sessions keep producing the same numbers as the old 1D fit (exact to 1e-12).
+
 ## [2.2.4] — 2026-09-04
 ### Fixed
 - **SynthPlot.truth** now records only drawn samples (`ymin <= y <= ymax`); clipped segments are omitted so later RMS gates cannot score undrawn points.

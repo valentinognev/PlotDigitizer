@@ -17,7 +17,8 @@ import {
 } from '../lib/meshWarp'
 import { warpImageToCanvas, canvasToDisplayImage, estimatePreviewContentBBox } from '../lib/unskew'
 import { MeshGridOverlay } from './MeshGridOverlay'
-import type { Calibration, Curve, Point } from '../types'
+import { AxesCheckerOverlay } from './AxesCheckerOverlay'
+import type { Calibration, CanvasMode, Curve, Point } from '../types'
 
 interface Props {
   imageUrl: string | null
@@ -29,7 +30,13 @@ interface Props {
   onUpdateMeshVertex?: (row: number, col: number, vertex: MeshVertex) => void
   curves: Curve[]
   placementCurveId: string | null
-  addPointMode: boolean
+  canvasMode: CanvasMode
+  onAxisPointClick?: (pixel: [number, number]) => void
+  onMoveAxisPoint?: (id: string, pixel: [number, number]) => void
+  onMoveScaleBar?: (which: 'a' | 'b', pixel: [number, number]) => void
+  showAxesChecker?: boolean
+  axesCheckerChangedAt?: number
+  axesCheckerNow?: number
   axisPlaceStep: AxisBoundKey | null
   calibration: Calibration | null
   onMoveCalibrationMark: (key: AxisBoundKey, pixel: [number, number]) => void
@@ -107,7 +114,13 @@ export function EditorCanvas({
   onUpdateMeshVertex,
   curves,
   placementCurveId,
-  addPointMode,
+  canvasMode,
+  onAxisPointClick,
+  onMoveAxisPoint,
+  onMoveScaleBar,
+  showAxesChecker,
+  axesCheckerChangedAt,
+  axesCheckerNow,
   axisPlaceStep,
   calibration,
   onMoveCalibrationMark,
@@ -337,9 +350,9 @@ export function EditorCanvas({
   }, [])
 
   useEffect(() => {
-    if (addPointMode && !spaceDownRef.current) setStageDraggable(false)
-    else if (!addPointMode) setStageDraggable(true)
-  }, [addPointMode])
+    if (canvasMode === 'select') setStageDraggable(true)
+    else if (!spaceDownRef.current) setStageDraggable(false)
+  }, [canvasMode])
 
   useEffect(() => {
     const el = containerRef.current
@@ -444,7 +457,12 @@ export function EditorCanvas({
       setStageDraggable(false)
       return
     }
-    if (addPointMode && placementCurveId) {
+    if (canvasMode === 'axis' && onAxisPointClick) {
+      onAxisPointClick(toOriginalCoords([x, y]))
+      setStageDraggable(false)
+      return
+    }
+    if (canvasMode === 'place' && placementCurveId) {
       onAddPoint(toOriginalCoords([x, y]))
       setStageDraggable(false)
       return
@@ -471,8 +489,8 @@ export function EditorCanvas({
     }
     if (e.target.getClassName() === 'Text') return
     if (!isBackgroundTarget(e.target)) return
-    if (axisPlaceStep || addPointMode) return
-    onClearSelection()
+    if (axisPlaceStep) return
+    if (canvasMode === 'select') onClearSelection()
   }
 
   const handleMouseMove = (e: KonvaEventObject<MouseEvent>) => {
@@ -499,7 +517,7 @@ export function EditorCanvas({
     }
     setMarquee(null)
     setMarqueeBox(null)
-    setStageDraggable(!addPointMode && !axisPlaceStep && spaceDownRef.current)
+    setStageDraggable(canvasMode === 'select' && !axisPlaceStep && spaceDownRef.current)
   }
 
   const prepareGroupDrag = (pt: Point) => {
@@ -570,7 +588,7 @@ export function EditorCanvas({
   return (
     <div className="flex h-full max-h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border border-slate-700 bg-slate-900">
       <PlotInteractionHint
-        addPointMode={addPointMode}
+        canvasMode={canvasMode}
         axisPlaceStep={axisPlaceStep}
         correctionPreview={previewReady}
         warpingPreview={warpingPreview}
@@ -584,7 +602,7 @@ export function EditorCanvas({
         onClick={handleStageClick}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        draggable={stageDraggable && (!addPointMode || spacePan) && !axisPlaceStep}
+        draggable={stageDraggable && (canvasMode === 'select' || spacePan) && !axisPlaceStep}
         x={stagePos.x}
         y={stagePos.y}
         scaleX={totalScale}
@@ -639,7 +657,8 @@ export function EditorCanvas({
               fill="rgba(251, 191, 36, 0.12)"
             />
           )}
-          {axisBounds &&
+          {(calibration?.coords_type ?? 'cartesian') === 'cartesian' &&
+            axisBounds &&
             (Object.entries(axisBounds) as [AxisBoundKey, (typeof axisBounds)['xmin']][]).map(
               ([key, bound]) => (
                 <CalibrationMark
@@ -657,6 +676,48 @@ export function EditorCanvas({
                 />
               ),
             )}
+          {(calibration?.axis_points ?? []).map((pt, i) => (
+            <CalibrationMark
+              key={pt.id}
+              label={`#${i + 1}`}
+              pixel={toDisplayCoords(pt.pixel)}
+              color="#fbbf24"
+              scale={totalScale}
+              onDragStart={() => setStageDraggable(false)}
+              onDragEnd={(px) => {
+                setStageDraggable(true)
+                onMoveAxisPoint?.(pt.id, toOriginalCoords(px))
+              }}
+            />
+          ))}
+          {calibration?.coords_type === 'map' && calibration.scale_bar && (
+            <>
+              <CalibrationMark
+                label="A"
+                pixel={toDisplayCoords(calibration.scale_bar.pixel_a)}
+                color="#34d399"
+                scale={totalScale}
+                active={true}
+                onDragStart={() => setStageDraggable(false)}
+                onDragEnd={(px) => {
+                  setStageDraggable(true)
+                  onMoveScaleBar?.('a', toOriginalCoords(px))
+                }}
+              />
+              <CalibrationMark
+                label="B"
+                pixel={toDisplayCoords(calibration.scale_bar.pixel_b)}
+                color="#34d399"
+                scale={totalScale}
+                active={true}
+                onDragStart={() => setStageDraggable(false)}
+                onDragEnd={(px) => {
+                  setStageDraggable(true)
+                  onMoveScaleBar?.('b', toOriginalCoords(px))
+                }}
+              />
+            </>
+          )}
           {showMeshGrid && meshGrid && onUpdateMeshVertex && (
             <MeshGridOverlay
               mesh={meshGrid}
@@ -666,6 +727,15 @@ export function EditorCanvas({
               onDragEnd={() => setStageDraggable(true)}
             />
           )}
+          <AxesCheckerOverlay
+            calibration={calibration}
+            imageWidth={width}
+            imageHeight={height}
+            enabled={showAxesChecker ?? true}
+            changedAtMs={axesCheckerChangedAt ?? 0}
+            nowMs={axesCheckerNow ?? 0}
+            scale={totalScale}
+          />
         </Layer>
       </Stage>
       </div>
@@ -674,13 +744,13 @@ export function EditorCanvas({
 }
 
 function PlotInteractionHint({
-  addPointMode,
+  canvasMode,
   axisPlaceStep,
   correctionPreview,
   warpingPreview,
   meshEditing,
 }: {
-  addPointMode: boolean
+  canvasMode: CanvasMode
   axisPlaceStep: AxisBoundKey | null
   correctionPreview?: boolean
   warpingPreview?: boolean
@@ -690,7 +760,9 @@ function PlotInteractionHint({
   const panHint = 'Middle-drag or Space + left-drag: pan · Wheel: zoom'
   if (axisPlaceStep) {
     text = `Click on the plot: ${AXIS_PLACE_LABELS[axisPlaceStep]} · ${panHint}`
-  } else if (addPointMode) {
+  } else if (canvasMode === 'axis') {
+    text = `Left-click to place an axis point (type values in the Calibration panel). ${panHint}`
+  } else if (canvasMode === 'place') {
     text = `Left-click to place points on the first visible curve. Delete/Backspace: undo last point. ${panHint}`
   } else if (meshEditing) {
     text = `Drag boundary vertices to match plot curvature · Drag tangent handles to adjust edge direction · ${panHint}`
