@@ -91,6 +91,12 @@ export interface ImageSource {
   path?: string | null
 }
 
+export interface SegmentPublic {
+  index: number
+  length: number
+  points: [number, number][]
+}
+
 export interface WorkspaceState {
   active_curve_id?: string | null
   resample_count?: number
@@ -100,6 +106,9 @@ export interface WorkspaceState {
   show_axes_checker?: boolean
   show_mask?: boolean
   grid?: GridGeometrySettings | null
+  point_separation?: number
+  min_segment_length?: number
+  fill_corners?: boolean
 }
 
 export interface MeshVertexPayload {

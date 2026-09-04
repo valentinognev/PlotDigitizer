@@ -28,6 +28,8 @@ from app.models.schemas import (
     GridGeometrySettings,
     ImageSource,
     ResampleRequest,
+    SegmentFillRequest,
+    SegmentsResponse,
     Session,
     SessionPreferencesPatch,
     SessionPublic,
@@ -38,9 +40,11 @@ from app.models.schemas import (
 )
 from app.pipeline.pipeline import (
     build_curve_mask,
+    list_curve_segments,
     run_cv_improve,
     run_remove_curve_from_plot,
     run_resample,
+    run_segment_fill,
     run_unskew_apply,
 )
 from app.store.session_store import session_store
@@ -214,6 +218,47 @@ def cv_improve_curve(session_id: str, curve_id: str) -> SessionPublic:
         session_store.update(session_id, stored.session)
     except ValueError as exc:
         raise _error(exc, "improve_input", str(exc)) from exc
+    return _to_public(stored)
+
+
+@router.post("/{session_id}/curves/{curve_id}/segments", response_model=SegmentsResponse)
+def list_segments(session_id: str, curve_id: str) -> SegmentsResponse:
+    stored = _require(session_id)
+    try:
+        payload = list_curve_segments(stored.session, stored.image_bytes, curve_id)
+    except ValueError as exc:
+        raise _error(exc, "segments_input", str(exc)) from exc
+    return SegmentsResponse(segments=payload)
+
+
+@router.post(
+    "/{session_id}/curves/{curve_id}/segment-fill",
+    response_model=SessionPublic,
+)
+def segment_fill_curve(
+    session_id: str, curve_id: str, body: SegmentFillRequest
+) -> SessionPublic:
+    stored = _require(session_id)
+    ws = stored.session.workspace
+    separation = body.separation if body.separation is not None else (
+        ws.point_separation if ws is not None else 25.0
+    )
+    fill_corners = body.fill_corners if body.fill_corners is not None else (
+        ws.fill_corners if ws is not None else False
+    )
+    try:
+        session_store.push_history(stored, "segment_fill")
+        stored.session = run_segment_fill(
+            stored.session,
+            stored.image_bytes,
+            curve_id,
+            body.pixel,
+            separation,
+            fill_corners,
+        )
+        session_store.update(session_id, stored.session)
+    except ValueError as exc:
+        raise _error(exc, "segment_fill", str(exc)) from exc
     return _to_public(stored)
 
 

@@ -3,6 +3,7 @@ import type {
   ColorFilter,
   Curve,
   GridGeometrySettings,
+  SegmentPublic,
   Session,
   WorkspaceState,
 } from '../types'
@@ -325,4 +326,30 @@ export function sessionMaskUrl(
   stamp?: string | number,
 ): string {
   return maskPreviewUrl(sessionId, curveId, rev, stamp)
+}
+
+export async function listCurveSegments(
+  id: string,
+  curveId: string,
+): Promise<{ segments: SegmentPublic[] }> {
+  return request<{ segments: SegmentPublic[] }>(
+    `/sessions/${id}/curves/${curveId}/segments`,
+    { method: 'POST' },
+  )
+}
+
+export async function fillCurveSegment(
+  id: string,
+  curveId: string,
+  body: {
+    pixel: [number, number]
+    separation?: number
+    fill_corners?: boolean
+  },
+): Promise<Session> {
+  return request<Session>(`/sessions/${id}/curves/${curveId}/segment-fill`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
 }

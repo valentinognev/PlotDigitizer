@@ -135,6 +135,9 @@ class WorkspaceState(BaseModel):
     show_axes_checker: bool = True
     show_mask: bool = False
     grid: GridGeometrySettings | None = None
+    point_separation: float = 25.0
+    min_segment_length: float = 2.0
+    fill_corners: bool = False
 
 
 class HistoryEntry(BaseModel):
@@ -242,3 +245,19 @@ class SnapRequest(BaseModel):
 
 class SnapResponse(BaseModel):
     pixels: list[tuple[float, float]]
+
+
+class SegmentPublic(BaseModel):
+    index: int
+    length: float
+    points: list[tuple[float, float]]
+
+
+class SegmentsResponse(BaseModel):
+    segments: list[SegmentPublic]
+
+
+class SegmentFillRequest(BaseModel):
+    pixel: tuple[float, float]
+    separation: float | None = Field(default=None, gt=0)
+    fill_corners: bool | None = None

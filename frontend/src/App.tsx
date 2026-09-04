@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   applyUnskew,
   detectGrid,
+  fillCurveSegment,
   getLastSession,
   waitForBackend,
   cvImproveCurve,
   importCurves,
+  listCurveSegments,
   loadProject,
   patchCurveFilter,
   patchCurves,
@@ -22,6 +24,7 @@ import { ProgressBar } from './components/ProgressBar'
 import { CalibrationPanel } from './components/CalibrationPanel'
 import { UnskewPanel } from './components/UnskewPanel'
 import { FilterPanel, type MaskView } from './components/FilterPanel'
+import { AutoDigitizePanel } from './components/AutoDigitizePanel'
 import { CurveList } from './components/CurveList'
 import { EditorCanvas } from './components/EditorCanvas'
 import { ExportPanel } from './components/ExportPanel'
@@ -66,7 +69,7 @@ import { maskPreviewUrl } from './lib/colorFilter'
 import { isUnskewReady, unskewFromCalibration } from './lib/unskew'
 import { appendAxisPoint, restoreAxisUiFlags, setScaleBarPixel } from './lib/axesChecker'
 import { getAxisBounds, isCalibrationValid, updateAxisBound, areCalibrationPixelsInImage, type AxisBoundKey } from './lib/transform'
-import type { Calibration, CanvasMode, ColorFilter, Session } from './types'
+import type { Calibration, CanvasMode, ColorFilter, SegmentPublic, Session } from './types'
 
 function toast(message: string) {
   const el = document.getElementById('toast')
@@ -83,6 +86,10 @@ export default function App() {
   const [maskView, setMaskView] = useState<MaskView>('none')
   const [maskEpoch, setMaskEpoch] = useState(0)
   const [showAxesChecker, setShowAxesChecker] = useState(true)
+  const [pointSeparation, setPointSeparation] = useState(25)
+  const [minSegmentLength, setMinSegmentLength] = useState(2)
+  const [fillCorners, setFillCorners] = useState(false)
+  const [segments, setSegments] = useState<SegmentPublic[]>([])
   const [axesCheckerChangedAt, setAxesCheckerChangedAt] = useState(0)
   const [nowMs, setNowMs] = useState(() => Date.now())
   const [axisPlaceStep, setAxisPlaceStep] = useState<AxisBoundKey | null>(null)
@@ -135,6 +142,9 @@ export default function App() {
     }
     if (ws?.resample_count !== undefined) setResampleCount(ws.resample_count)
     if (ws?.show_axes_checker !== undefined) setShowAxesChecker(ws.show_axes_checker)
+    if (ws?.point_separation !== undefined) setPointSeparation(ws.point_separation)
+    if (ws?.min_segment_length !== undefined) setMinSegmentLength(ws.min_segment_length)
+    if (ws?.fill_corners !== undefined) setFillCorners(ws.fill_corners)
     const CANVAS_MODES: readonly CanvasMode[] = [
       'select',
       'place',
@@ -284,6 +294,7 @@ export default function App() {
   const handlePickColor = () => {
     setAxisPlaceStep(null)
     setCanvasMode('pick-color')
+    setSegments([])
   }
 
   const handlePickedPixel = (pixel: [number, number]) => {
@@ -406,6 +417,9 @@ export default function App() {
         canvas_mode: canvasMode,
         show_axes_checker: options?.showAxesCheckerOverride ?? showAxesChecker,
         show_mask: maskView !== 'none',
+        point_separation: pointSeparation,
+        min_segment_length: minSegmentLength,
+        fill_corners: fillCorners,
       }
 
       pendingPrefsPatch.current = {
@@ -433,7 +447,7 @@ export default function App() {
         flush()
       }
     },
-    [session?.id, activeCurveId, resampleCount, unskewMode, meshGrid, canvasMode, showAxesChecker, maskView],
+    [session?.id, activeCurveId, resampleCount, unskewMode, meshGrid, canvasMode, showAxesChecker, maskView, pointSeparation, minSegmentLength, fillCorners],
   )
 
   useEffect(() => {
@@ -443,7 +457,65 @@ export default function App() {
       return
     }
     saveWorkspaceQuiet()
-  }, [session?.id, activeCurveId, resampleCount, saveWorkspaceQuiet])
+  }, [session?.id, activeCurveId, resampleCount, pointSeparation, minSegmentLength, fillCorners, saveWorkspaceQuiet])
+
+  const loadSegments = useCallback(async () => {
+    if (!session || !activeCurveId) return
+    try {
+      const body = await listCurveSegments(session.id, activeCurveId)
+      setSegments(body.segments)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Could not build segments')
+      setSegments([])
+    }
+  }, [session, activeCurveId])
+
+  const enterSegmentFill = () => {
+    if (!activeCurveId) return
+    setAxisPlaceStep(null)
+    setCanvasMode('segment-fill')
+    setSelectedPointIds([])
+    const sessionId = session?.id
+    if (sessionId) {
+      ++prefsSeq.current
+      patchSessionPreferences(sessionId, {
+        workspace: {
+          ...(sessionWorkspaceRef.current ?? {}),
+          canvas_mode: 'segment-fill',
+          point_separation: pointSeparation,
+          min_segment_length: minSegmentLength,
+          fill_corners: fillCorners,
+        },
+      })
+        .then((saved) => {
+          setSession((prev) => mergePreferencesUpdate(prev, saved))
+        })
+        .catch(() => {})
+    }
+    void loadSegments()
+  }
+
+  useEffect(() => {
+    if (canvasMode === 'segment-fill') void loadSegments()
+  }, [canvasMode, minSegmentLength, activeCurveId, loadSegments])
+
+  const handleSegmentFillClick = (pixel: [number, number]) => {
+    if (!session || !activeCurveId) return
+    run(
+      async () => {
+        const saved = await fillCurveSegment(session.id, activeCurveId, {
+          pixel,
+          separation: pointSeparation,
+          fill_corners: fillCorners,
+        })
+        return {
+          ...saved,
+          workspace: { ...(saved.workspace ?? {}), canvas_mode: 'segment-fill' as const },
+        }
+      },
+      'Filling segment…',
+    )
+  }
 
   const savePreferencesQuiet = useCallback(
     (
@@ -623,6 +695,29 @@ export default function App() {
     placementCurveId,
     handleRemoveLastPlacedPoint,
   ])
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      if (canvasMode === 'segment-fill') {
+        setCanvasMode('select')
+        setSegments([])
+        const sessionId = session?.id
+        if (sessionId) {
+          ++prefsSeq.current
+          patchSessionPreferences(sessionId, {
+            workspace: { ...(sessionWorkspaceRef.current ?? {}), canvas_mode: 'select' },
+          })
+            .then((saved) => {
+              setSession((prev) => mergePreferencesUpdate(prev, saved))
+            })
+            .catch(() => {})
+        }
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [canvasMode, session?.id])
 
   const handleReassign = (pointIds: string[], toCurveId: string) => {
     if (!pointIds.length) return
@@ -1138,6 +1233,8 @@ export default function App() {
               curves={session?.curves ?? []}
               placementCurveId={placementCurveId}
               canvasMode={canvasMode}
+              segments={segments}
+              onSegmentFillClick={handleSegmentFillClick}
               onAxisPointClick={handleAxisPointClick}
               onMoveAxisPoint={handleMoveAxisPoint}
               onMoveScaleBar={handleMoveScaleBar}
@@ -1176,6 +1273,22 @@ export default function App() {
         </div>
 
         <aside className="flex h-full min-h-0 w-[300px] shrink-0 flex-col overflow-hidden border-l border-slate-800 p-2">
+          <AutoDigitizePanel
+            busy={busy}
+            disabled={!activeCurveId}
+            active={canvasMode === 'segment-fill'}
+            pointSeparation={pointSeparation}
+            minSegmentLength={minSegmentLength}
+            fillCorners={fillCorners}
+            onPointSeparationChange={(n) => {
+              setPointSeparation(n)
+            }}
+            onMinSegmentLengthChange={(n) => {
+              setMinSegmentLength(n)
+            }}
+            onFillCornersChange={setFillCorners}
+            onEnterSegmentFill={enterSegmentFill}
+          />
           <CurveList
             curves={session?.curves ?? []}
             activeCurveId={activeCurveId}
@@ -1188,6 +1301,7 @@ export default function App() {
             canvasMode={canvasMode}
             onCanvasModeChange={(mode) => {
               setCanvasMode(mode)
+              if (mode !== 'segment-fill') setSegments([])
               if (mode === 'place') {
                 setAxisPlaceStep(null)
                 setPreciseMode(false)

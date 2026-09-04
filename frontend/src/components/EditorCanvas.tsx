@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Circle, Group, Image as KonvaImage, Layer, Rect, Stage, Text } from 'react-konva'
+import { Circle, Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text } from 'react-konva'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import type Konva from 'konva'
 import { getAxisBounds, type AxisBoundKey } from '../lib/transform'
@@ -20,6 +20,8 @@ import { MeshGridOverlay } from './MeshGridOverlay'
 import { AxesCheckerOverlay } from './AxesCheckerOverlay'
 import { MaskOverlay } from './MaskOverlay'
 import type { MaskView } from './FilterPanel'
+import type { SegmentLite } from '../lib/segments'
+import { flattenPolyline, nearestSegment } from '../lib/segments'
 import type { Calibration, CanvasMode, Curve, Point } from '../types'
 
 interface Props {
@@ -54,6 +56,8 @@ interface Props {
   onPickColor?: (pixel: [number, number]) => void
   maskUrl?: string | null
   maskView?: MaskView
+  segments: SegmentLite[]
+  onSegmentFillClick: (pixel: [number, number]) => void
 }
 
 type GroupDrag = {
@@ -141,6 +145,8 @@ export function EditorCanvas({
   onPickColor,
   maskUrl = null,
   maskView = 'none',
+  segments,
+  onSegmentFillClick,
 }: Props) {
   const axisBounds = calibration ? getAxisBounds(calibration) : null
   const [image, setImage] = useState<HTMLImageElement | null>(null)
@@ -169,6 +175,12 @@ export function EditorCanvas({
   const stagePosRef = useRef(stagePos)
   stagePosRef.current = stagePos
   const [viewSize, setViewSize] = useState({ w: 800, h: 500 })
+  const [hoverSegIndex, setHoverSegIndex] = useState<number | null>(null)
+  const filling = canvasMode === 'segment-fill'
+
+  useEffect(() => {
+    if (!filling) setHoverSegIndex(null)
+  }, [filling])
 
   const selectedSet = new Set(selectedPointIds)
   const multiSelected = selectedPointIds.length > 1
@@ -459,6 +471,11 @@ export function EditorCanvas({
       setStageDraggable(true)
       return
     }
+    if (filling) {
+      onSegmentFillClick(toOriginalCoords([x, y]))
+      setStageDraggable(false)
+      return
+    }
     if (axisPlaceStep) {
       onAxisPlaceClick(toOriginalCoords([x, y]))
       setStageDraggable(false)
@@ -511,6 +528,12 @@ export function EditorCanvas({
     if (!pos) return
     const [x, y] = toImageCoords(pos.x, pos.y)
 
+    if (filling) {
+      const hit = nearestSegment(segments, toOriginalCoords([x, y]), 12)
+      setHoverSegIndex(hit ? hit.index : null)
+      return
+    }
+
     if (!marquee) return
     setMarqueeBox({
       x: Math.min(marquee.start[0], x),
@@ -529,7 +552,7 @@ export function EditorCanvas({
     }
     setMarquee(null)
     setMarqueeBox(null)
-    setStageDraggable(canvasMode === 'select' && !axisPlaceStep && spaceDownRef.current)
+    setStageDraggable(!filling && canvasMode !== 'place' && !axisPlaceStep && spaceDownRef.current)
   }
 
   const prepareGroupDrag = (pt: Point) => {
@@ -605,6 +628,7 @@ export function EditorCanvas({
         correctionPreview={previewReady}
         warpingPreview={warpingPreview}
         meshEditing={showMeshGrid}
+        segmentFill={filling}
       />
       <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden">
       <Stage
@@ -614,7 +638,7 @@ export function EditorCanvas({
         onClick={handleStageClick}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        draggable={stageDraggable && (canvasMode === 'select' || spacePan) && !axisPlaceStep}
+        draggable={stageDraggable && (canvasMode === 'select' || spacePan) && !axisPlaceStep && !filling}
         x={stagePos.x}
         y={stagePos.y}
         scaleX={totalScale}
@@ -665,6 +689,22 @@ export function EditorCanvas({
                 )
               }),
           )}
+          {filling &&
+            segments.map((seg) => {
+              const pts = flattenPolyline(seg.points.map((p) => toDisplayCoords(p)))
+              const active = hoverSegIndex === seg.index
+              return (
+                <Line
+                  key={seg.index}
+                  points={pts}
+                  stroke={active ? '#38bdf8' : '#38bdf866'}
+                  strokeWidth={(active ? 4 : 2) / totalScale}
+                  listening={false}
+                  lineCap="round"
+                  lineJoin="round"
+                />
+              )
+            })}
           {marqueeBox && (
             <Rect
               x={marqueeBox.x}
@@ -769,12 +809,14 @@ function PlotInteractionHint({
   correctionPreview,
   warpingPreview,
   meshEditing,
+  segmentFill,
 }: {
   canvasMode: CanvasMode
   axisPlaceStep: AxisBoundKey | null
   correctionPreview?: boolean
   warpingPreview?: boolean
   meshEditing?: boolean
+  segmentFill?: boolean
 }) {
   let text: string
   const panHint = 'Middle-drag or Space + left-drag: pan · Wheel: zoom'
@@ -786,6 +828,8 @@ function PlotInteractionHint({
     text = `Left-click to place an axis point (type values in the Calibration panel). ${panHint}`
   } else if (canvasMode === 'place') {
     text = `Left-click to place points on the first visible curve. Delete/Backspace: undo last point. ${panHint}`
+  } else if (segmentFill) {
+    text = `Click a highlighted stroke to drop evenly spaced points. Esc: exit. ${panHint}`
   } else if (meshEditing) {
     text = `Drag boundary vertices to match plot curvature · Drag tangent handles to adjust edge direction · ${panHint}`
   } else {

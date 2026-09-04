@@ -7,7 +7,9 @@ from app.cv.color_filter import build_filter_mask
 from app.cv.erase import remove_curve_from_image
 from app.cv.grid_removal import GridGeometry, detect_grid, remove_grid
 from app.cv.improve import improve_curve_from_hints
+from app.cv.order import order_points_along_curve
 from app.cv.resample import resample_curve
+from app.cv.segments import build_segments, fill_segment, segment_at
 from app.cv.unskew import (
     bounds_pixels_from_calibration,
     compute_unskew_homography,
@@ -184,3 +186,55 @@ def build_curve_mask(session: Session, image_bytes: bytes, curve_id: str) -> np.
     if geom is None:
         return mask
     return remove_grid(mask, geom, close_distance=close_distance)
+
+
+def list_curve_segments(
+    session: Session,
+    image_bytes: bytes,
+    curve_id: str,
+) -> list[dict]:
+    _require_curve(session, curve_id)
+    arr = np.frombuffer(image_bytes, dtype=np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if img is None:
+        return []
+    mask = build_curve_mask(session, image_bytes, curve_id)
+    min_length = 2.0
+    if session.workspace is not None:
+        min_length = float(session.workspace.min_segment_length)
+    segs = build_segments(mask, min_length=min_length)
+    return [
+        {"index": i, "length": seg.length, "points": seg.points}
+        for i, seg in enumerate(segs)
+    ]
+
+
+def run_segment_fill(
+    session: Session,
+    image_bytes: bytes,
+    curve_id: str,
+    pixel: tuple[float, float],
+    separation: float,
+    fill_corners: bool,
+) -> Session:
+    curve = _require_curve(session, curve_id)
+    arr = np.frombuffer(image_bytes, dtype=np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if img is None:
+        raise ValueError("Invalid image")
+    mask = build_curve_mask(session, image_bytes, curve_id)
+    min_length = 2.0
+    if session.workspace is not None:
+        min_length = float(session.workspace.min_segment_length)
+    segs = build_segments(mask, min_length=min_length)
+    hit = segment_at(segs, pixel, max_distance=12.0)
+    if hit is None:
+        raise ValueError("No segment within 12 px of the click")
+    filled = fill_segment(
+        hit, separation=separation, fill_corners=fill_corners, mask=mask
+    )
+    combined = [p.pixel for p in curve.points] + filled
+    ordered = order_points_along_curve(combined)
+    new_points = [Point(pixel=pt, origin="ai") for pt in ordered]
+    session.curves = _replace_curve_points(session.curves, curve_id, new_points)
+    return session
