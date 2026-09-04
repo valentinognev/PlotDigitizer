@@ -156,12 +156,12 @@ def render_plot(
     for raw_x in xs:
         x = float(raw_x)
         y = float(func(x))
-        truth.append((x, y))
         if y < ymin or y > ymax:
             if pts:
                 _draw_polyline(img, pts, line_color, line_width)
                 pts = []
             continue
+        truth.append((x, y))
         pts.append(plot_xy(x, y))
     if pts:
         _draw_polyline(img, pts, line_color, line_width)

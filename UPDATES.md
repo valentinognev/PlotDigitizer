@@ -40,6 +40,10 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [2.2.4] — 2026-09-04
+### Fixed
+- **SynthPlot.truth** now records only drawn samples (`ymin <= y <= ymax`); clipped segments are omitted so later RMS gates cannot score undrawn points.
+
 ## [2.2.3] — 2026-09-04
 ### Added
 - **Precision-toolkit test foundation (Phase 0):** Engauge reference-corpus parser

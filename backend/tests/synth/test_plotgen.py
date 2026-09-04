@@ -150,3 +150,19 @@ def test_markers_and_noise_draw_extra_ink():
     assert not np.array_equal(base.image, noisy.image)
     ink = np.all(marked.image == np.array([0, 0, 255], dtype=np.uint8), axis=2)
     assert int(ink.sum()) > int(np.all(base.image == np.array([0, 0, 255], dtype=np.uint8), axis=2).sum())
+
+
+def test_truth_excludes_clipped_y_samples():
+    plot = render_plot(
+        lambda x: x,
+        x_range=(0.0, 10.0),
+        y_range=(0.0, 5.0),
+        size=(400, 300),
+    )
+    ymin, ymax = 0.0, 5.0
+    assert plot.truth
+    for x, y in plot.truth:
+        assert ymin <= y <= ymax
+    truth_xs = [x for x, _ in plot.truth]
+    # y=x exits the y-range for x>5; that half of the domain must be absent
+    assert not any(x > 5.0 + 1e-12 for x in truth_xs)
