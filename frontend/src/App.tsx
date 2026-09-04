@@ -475,23 +475,6 @@ export default function App() {
     setAxisPlaceStep(null)
     setCanvasMode('segment-fill')
     setSelectedPointIds([])
-    const sessionId = session?.id
-    if (sessionId) {
-      ++prefsSeq.current
-      patchSessionPreferences(sessionId, {
-        workspace: {
-          ...(sessionWorkspaceRef.current ?? {}),
-          canvas_mode: 'segment-fill',
-          point_separation: pointSeparation,
-          min_segment_length: minSegmentLength,
-          fill_corners: fillCorners,
-        },
-      })
-        .then((saved) => {
-          setSession((prev) => mergePreferencesUpdate(prev, saved))
-        })
-        .catch(() => {})
-    }
     void loadSegments()
   }
 
@@ -702,22 +685,11 @@ export default function App() {
       if (canvasMode === 'segment-fill') {
         setCanvasMode('select')
         setSegments([])
-        const sessionId = session?.id
-        if (sessionId) {
-          ++prefsSeq.current
-          patchSessionPreferences(sessionId, {
-            workspace: { ...(sessionWorkspaceRef.current ?? {}), canvas_mode: 'select' },
-          })
-            .then((saved) => {
-              setSession((prev) => mergePreferencesUpdate(prev, saved))
-            })
-            .catch(() => {})
-        }
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [canvasMode, session?.id])
+  }, [canvasMode])
 
   const handleReassign = (pointIds: string[], toCurveId: string) => {
     if (!pointIds.length) return
