@@ -283,17 +283,12 @@ def _solve_affine(constraints: list[Constraint]) -> Transform2D:
 
 def _solve_projective(constraints: list[Constraint]) -> Transform2D:
     full = _full_points(constraints)
-    hint = "Need ≥4 points that each pin both X and Y, with no 3 collinear"
+    hint = "Need ≥4 full (X,Y) points that are not all collinear"
     if len(full) < 4:
         raise CalibrationError("Projective model needs 4 full (X,Y) points", hint=hint)
     pixels = [p for p, _u, _v in full]
-    # any 3 of 4+ collinear is degenerate for a homography
-    if len(pixels) >= 3:
-        for i in range(len(pixels)):
-            for j in range(i + 1, len(pixels)):
-                for k in range(j + 1, len(pixels)):
-                    if _collinear([pixels[i], pixels[j], pixels[k]]):
-                        raise CalibrationError("Projective axis points have 3 collinear", hint=hint)
+    if _collinear(pixels):
+        raise CalibrationError("Projective axis points are collinear", hint=hint)
     rows: list[list[float]] = []
     rhs: list[float] = []
     for (px, py), u, v in full:

@@ -105,6 +105,32 @@ def test_auto_selects_projective_when_four_full_points():
     assert t.model == "projective"
 
 
+def test_auto_keeps_projective_when_fifth_point_on_edge():
+    # Non-affine H; four corners plus an edge midpoint (3 collinear, still well-posed).
+    H = np.array(
+        [
+            [1.2, 0.15, 4.0],
+            [-0.08, 0.9, 3.0],
+            [0.0004, -0.0003, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    corners = [(0.0, 0.0), (200.0, 0.0), (0.0, 180.0), (200.0, 180.0)]
+    pixels = corners + [(100.0, 0.0)]
+    constraints: list[Constraint] = []
+    for p in pixels:
+        u, v = _apply_h(H, p)
+        constraints.append(Constraint(pixel=p, axis="u", value=u))
+        constraints.append(Constraint(pixel=p, axis="v", value=v))
+    t = solve_transform(constraints, model="auto")
+    assert t.model == "projective"
+    for p in corners:
+        got = t.to_linear(p)
+        exp = _apply_h(H, p)
+        assert got[0] == pytest.approx(exp[0], abs=1e-9)
+        assert got[1] == pytest.approx(exp[1], abs=1e-9)
+
+
 def test_auto_selects_affine_when_three_full_noncollinear():
     def uv(px: float, py: float) -> tuple[float, float]:
         return 0.1 * px + 0.02 * py, 0.03 * px + 0.2 * py + 1.0
