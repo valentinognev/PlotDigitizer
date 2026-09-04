@@ -4,6 +4,7 @@ import {
   axesCheckerVisible,
   formatModelLabel,
   formatResolution,
+  restoreAxisUiFlags,
   setScaleBarPixel,
 } from '../axesChecker'
 import { axesCheckerPolyline } from '../transform2d'
@@ -69,5 +70,33 @@ describe('axesCheckerPolyline geometry', () => {
     expect(poly.length).toBeGreaterThanOrEqual(4)
     expect(poly[0][0]).toBeCloseTo(poly[poly.length - 1][0], 6)
     expect(poly[0][1]).toBeCloseTo(poly[poly.length - 1][1], 6)
+  })
+})
+
+describe('restoreAxisUiFlags', () => {
+  it('turns cartesian axis restore into Precise panel state', () => {
+    expect(restoreAxisUiFlags('axis', 'cartesian')).toEqual({
+      canvasMode: 'axis',
+      preciseMode: true,
+      scaleBarStep: null,
+    })
+  })
+  it('keeps polar axis mode without Precise checkbox', () => {
+    expect(restoreAxisUiFlags('axis', 'polar')).toEqual({
+      canvasMode: 'axis',
+      preciseMode: false,
+      scaleBarStep: null,
+    })
+  })
+  it('drops map axis restore to select so clicks do not append axis points', () => {
+    expect(restoreAxisUiFlags('axis', 'map')).toEqual({
+      canvasMode: 'select',
+      preciseMode: false,
+      scaleBarStep: null,
+    })
+  })
+  it('clears Precise when restoring place or select', () => {
+    expect(restoreAxisUiFlags('place', 'cartesian').preciseMode).toBe(false)
+    expect(restoreAxisUiFlags('select', 'cartesian').preciseMode).toBe(false)
   })
 })

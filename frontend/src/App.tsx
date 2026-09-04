@@ -58,7 +58,7 @@ import {
   type UnskewMode,
 } from './lib/meshWarp'
 import { isUnskewReady, unskewFromCalibration } from './lib/unskew'
-import { appendAxisPoint, setScaleBarPixel } from './lib/axesChecker'
+import { appendAxisPoint, restoreAxisUiFlags, setScaleBarPixel } from './lib/axesChecker'
 import { getAxisBounds, isCalibrationValid, updateAxisBound, areCalibrationPixelsInImage, type AxisBoundKey } from './lib/transform'
 import type { Calibration, CanvasMode, Session } from './types'
 
@@ -104,6 +104,9 @@ export default function App() {
       setUnskewMode('perspective')
       setMeshGrid(null)
       meshSyncedQuadRef.current = null
+      setCanvasMode('select')
+      setPreciseMode(false)
+      setScaleBarStep(null)
       return
     }
     const ws = s.workspace
@@ -130,9 +133,12 @@ export default function App() {
       'segment-fill',
       'point-match',
     ]
-    if (ws?.canvas_mode && CANVAS_MODES.includes(ws.canvas_mode)) {
-      setCanvasMode(ws.canvas_mode)
-    }
+    const restoredMode =
+      ws?.canvas_mode && CANVAS_MODES.includes(ws.canvas_mode) ? ws.canvas_mode : undefined
+    const axisUi = restoreAxisUiFlags(restoredMode, s.calibration?.coords_type)
+    setCanvasMode(axisUi.canvasMode)
+    setPreciseMode(axisUi.preciseMode)
+    setScaleBarStep(axisUi.scaleBarStep)
     setUnskewMode(ws?.unskew_mode ?? 'perspective')
     if (s.calibration && ws?.mesh) {
       try {
@@ -292,6 +298,7 @@ export default function App() {
       debounceMs?: number
       meshOverride?: MeshGridState | null
       modeOverride?: UnskewMode
+      showAxesCheckerOverride?: boolean
     }) => {
       const sessionId = session?.id
       if (!sessionId) return
@@ -304,7 +311,7 @@ export default function App() {
         unskew_mode: mode,
         mesh: meshState ? meshToPayload(meshState) : null,
         canvas_mode: canvasMode,
-        show_axes_checker: showAxesChecker,
+        show_axes_checker: options?.showAxesCheckerOverride ?? showAxesChecker,
       }
 
       pendingPrefsPatch.current = {
@@ -858,14 +865,7 @@ export default function App() {
   const handleToggleAxesChecker = (show: boolean) => {
     setShowAxesChecker(show)
     if (!session) return
-    saveWorkspaceQuiet()
-    savePreferencesQuiet({
-      workspace: {
-        ...(session.workspace ?? {}),
-        show_axes_checker: show,
-        canvas_mode: canvasMode,
-      },
-    })
+    saveWorkspaceQuiet({ showAxesCheckerOverride: show })
   }
 
   const handleAxisPlaceClick = (pixel: [number, number]) => {
@@ -1058,7 +1058,11 @@ export default function App() {
             canvasMode={canvasMode}
             onCanvasModeChange={(mode) => {
               setCanvasMode(mode)
-              if (mode === 'place') setAxisPlaceStep(null)
+              if (mode === 'place') {
+                setAxisPlaceStep(null)
+                setPreciseMode(false)
+                setScaleBarStep(null)
+              }
             }}
             onCurveChange={syncCurves}
             onReassignPoints={handleReassign}

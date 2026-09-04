@@ -40,6 +40,10 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [2.3.1] — 2026-09-04
+### Fixed
+- Last-session / project restore of `canvas_mode: axis` now reopens cartesian Precise (and drops map axis to select); Place points clears the Precise checkbox.
+
 ## [2.3.0] — 2026-09-04 — Affine, projective, polar and map calibration
 ### Added
 - 2D transform solver (orthogonal / affine / projective, `auto`) plus polar and map adapters; precise 3+ axis points; axes checker overlay; graph-units-per-pixel readout.

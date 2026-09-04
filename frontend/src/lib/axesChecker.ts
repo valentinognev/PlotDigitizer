@@ -1,4 +1,4 @@
-import type { Calibration, CoordsType, TransformModel } from '../types'
+import type { Calibration, CanvasMode, CoordsType, TransformModel } from '../types'
 import { formatAxisValue } from './transform'
 
 export function axesCheckerVisible(
@@ -64,4 +64,26 @@ export function setScaleBarPixel(
       pixel_b: which === 'b' ? pixel : prev.pixel_b,
     },
   }
+}
+
+export function restoreAxisUiFlags(
+  canvasMode: CanvasMode | undefined,
+  coordsType: CoordsType | undefined,
+): {
+  canvasMode: CanvasMode
+  preciseMode: boolean
+  scaleBarStep: 'a' | 'b' | null
+} {
+  const mode = canvasMode ?? 'select'
+  if (mode === 'axis') {
+    if (coordsType === 'map') {
+      return { canvasMode: 'select', preciseMode: false, scaleBarStep: null }
+    }
+    return {
+      canvasMode: 'axis',
+      preciseMode: coordsType !== 'polar',
+      scaleBarStep: null,
+    }
+  }
+  return { canvasMode: mode, preciseMode: false, scaleBarStep: null }
 }
