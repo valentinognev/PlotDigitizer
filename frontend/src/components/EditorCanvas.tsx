@@ -19,10 +19,11 @@ import { warpImageToCanvas, canvasToDisplayImage, estimatePreviewContentBBox } f
 import { MeshGridOverlay } from './MeshGridOverlay'
 import { AxesCheckerOverlay } from './AxesCheckerOverlay'
 import { MaskOverlay } from './MaskOverlay'
+import { CandidateOverlay } from './CandidateOverlay'
 import type { MaskView } from './FilterPanel'
 import type { SegmentLite } from '../lib/segments'
 import { flattenPolyline, nearestSegment } from '../lib/segments'
-import type { Calibration, CanvasMode, Curve, Point } from '../types'
+import type { Calibration, CanvasMode, Curve, MatchCandidate, Point } from '../types'
 
 interface Props {
   imageUrl: string | null
@@ -35,6 +36,10 @@ interface Props {
   curves: Curve[]
   placementCurveId: string | null
   canvasMode: CanvasMode
+  candidates?: MatchCandidate[]
+  onPointMatchSample: (pixel: [number, number]) => void
+  onPointMatchAcceptCurrent: () => void
+  onPointMatchRejectCurrent: () => void
   onAxisPointClick?: (pixel: [number, number]) => void
   onMoveAxisPoint?: (id: string, pixel: [number, number]) => void
   onMoveScaleBar?: (which: 'a' | 'b', pixel: [number, number]) => void
@@ -124,6 +129,10 @@ export function EditorCanvas({
   curves,
   placementCurveId,
   canvasMode,
+  candidates,
+  onPointMatchSample,
+  onPointMatchAcceptCurrent,
+  onPointMatchRejectCurrent,
   onAxisPointClick,
   onMoveAxisPoint,
   onMoveScaleBar,
@@ -459,7 +468,7 @@ export function EditorCanvas({
 
   const handleStageMouseDown = (e: KonvaEventObject<MouseEvent>) => {
     if (!isBackgroundTarget(e.target)) return
-    if (e.evt.button !== 0) return
+    if (e.evt.button !== 0 && !(canvasMode === 'point-match' && e.evt.button === 2)) return
 
     const stage = e.target.getStage()
     const pos = stage?.getPointerPosition()
@@ -483,6 +492,21 @@ export function EditorCanvas({
     }
     if (canvasMode === 'axis' && onAxisPointClick) {
       onAxisPointClick(toOriginalCoords([x, y]))
+      setStageDraggable(false)
+      return
+    }
+    if (canvasMode === 'point-match') {
+      const original = toOriginalCoords([x, y])
+      if (e.evt.button === 2) {
+        onPointMatchRejectCurrent()
+        setStageDraggable(false)
+        return
+      }
+      if ((candidates?.length ?? 0) > 0) {
+        onPointMatchAcceptCurrent()
+      } else {
+        onPointMatchSample(original)
+      }
       setStageDraggable(false)
       return
     }
@@ -644,6 +668,9 @@ export function EditorCanvas({
         scaleX={totalScale}
         scaleY={totalScale}
         onDragEnd={handleStageDragEnd}
+        onContextMenu={(e) => {
+          e.evt.preventDefault()
+        }}
       >
         <Layer onMouseDown={handleStageMouseDown}>
           {imageSource && maskView !== 'mask' && (
@@ -688,6 +715,13 @@ export function EditorCanvas({
                   />
                 )
               }),
+          )}
+          {canvasMode === 'point-match' && (candidates?.length ?? 0) > 0 && (
+            <CandidateOverlay
+              candidates={candidates!}
+              scale={totalScale}
+              toDisplay={toDisplayCoords}
+            />
           )}
           {filling &&
             segments.map((seg) => {
@@ -828,6 +862,8 @@ function PlotInteractionHint({
     text = `Left-click to place an axis point (type values in the Calibration panel). ${panHint}`
   } else if (canvasMode === 'place') {
     text = `Left-click to place points on the first visible curve. Delete/Backspace: undo last point. ${panHint}`
+  } else if (canvasMode === 'point-match') {
+    text = `Click a sample marker, then Enter/click accept · Esc/right-click reject · Shift+Enter accept all at/above current score · ${panHint}`
   } else if (segmentFill) {
     text = `Click a highlighted stroke to drop evenly spaced points. Esc: exit. ${panHint}`
   } else if (meshEditing) {

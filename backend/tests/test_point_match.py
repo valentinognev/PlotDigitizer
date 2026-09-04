@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import io
 import math
 
 import cv2
 import numpy as np
-import pytest
+from fastapi.testclient import TestClient
+from PIL import Image, ImageDraw
 
 from app.cv.point_match import match_points
+from app.main import app
+from app.models.schemas import WorkspaceState
+
+client = TestClient(app)
 
 
 def _blank(w: int = 200, h: int = 160) -> np.ndarray:
@@ -175,3 +181,76 @@ def test_synthetic_scatter_precision_gates():
     assert_not_worse("point_match.synthetic_scatter.recall", recall, lower_is_better=False)
     assert_not_worse("point_match.synthetic_scatter.fp_rate", fp_rate, lower_is_better=True)
     assert_not_worse("point_match.synthetic_scatter.centroid_px", mean_d, lower_is_better=True)
+
+
+def _session_with_dots() -> str:
+    img = Image.new("RGB", (200, 120), "white")
+    draw = ImageDraw.Draw(img)
+    for xy in [(40, 40), (100, 40), (160, 40)]:
+        draw.ellipse((xy[0] - 5, xy[1] - 5, xy[0] + 5, xy[1] + 5), fill=(0, 0, 255))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    res = client.post("/sessions", files={"file": ("dots.png", buf.getvalue(), "image/png")})
+    assert res.status_code == 200
+    sid = res.json()["id"]
+    patch = client.patch(
+        f"/sessions/{sid}/curves",
+        json={"curves": [{"label": "Scatter", "color": "#2563eb", "style": "unknown", "visible": True, "points": []}]},
+    )
+    assert patch.status_code == 200
+    return sid, patch.json()["curves"][0]["id"]
+
+
+def test_point_match_is_non_mutating():
+    sid, cid = _session_with_dots()
+    before = client.get(f"/sessions/{sid}").json()
+    res = client.post(
+        f"/sessions/{sid}/curves/{cid}/point-match",
+        json={"pixel": [40.0, 40.0], "sample_radius": 6, "max_point_size": 24},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert "candidates" in body
+    assert len(body["candidates"]) >= 2
+    assert "pixel" in body["candidates"][0]
+    assert "score" in body["candidates"][0]
+    scores = [c["score"] for c in body["candidates"]]
+    assert scores == sorted(scores, reverse=True)
+    after = client.get(f"/sessions/{sid}").json()
+    assert after["curves"][0]["points"] == before["curves"][0]["points"]
+    assert after["history"] == before["history"]
+
+
+def test_point_match_accept_appends_and_undoes():
+    sid, cid = _session_with_dots()
+    found = client.post(
+        f"/sessions/{sid}/curves/{cid}/point-match",
+        json={"pixel": [40.0, 40.0], "max_point_size": 24},
+    )
+    pixels = [c["pixel"] for c in found.json()["candidates"][:2]]
+    acc = client.post(
+        f"/sessions/{sid}/curves/{cid}/point-match/accept",
+        json={"pixels": pixels},
+    )
+    assert acc.status_code == 200
+    points = acc.json()["curves"][0]["points"]
+    assert len(points) == 2
+    assert all(p["origin"] == "ai" for p in points)
+    assert acc.json()["history"][-1]["action"] == "point_match_accept"
+    undone = client.post(f"/sessions/{sid}/undo")
+    assert undone.status_code == 200
+    assert undone.json()["curves"][0]["points"] == []
+
+
+def test_workspace_max_point_size_default():
+    ws = WorkspaceState()
+    assert ws.max_point_size == 48
+
+
+def test_point_match_unknown_curve_is_400():
+    sid, _cid = _session_with_dots()
+    res = client.post(
+        f"/sessions/{sid}/curves/not-a-curve/point-match",
+        json={"pixel": [40.0, 40.0]},
+    )
+    assert res.status_code == 400

@@ -83,7 +83,7 @@ export function CurveList({
   }
 
   return (
-    <section className="flex h-full min-h-0 flex-col rounded-lg border border-slate-700 bg-slate-800/50 p-3">
+    <section className="flex flex-1 min-h-0 flex-col overflow-y-auto rounded-lg border border-slate-700 bg-slate-800/50 p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-slate-200">Curves</h3>
         <div className="flex items-center gap-2">

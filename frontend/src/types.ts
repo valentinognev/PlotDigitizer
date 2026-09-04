@@ -97,6 +97,11 @@ export interface SegmentPublic {
   points: [number, number][]
 }
 
+export interface MatchCandidate {
+  pixel: [number, number]
+  score: number
+}
+
 export interface WorkspaceState {
   active_curve_id?: string | null
   resample_count?: number
@@ -109,6 +114,7 @@ export interface WorkspaceState {
   point_separation?: number
   min_segment_length?: number
   fill_corners?: boolean
+  max_point_size?: number
 }
 
 export interface MeshVertexPayload {

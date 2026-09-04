@@ -1,4 +1,5 @@
 import { formatSeparation } from '../lib/segments'
+import type { CanvasMode } from '../types'
 
 interface Props {
   busy: boolean
@@ -11,6 +12,13 @@ interface Props {
   onMinSegmentLengthChange: (n: number) => void
   onFillCornersChange: (v: boolean) => void
   onEnterSegmentFill: () => void
+  maxPointSize: number
+  onMaxPointSizeChange: (n: number) => void
+  canvasMode: CanvasMode
+  onCanvasModeChange: (mode: CanvasMode) => void
+  acceptedCount: number
+  onApplyAccepted: () => void
+  onClearCandidates: () => void
 }
 
 export function AutoDigitizePanel({
@@ -24,6 +32,13 @@ export function AutoDigitizePanel({
   onMinSegmentLengthChange,
   onFillCornersChange,
   onEnterSegmentFill,
+  maxPointSize,
+  onMaxPointSizeChange,
+  canvasMode,
+  onCanvasModeChange,
+  acceptedCount,
+  onApplyAccepted,
+  onClearCandidates,
 }: Props) {
   return (
     <section className="rounded-lg border border-slate-700 bg-slate-800/50 p-3">
@@ -75,6 +90,51 @@ export function AutoDigitizePanel({
           />
           Fill corners (turns ≥ 30°)
         </label>
+        <label className="mt-2 flex items-center gap-1 text-[11px] text-slate-300">
+          Max point size
+          <input
+            type="number"
+            min={3}
+            max={256}
+            value={maxPointSize}
+            onChange={(e) => {
+              const n = Number(e.target.value)
+              if (Number.isFinite(n)) onMaxPointSizeChange(Math.min(256, Math.max(3, Math.round(n))))
+            }}
+            className="w-14 rounded border border-slate-600 bg-slate-900 px-1 py-0.5"
+          />
+          px
+        </label>
+        <div className="mt-2 flex flex-wrap gap-1">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() =>
+              onCanvasModeChange(canvasMode === 'point-match' ? 'select' : 'point-match')
+            }
+            className={`rounded px-2 py-1 text-[11px] ${
+              canvasMode === 'point-match' ? 'bg-sky-600 hover:bg-sky-500' : 'bg-slate-600 hover:bg-slate-500'
+            }`}
+          >
+            Point match
+          </button>
+          <button
+            type="button"
+            disabled={busy || acceptedCount === 0}
+            onClick={onApplyAccepted}
+            className="rounded bg-emerald-700 px-2 py-1 text-[11px] hover:bg-emerald-600 disabled:opacity-50"
+          >
+            Apply accepted ({acceptedCount})
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onClearCandidates}
+            className="rounded bg-slate-600 px-2 py-1 text-[11px] hover:bg-slate-500"
+          >
+            New sample
+          </button>
+        </div>
         <button
           type="button"
           disabled={busy || disabled}

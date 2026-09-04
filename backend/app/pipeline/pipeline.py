@@ -8,6 +8,7 @@ from app.cv.erase import remove_curve_from_image
 from app.cv.grid_removal import GridGeometry, detect_grid, remove_grid
 from app.cv.improve import improve_curve_from_hints
 from app.cv.order import order_points_along_curve
+from app.cv.point_match import MatchCandidate, match_points
 from app.cv.resample import resample_curve
 from app.cv.segments import build_segments, fill_segment, segment_at
 from app.cv.unskew import (
@@ -236,5 +237,46 @@ def run_segment_fill(
     combined = [p.pixel for p in curve.points] + filled
     ordered = order_points_along_curve(combined)
     new_points = [Point(pixel=pt, origin="ai") for pt in ordered]
+    session.curves = _replace_curve_points(session.curves, curve_id, new_points)
+    return session
+
+
+def run_point_match(
+    session: Session,
+    image_bytes: bytes,
+    curve_id: str,
+    sample_center: tuple[float, float],
+    sample_radius: int,
+    max_point_size: int = 48,
+    exclude: list[tuple[float, float]] | None = None,
+    limit: int = 200,
+) -> list[MatchCandidate]:
+    curve = _require_curve(session, curve_id)
+    mask = build_curve_mask(session, image_bytes, curve_id)
+    blocked = list(exclude) if exclude is not None else [tuple(p.pixel) for p in curve.points]
+    return match_points(
+        mask,
+        sample_center,
+        sample_radius,
+        max_point_size=max_point_size,
+        exclude=blocked,
+        limit=limit,
+    )
+
+
+def run_point_match_accept(
+    session: Session,
+    curve_id: str,
+    pixels: list[tuple[float, float]],
+) -> Session:
+    curve = _require_curve(session, curve_id)
+    new_points = list(curve.points)
+    seen = {(round(p.pixel[0], 3), round(p.pixel[1], 3)) for p in curve.points}
+    for xy in pixels:
+        key = (round(float(xy[0]), 3), round(float(xy[1]), 3))
+        if key in seen:
+            continue
+        new_points.append(Point(pixel=(float(xy[0]), float(xy[1])), origin="ai"))
+        seen.add(key)
     session.curves = _replace_curve_points(session.curves, curve_id, new_points)
     return session

@@ -27,6 +27,10 @@ from app.models.schemas import (
     GridDetectRequest,
     GridGeometrySettings,
     ImageSource,
+    MatchCandidateOut,
+    PointMatchAcceptRequest,
+    PointMatchRequest,
+    PointMatchResponse,
     ResampleRequest,
     SegmentFillRequest,
     SegmentsResponse,
@@ -42,6 +46,8 @@ from app.pipeline.pipeline import (
     build_curve_mask,
     list_curve_segments,
     run_cv_improve,
+    run_point_match,
+    run_point_match_accept,
     run_remove_curve_from_plot,
     run_resample,
     run_segment_fill,
@@ -259,6 +265,51 @@ def segment_fill_curve(
         session_store.update(session_id, stored.session)
     except ValueError as exc:
         raise _error(exc, "segment_fill", str(exc)) from exc
+    return _to_public(stored)
+
+
+@router.post("/{session_id}/curves/{curve_id}/point-match", response_model=PointMatchResponse)
+def point_match_curve(session_id: str, curve_id: str, body: PointMatchRequest) -> PointMatchResponse:
+    stored = _require(session_id)
+    try:
+        ws = stored.session.workspace
+        max_point_size = body.max_point_size if body.max_point_size is not None else (
+            ws.max_point_size if ws is not None else 48
+        )
+        sample_radius = (
+            body.sample_radius
+            if body.sample_radius is not None
+            else max(2, int(max_point_size) // 2)
+        )
+        candidates = run_point_match(
+            stored.session,
+            stored.image_bytes,
+            curve_id,
+            (float(body.pixel[0]), float(body.pixel[1])),
+            sample_radius,
+            max_point_size=int(max_point_size),
+        )
+    except ValueError as exc:
+        raise _error(exc, "point_match_input", str(exc)) from exc
+    return PointMatchResponse(
+        candidates=[MatchCandidateOut(pixel=c.pixel, score=c.score) for c in candidates]
+    )
+
+
+@router.post(
+    "/{session_id}/curves/{curve_id}/point-match/accept",
+    response_model=SessionPublic,
+)
+def point_match_accept(
+    session_id: str, curve_id: str, body: PointMatchAcceptRequest
+) -> SessionPublic:
+    stored = _require(session_id)
+    try:
+        session_store.push_history(stored, "point_match_accept")
+        stored.session = run_point_match_accept(stored.session, curve_id, body.pixels)
+        session_store.update(session_id, stored.session)
+    except ValueError as exc:
+        raise _error(exc, "point_match_accept", str(exc)) from exc
     return _to_public(stored)
 
 

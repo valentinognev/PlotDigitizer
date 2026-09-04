@@ -138,6 +138,7 @@ class WorkspaceState(BaseModel):
     point_separation: float = 25.0
     min_segment_length: float = 2.0
     fill_corners: bool = False
+    max_point_size: int = Field(default=48, ge=3, le=256)
 
 
 class HistoryEntry(BaseModel):
@@ -261,3 +262,22 @@ class SegmentFillRequest(BaseModel):
     pixel: tuple[float, float]
     separation: float | None = Field(default=None, gt=0)
     fill_corners: bool | None = None
+
+
+class MatchCandidateOut(BaseModel):
+    pixel: tuple[float, float]
+    score: float
+
+
+class PointMatchRequest(BaseModel):
+    pixel: tuple[float, float]
+    sample_radius: int | None = None
+    max_point_size: int | None = None
+
+
+class PointMatchResponse(BaseModel):
+    candidates: list[MatchCandidateOut]
+
+
+class PointMatchAcceptRequest(BaseModel):
+    pixels: list[tuple[float, float]]

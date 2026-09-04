@@ -6,6 +6,8 @@ import {
   getLastSession,
   waitForBackend,
   cvImproveCurve,
+  pointMatch,
+  pointMatchAccept,
   importCurves,
   listCurveSegments,
   loadProject,
@@ -68,6 +70,11 @@ import {
 } from './lib/meshWarp'
 import { maskPreviewUrl } from './lib/colorFilter'
 import { isUnskewReady, unskewFromCalibration } from './lib/unskew'
+import {
+  emptyPointMatch,
+  pointMatchKeyAction,
+  reducePointMatch,
+} from './lib/pointMatch'
 import { appendAxisPoint, restoreAxisUiFlags, setScaleBarPixel } from './lib/axesChecker'
 import { getAxisBounds, isCalibrationValid, updateAxisBound, areCalibrationPixelsInImage, type AxisBoundKey } from './lib/transform'
 import type { Calibration, CanvasMode, ColorFilter, SegmentPublic, Session } from './types'
@@ -90,6 +97,8 @@ export default function App() {
   const [pointSeparation, setPointSeparation] = useState(25)
   const [minSegmentLength, setMinSegmentLength] = useState(2)
   const [fillCorners, setFillCorners] = useState(false)
+  const [maxPointSize, setMaxPointSize] = useState(48)
+  const [pointMatchState, setPointMatchState] = useState(emptyPointMatch)
   const [segments, setSegments] = useState<SegmentPublic[]>([])
   const [axesCheckerChangedAt, setAxesCheckerChangedAt] = useState(0)
   const [nowMs, setNowMs] = useState(() => Date.now())
@@ -146,6 +155,7 @@ export default function App() {
     if (ws?.point_separation !== undefined) setPointSeparation(ws.point_separation)
     if (ws?.min_segment_length !== undefined) setMinSegmentLength(ws.min_segment_length)
     if (ws?.fill_corners !== undefined) setFillCorners(ws.fill_corners)
+    if (ws?.max_point_size !== undefined) setMaxPointSize(ws.max_point_size)
     const CANVAS_MODES: readonly CanvasMode[] = [
       'select',
       'place',
@@ -421,6 +431,7 @@ export default function App() {
         point_separation: pointSeparation,
         min_segment_length: minSegmentLength,
         fill_corners: fillCorners,
+        max_point_size: maxPointSize,
       }
 
       pendingPrefsPatch.current = {
@@ -448,7 +459,7 @@ export default function App() {
         flush()
       }
     },
-    [session?.id, activeCurveId, resampleCount, unskewMode, meshGrid, canvasMode, showAxesChecker, maskView, pointSeparation, minSegmentLength, fillCorners],
+    [session?.id, activeCurveId, resampleCount, unskewMode, meshGrid, canvasMode, showAxesChecker, maskView, pointSeparation, minSegmentLength, fillCorners, maxPointSize],
   )
 
   useEffect(() => {
@@ -458,7 +469,7 @@ export default function App() {
       return
     }
     saveWorkspaceQuiet()
-  }, [session?.id, activeCurveId, resampleCount, pointSeparation, minSegmentLength, fillCorners, saveWorkspaceQuiet])
+  }, [session?.id, activeCurveId, resampleCount, pointSeparation, minSegmentLength, fillCorners, maxPointSize, saveWorkspaceQuiet])
 
   const loadSegments = useCallback(async () => {
     if (!session || !activeCurveId) return
@@ -622,6 +633,48 @@ export default function App() {
 
   const placementCurveId = firstVisibleCurve(session?.curves ?? [])?.id ?? null
 
+  const activePointMatchCurveId = activeCurveId ?? placementCurveId
+
+  const handlePointMatchSample = (pixel: [number, number]) => {
+    if (!session || !activePointMatchCurveId) return
+    const maxSize = session.workspace?.max_point_size ?? maxPointSize
+    setBusy(true)
+    setBusyMessage('Matching points…')
+    pointMatch(session.id, activePointMatchCurveId, { pixel, max_point_size: maxSize })
+      .then(({ candidates }) => {
+        setPointMatchState((s) => reducePointMatch(s, { type: 'set-candidates', candidates }))
+      })
+      .catch((e) => toast(e instanceof Error ? e.message : 'Point match failed'))
+      .finally(() => {
+        setBusy(false)
+        setBusyMessage(null)
+      })
+  }
+
+  const handlePointMatchApply = () => {
+    if (!session || !activePointMatchCurveId || pointMatchState.accepted.length === 0) return
+    const pixels = pointMatchState.accepted.map((c) => c.pixel)
+    void run(async () => {
+      const s = await pointMatchAccept(session.id, activePointMatchCurveId, pixels)
+      setPointMatchState(emptyPointMatch)
+      setCanvasMode('select')
+      return s
+    }, 'Accepting points…')
+  }
+
+  const handleCanvasModeChange = (mode: CanvasMode) => {
+    if (mode !== 'point-match') {
+      setPointMatchState(emptyPointMatch)
+    }
+    setCanvasMode(mode)
+    if (mode !== 'segment-fill') setSegments([])
+    if (mode === 'place' || mode === 'point-match') {
+      setAxisPlaceStep(null)
+      setPreciseMode(false)
+      setScaleBarStep(null)
+    }
+  }
+
   const handleAddPoint = (pixel: [number, number]) => {
     if (!placementCurveId) return
     patchCurvesQuiet(
@@ -690,6 +743,26 @@ export default function App() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
+  }, [canvasMode])
+
+  useEffect(() => {
+    if (canvasMode !== 'point-match') return
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target
+      if (
+        el instanceof HTMLInputElement ||
+        el instanceof HTMLTextAreaElement ||
+        (el instanceof HTMLElement && el.isContentEditable)
+      ) {
+        return
+      }
+      const action = pointMatchKeyAction(e.key, e.shiftKey)
+      if (!action) return
+      e.preventDefault()
+      setPointMatchState((s) => reducePointMatch(s, action))
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
   }, [canvasMode])
 
   const handleReassign = (pointIds: string[], toCurveId: string) => {
@@ -1206,6 +1279,14 @@ export default function App() {
               curves={session?.curves ?? []}
               placementCurveId={placementCurveId}
               canvasMode={canvasMode}
+              candidates={pointMatchState.candidates}
+              onPointMatchSample={handlePointMatchSample}
+              onPointMatchAcceptCurrent={() =>
+                setPointMatchState((s) => reducePointMatch(s, { type: 'accept-current' }))
+              }
+              onPointMatchRejectCurrent={() =>
+                setPointMatchState((s) => reducePointMatch(s, { type: 'reject-current' }))
+              }
               segments={segments}
               onSegmentFillClick={handleSegmentFillClick}
               onAxisPointClick={handleAxisPointClick}
@@ -1261,6 +1342,20 @@ export default function App() {
             }}
             onFillCornersChange={setFillCorners}
             onEnterSegmentFill={enterSegmentFill}
+            maxPointSize={maxPointSize}
+            onMaxPointSizeChange={(n) => {
+              setMaxPointSize(n)
+              if (session) {
+                savePreferencesQuiet({
+                  workspace: { ...(session.workspace ?? {}), max_point_size: n },
+                })
+              }
+            }}
+            canvasMode={canvasMode}
+            onCanvasModeChange={handleCanvasModeChange}
+            acceptedCount={pointMatchState.accepted.length}
+            onApplyAccepted={handlePointMatchApply}
+            onClearCandidates={() => setPointMatchState(emptyPointMatch)}
           />
           <CurveList
             curves={session?.curves ?? []}
@@ -1272,15 +1367,7 @@ export default function App() {
             onResampleCountChange={setResampleCount}
             onActiveChange={setActiveCurveId}
             canvasMode={canvasMode}
-            onCanvasModeChange={(mode) => {
-              setCanvasMode(mode)
-              if (mode !== 'segment-fill') setSegments([])
-              if (mode === 'place') {
-                setAxisPlaceStep(null)
-                setPreciseMode(false)
-                setScaleBarStep(null)
-              }
-            }}
+            onCanvasModeChange={handleCanvasModeChange}
             onCurveChange={syncCurves}
             onReassignPoints={handleReassign}
             onImprove={(curveId) =>

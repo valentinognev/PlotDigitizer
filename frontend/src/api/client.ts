@@ -3,6 +3,7 @@ import type {
   ColorFilter,
   Curve,
   GridGeometrySettings,
+  MatchCandidate,
   SegmentPublic,
   Session,
   WorkspaceState,
@@ -351,6 +352,33 @@ export async function fillCurveSegment(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+  })
+}
+
+export async function pointMatch(
+  id: string,
+  curveId: string,
+  body: { pixel: [number, number]; sample_radius?: number; max_point_size?: number },
+): Promise<{ candidates: MatchCandidate[] }> {
+  return request<{ candidates: MatchCandidate[] }>(
+    `/sessions/${id}/curves/${curveId}/point-match`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+  )
+}
+
+export async function pointMatchAccept(
+  id: string,
+  curveId: string,
+  pixels: [number, number][],
+): Promise<Session> {
+  return request<Session>(`/sessions/${id}/curves/${curveId}/point-match/accept`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pixels }),
   })
 }
 
