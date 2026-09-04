@@ -2,11 +2,17 @@ from __future__ import annotations
 
 import io
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+import cv2
+import numpy as np
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from PIL import Image
 
 from app.calibration.calibration import CalibrationError, validate_calibration
+from app.cv.color_filter import build_filter_mask, suggest_filter_from_pixel
+from app.cv.grid_removal import GridGeometry, detect_grid
+from app.cv.snap import snap_to_ink
+from app.cv.unskew import UnskewError
 from app.export.export import export_csv, export_json
 from app.export.import_curves import ImportError as CurveImportError
 from app.export.import_curves import import_curves_replace_session
@@ -15,16 +21,23 @@ from app.models.schemas import (
     ApiError,
     ApiErrorDetail,
     CalibrationUpdate,
+    ColorFilter,
     CurvesEditRequest,
+    FilterSuggestRequest,
+    GridDetectRequest,
+    GridGeometrySettings,
     ImageSource,
     ResampleRequest,
     Session,
     SessionPreferencesPatch,
     SessionPublic,
+    SnapRequest,
+    SnapResponse,
     UnskewApplyRequest,
+    WorkspaceState,
 )
-from app.cv.unskew import UnskewError
 from app.pipeline.pipeline import (
+    build_curve_mask,
     run_cv_improve,
     run_remove_curve_from_plot,
     run_resample,
@@ -56,6 +69,36 @@ def _to_public(stored) -> SessionPublic:
         workspace=s.workspace,
         history=s.history,
         image_url=f"/sessions/{s.id}/image?v={s.image_meta.revision}",
+    )
+
+
+def _decode_session_bgr(image_bytes: bytes):
+    arr = np.frombuffer(image_bytes, dtype=np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if img is None:
+        raise ValueError("Could not decode plot image")
+    return img
+
+
+def _active_curve_id(session: Session, curve_id: str | None) -> str:
+    if curve_id:
+        return curve_id
+    if session.workspace and session.workspace.active_curve_id:
+        return session.workspace.active_curve_id
+    if session.curves:
+        return session.curves[0].id
+    raise ValueError("No curve available")
+
+
+def _settings_from_geom(geom: GridGeometry, close_distance: int = 10) -> GridGeometrySettings:
+    return GridGeometrySettings(
+        start_x=geom.start_x,
+        step_x=geom.step_x,
+        count_x=geom.count_x,
+        start_y=geom.start_y,
+        step_y=geom.step_y,
+        count_y=geom.count_y,
+        close_distance=close_distance,
     )
 
 
@@ -225,6 +268,90 @@ def resample(session_id: str, body: ResampleRequest) -> SessionPublic:
     )
     session_store.update(session_id, stored.session)
     return _to_public(stored)
+
+
+@router.post("/{session_id}/filter/suggest", response_model=ColorFilter)
+def suggest_filter(session_id: str, body: FilterSuggestRequest) -> ColorFilter:
+    stored = _require(session_id)
+    try:
+        img = _decode_session_bgr(stored.image_bytes)
+    except ValueError as exc:
+        raise _error(exc, "invalid_image") from exc
+    return suggest_filter_from_pixel(img, body.pixel)
+
+
+@router.patch("/{session_id}/curves/{curve_id}/filter", response_model=SessionPublic)
+def patch_curve_filter(session_id: str, curve_id: str, body: ColorFilter) -> SessionPublic:
+    stored = _require(session_id)
+    curve = next((c for c in stored.session.curves if c.id == curve_id), None)
+    if curve is None:
+        raise _error(ValueError(f"Curve {curve_id} not found"), "curve_not_found")
+    session_store.push_history(stored, "curve_filter")
+    curve.filter = body
+    session_store.update(session_id, stored.session)
+    return _to_public(stored)
+
+
+@router.get("/{session_id}/mask")
+def get_curve_mask(
+    session_id: str,
+    curve_id: str | None = Query(default=None),
+    rev: int | None = Query(default=None),
+) -> Response:
+    stored = _require(session_id)
+    try:
+        cid = _active_curve_id(stored.session, curve_id)
+        mask = build_curve_mask(stored.session, stored.image_bytes, cid)
+    except ValueError as exc:
+        raise _error(exc, "mask_input", str(exc)) from exc
+    ok, buf = cv2.imencode(".png", mask)
+    if not ok:
+        raise _error(ValueError("Failed to encode mask"), "mask_encode")
+    headers = {"Cache-Control": "no-store"}
+    if rev is not None:
+        headers["X-Mask-Rev"] = str(rev)
+    return Response(content=buf.tobytes(), media_type="image/png", headers=headers)
+
+
+@router.post("/{session_id}/grid/detect", response_model=GridGeometrySettings | None)
+def detect_session_grid(
+    session_id: str, body: GridDetectRequest | None = None
+) -> GridGeometrySettings | None:
+    stored = _require(session_id)
+    req = body or GridDetectRequest()
+    try:
+        cid = _active_curve_id(stored.session, req.curve_id)
+        curve = next((c for c in stored.session.curves if c.id == cid), None)
+        if curve is None:
+            raise ValueError(f"Curve {cid} not found")
+        img = _decode_session_bgr(stored.image_bytes)
+        mask = build_filter_mask(img, curve.filter or ColorFilter())
+    except ValueError as exc:
+        raise _error(exc, "grid_detect_input", str(exc)) from exc
+    geom = detect_grid(mask)
+    session_store.push_history(stored, "grid_detect")
+    current = stored.session.workspace or WorkspaceState()
+    stored.session.workspace = current.model_copy(
+        update={"grid": None if geom is None else _settings_from_geom(geom)}
+    )
+    session_store.update(session_id, stored.session)
+    if geom is None:
+        return None
+    return stored.session.workspace.grid
+
+
+@router.post("/{session_id}/snap", response_model=SnapResponse)
+def snap_session_pixels(session_id: str, body: SnapRequest) -> SnapResponse:
+    stored = _require(session_id)
+    try:
+        mask = build_curve_mask(stored.session, stored.image_bytes, body.curve_id)
+    except ValueError as exc:
+        raise _error(exc, "snap_input", str(exc)) from exc
+    snapped = [
+        snap_to_ink(mask, tuple(p), window=body.window, direction=body.direction)
+        for p in body.pixels
+    ]
+    return SnapResponse(pixels=snapped)
 
 
 @router.patch("/{session_id}/curves", response_model=SessionPublic)

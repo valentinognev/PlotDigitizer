@@ -3,7 +3,9 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
+from app.cv.color_filter import build_filter_mask
 from app.cv.erase import remove_curve_from_image
+from app.cv.grid_removal import GridGeometry, detect_grid, remove_grid
 from app.cv.improve import improve_curve_from_hints
 from app.cv.resample import resample_curve
 from app.cv.unskew import (
@@ -12,7 +14,7 @@ from app.cv.unskew import (
     remap_session_pixels,
     warp_image,
 )
-from app.models.schemas import Curve, Point, Session, UnskewApplyRequest
+from app.models.schemas import ColorFilter, Curve, GridGeometrySettings, Point, Session, UnskewApplyRequest
 from app.store.temp_images import save_removal_snapshot
 
 
@@ -140,3 +142,43 @@ def run_unskew_apply(
     session.image_meta.width = int(round(result.width))
     session.image_meta.height = int(round(result.height))
     return session, buf.tobytes()
+
+
+def _decode_bgr(image_bytes: bytes) -> np.ndarray:
+    arr = np.frombuffer(image_bytes, dtype=np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if img is None:
+        raise ValueError("Could not decode plot image")
+    return img
+
+
+def _geometry_from_settings(settings: GridGeometrySettings) -> GridGeometry:
+    return GridGeometry(
+        start_x=settings.start_x,
+        step_x=settings.step_x,
+        count_x=settings.count_x,
+        start_y=settings.start_y,
+        step_y=settings.step_y,
+        count_y=settings.count_y,
+    )
+
+
+def build_curve_mask(session: Session, image_bytes: bytes, curve_id: str) -> np.ndarray:
+    curve = _require_curve(session, curve_id)
+    img = _decode_bgr(image_bytes)
+    flt = curve.filter or ColorFilter()
+    mask = build_filter_mask(img, flt)
+    if not flt.remove_grid:
+        return mask
+    geom = None
+    close_distance = 10
+    if session.workspace is not None and session.workspace.grid is not None:
+        settings = session.workspace.grid
+        close_distance = settings.close_distance
+        if settings.count_x > 0 or settings.count_y > 0:
+            geom = _geometry_from_settings(settings)
+    if geom is None:
+        geom = detect_grid(mask)
+    if geom is None:
+        return mask
+    return remove_grid(mask, geom, close_distance=close_distance)

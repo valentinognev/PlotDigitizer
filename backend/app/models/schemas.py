@@ -21,6 +21,16 @@ class ColorFilter(BaseModel):
     remove_grid: bool = False
 
 
+class GridGeometrySettings(BaseModel):
+    start_x: float = 0.0
+    step_x: float = 0.0
+    count_x: int = 0
+    start_y: float = 0.0
+    step_y: float = 0.0
+    count_y: int = 0
+    close_distance: int = 10
+
+
 CoordsType = Literal["cartesian", "polar", "map"]
 ThetaUnits = Literal["degrees", "radians", "gradians", "turns"]
 TransformModel = Literal["auto", "orthogonal", "affine", "projective"]
@@ -82,6 +92,7 @@ class Curve(BaseModel):
     visible: bool = True
     target_point_count: int = Field(default=DEFAULT_POINT_COUNT, ge=2, le=200)
     points: list[Point] = Field(default_factory=list)
+    filter: ColorFilter | None = None
 
     @property
     def cv_color(self) -> str:
@@ -122,6 +133,8 @@ class WorkspaceState(BaseModel):
         "select", "place", "axis", "pick-color", "segment-fill", "point-match"
     ] = "select"
     show_axes_checker: bool = True
+    show_mask: bool = False
+    grid: GridGeometrySettings | None = None
 
 
 class HistoryEntry(BaseModel):
@@ -209,3 +222,23 @@ class UnskewApplyRequest(BaseModel):
     # When set, warp uses these bounds (must match the client preview). Session calibration
     # is updated to this value on apply so marks stay aligned with the committed image.
     calibration: Calibration | None = None
+
+
+class FilterSuggestRequest(BaseModel):
+    pixel: tuple[float, float]
+    curve_id: str | None = None
+
+
+class GridDetectRequest(BaseModel):
+    curve_id: str | None = None
+
+
+class SnapRequest(BaseModel):
+    curve_id: str
+    pixels: list[tuple[float, float]]
+    window: int = 7
+    direction: tuple[float, float] | None = None
+
+
+class SnapResponse(BaseModel):
+    pixels: list[tuple[float, float]]
