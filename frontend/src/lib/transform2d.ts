@@ -528,8 +528,16 @@ export function axesCheckerPolyline(cal: Calibration, _imageSize: [number, numbe
     const points = axisPoints(cal)
     const radii = points.map((p) => p.y_value).filter((v): v is number => v !== undefined && v !== null)
     const thetas = points.map((p) => p.x_value).filter((v): v is number => v !== undefined && v !== null)
-    const rInner = originRadius(cal)
-    const rOuter = radii.length ? Math.max(...radii) : rInner + 1
+    let rInner: number
+    let rOuter: number
+    if (cal.y.scale === 'log') {
+      const positive = radii.filter((r) => r > 0)
+      rInner = positive.length ? Math.min(...positive) : 1
+      rOuter = positive.length ? Math.max(...positive) : rInner
+    } else {
+      rInner = originRadius(cal)
+      rOuter = radii.length ? Math.max(...radii) : rInner + 1
+    }
     const units = thetaUnits(cal)
     const t0 = thetas.length ? Math.min(...thetas) : 0
     const t1 = thetas.length
