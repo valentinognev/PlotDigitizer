@@ -47,6 +47,21 @@ describe('reducePointMatch', () => {
     expect(s.accepted.map((c) => c.score)).toContain(0.95)
     expect(s.candidates.every((c) => c.score < 0.95)).toBe(true)
   })
+
+  it('binds set-candidates to a curveId and clears it', () => {
+    let s = reducePointMatch(emptyPointMatch, {
+      type: 'set-candidates',
+      candidates: [A],
+      curveId: 'curve-a',
+    })
+    expect(s.curveId).toBe('curve-a')
+    s = reducePointMatch(s, { type: 'accept-current' })
+    expect(s.curveId).toBe('curve-a')
+    expect(s.accepted).toEqual([A])
+    s = reducePointMatch(s, { type: 'clear' })
+    expect(s).toEqual(emptyPointMatch)
+    expect(s.curveId).toBeNull()
+  })
 })
 
 describe('pointMatchKeyAction', () => {

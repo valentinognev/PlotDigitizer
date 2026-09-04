@@ -1,19 +1,21 @@
 export type MatchCandidate = { pixel: [number, number]; score: number }
 
 export type PointMatchState = {
+  curveId: string | null
   candidates: MatchCandidate[]
   accepted: MatchCandidate[]
   rejected: MatchCandidate[]
 }
 
 export type PointMatchAction =
-  | { type: 'set-candidates'; candidates: MatchCandidate[] }
+  | { type: 'set-candidates'; candidates: MatchCandidate[]; curveId?: string | null }
   | { type: 'accept-current' }
   | { type: 'reject-current' }
   | { type: 'accept-at-or-above' }
   | { type: 'clear' }
 
 export const emptyPointMatch: PointMatchState = {
+  curveId: null,
   candidates: [],
   accepted: [],
   rejected: [],
@@ -45,12 +47,17 @@ export function reducePointMatch(
   if (action.type === 'clear') return emptyPointMatch
   if (action.type === 'set-candidates') {
     const ranked = [...action.candidates].sort((a, b) => b.score - a.score)
-    return { ...state, candidates: ranked }
+    return {
+      ...state,
+      candidates: ranked,
+      curveId: action.curveId !== undefined ? action.curveId : state.curveId,
+    }
   }
   const current = state.candidates[0]
   if (!current) return state
   if (action.type === 'accept-current') {
     return {
+      curveId: state.curveId,
       accepted: [...state.accepted, current],
       rejected: state.rejected,
       candidates: state.candidates.slice(1),
@@ -58,6 +65,7 @@ export function reducePointMatch(
   }
   if (action.type === 'reject-current') {
     return {
+      curveId: state.curveId,
       accepted: state.accepted,
       rejected: [...state.rejected, current],
       candidates: state.candidates.slice(1),
@@ -65,6 +73,7 @@ export function reducePointMatch(
   }
   const { atOrAbove, below } = partitionByScore(state.candidates, current.score)
   return {
+    curveId: state.curveId,
     accepted: [...state.accepted, ...atOrAbove],
     rejected: state.rejected,
     candidates: below,

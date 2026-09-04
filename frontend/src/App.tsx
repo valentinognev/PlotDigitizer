@@ -637,12 +637,14 @@ export default function App() {
 
   const handlePointMatchSample = (pixel: [number, number]) => {
     if (!session || !activePointMatchCurveId) return
-    const maxSize = session.workspace?.max_point_size ?? maxPointSize
+    const sampledCurveId = activePointMatchCurveId
     setBusy(true)
     setBusyMessage('Matching points…')
-    pointMatch(session.id, activePointMatchCurveId, { pixel, max_point_size: maxSize })
+    pointMatch(session.id, sampledCurveId, { pixel, max_point_size: maxPointSize })
       .then(({ candidates }) => {
-        setPointMatchState((s) => reducePointMatch(s, { type: 'set-candidates', candidates }))
+        setPointMatchState((s) =>
+          reducePointMatch(s, { type: 'set-candidates', candidates, curveId: sampledCurveId }),
+        )
       })
       .catch((e) => toast(e instanceof Error ? e.message : 'Point match failed'))
       .finally(() => {
@@ -652,10 +654,11 @@ export default function App() {
   }
 
   const handlePointMatchApply = () => {
-    if (!session || !activePointMatchCurveId || pointMatchState.accepted.length === 0) return
+    const curveId = pointMatchState.curveId
+    if (!session || !curveId || pointMatchState.accepted.length === 0) return
     const pixels = pointMatchState.accepted.map((c) => c.pixel)
     void run(async () => {
-      const s = await pointMatchAccept(session.id, activePointMatchCurveId, pixels)
+      const s = await pointMatchAccept(session.id, curveId, pixels)
       setPointMatchState(emptyPointMatch)
       setCanvasMode('select')
       return s
@@ -764,6 +767,13 @@ export default function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [canvasMode])
+
+  useEffect(() => {
+    if (!pointMatchState.curveId) return
+    if (activeCurveId && activeCurveId !== pointMatchState.curveId) {
+      setPointMatchState(emptyPointMatch)
+    }
+  }, [activeCurveId, pointMatchState.curveId])
 
   const handleReassign = (pointIds: string[], toCurveId: string) => {
     if (!pointIds.length) return
