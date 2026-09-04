@@ -96,6 +96,7 @@ def test_project_roundtrip():
     assert restored.curves[0].label == "A"
     assert len(restored.curves[0].points) == 2
     assert restored.curves[0].points[0].pixel == (25.0, 75.0)
+    assert restored.curves[0].connect_as == "line"
 
 
 def test_import_curves_rejects_project_file():

@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
 import PlotlyModule from 'react-plotly.js'
 import type { Calibration, Curve } from '../types'
+import { connectAsToPlotlyMode } from '../lib/previewChart'
 import { isCalibrationValid, pixelToData } from '../lib/transform'
 
 /** Vite/Rolldown CJS interop: default export may be nested under `.default`. */
@@ -80,7 +81,7 @@ function buildTraces(curves: Curve[], calibration: Calibration) {
         x: xs,
         y: ys,
         type: 'scatter' as const,
-        mode: 'lines+markers' as const,
+        mode: connectAsToPlotlyMode(curve.connect_as),
         name: curve.label,
         line: { color: curve.color },
         marker: { size: 4, color: curve.color },

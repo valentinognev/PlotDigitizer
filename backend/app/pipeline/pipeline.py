@@ -45,6 +45,8 @@ def run_cv_improve(
     curve_id: str,
 ) -> Session:
     curve = _require_curve(session, curve_id)
+    if curve.connect_as == "scatter":
+        raise ValueError("Improve is not applicable to scatter curves")
     if len(curve.points) < 2:
         raise ValueError("At least 2 tuned points are required to improve a curve")
 
@@ -67,6 +69,9 @@ def run_resample(
     curve_id: str,
     target_count: int,
 ) -> Session:
+    curve = _require_curve(session, curve_id)
+    if curve.connect_as == "scatter":
+        raise ValueError("Densify is not applicable to scatter curves")
     curves: list[Curve] = []
     for curve in session.curves:
         if curve.id != curve_id:

@@ -24,6 +24,7 @@ export type CoordsType = 'cartesian' | 'polar' | 'map'
 export type ThetaUnits = 'degrees' | 'radians' | 'gradians' | 'turns'
 export type TransformModel = 'auto' | 'orthogonal' | 'affine' | 'projective'
 export type CanvasMode = 'select' | 'place' | 'axis' | 'pick-color' | 'segment-fill' | 'point-match'
+export type ConnectAs = 'line' | 'scatter'
 
 export interface RefPoint {
   pixel: [number, number]
@@ -77,6 +78,7 @@ export interface Curve {
   target_point_count?: number
   points: Point[]
   filter?: ColorFilter | null
+  connect_as?: ConnectAs
 }
 
 export interface ImageMeta {

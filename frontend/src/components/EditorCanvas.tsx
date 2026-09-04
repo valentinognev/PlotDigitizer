@@ -690,32 +690,47 @@ export function EditorCanvas({
               opacity={maskView === 'mask' ? 1 : 0.45}
             />
           )}
-          {curves.map(
-            (curve) =>
-              curve.visible &&
-              curve.points.map((pt) => {
-                const [px, py] = displayPixel(pt)
-                return (
-                  <DraggablePoint
-                    key={pt.id}
-                    x={px}
-                    y={py}
-                    point={pt}
-                    color={curve.color}
-                    selected={selectedSet.has(pt.id)}
-                    scale={totalScale}
-                    onPointerDown={(e) => handlePointPointerDown(pt, e)}
-                    onDragStart={() => {
-                      setStageDraggable(false)
-                      prepareGroupDrag(pt)
-                    }}
-                    onDragMove={(e) => movePointDrag(pt, e)}
-                    onDragEnd={(e) => endPointDrag(pt, e)}
-                    onDelete={() => onDeletePoint(pt.id)}
+          {curves.map((curve) => {
+            if (!curve.visible) return null
+            const pts = curve.points.map((pt) => displayPixel(pt)).flat()
+            const isScatter = curve.connect_as === 'scatter'
+            return (
+              <Group key={curve.id}>
+                {!isScatter && pts.length >= 4 && (
+                  <Line
+                    points={pts}
+                    stroke={curve.color}
+                    strokeWidth={1.5 / totalScale}
+                    lineJoin="round"
+                    lineCap="round"
+                    listening={false}
                   />
-                )
-              }),
-          )}
+                )}
+                {curve.points.map((pt) => {
+                  const [px, py] = displayPixel(pt)
+                  return (
+                    <DraggablePoint
+                      key={pt.id}
+                      x={px}
+                      y={py}
+                      point={pt}
+                      color={curve.color}
+                      selected={selectedSet.has(pt.id)}
+                      scale={totalScale}
+                      onPointerDown={(e) => handlePointPointerDown(pt, e)}
+                      onDragStart={() => {
+                        setStageDraggable(false)
+                        prepareGroupDrag(pt)
+                      }}
+                      onDragMove={(e) => movePointDrag(pt, e)}
+                      onDragEnd={(e) => endPointDrag(pt, e)}
+                      onDelete={() => onDeletePoint(pt.id)}
+                    />
+                  )
+                })}
+              </Group>
+            )
+          })}
           {canvasMode === 'point-match' && (candidates?.length ?? 0) > 0 && (
             <CandidateOverlay
               candidates={candidates!}

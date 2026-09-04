@@ -53,6 +53,7 @@ export function CurveList({
       visible: true,
       target_point_count: DEFAULT_POINT_COUNT,
       points: [],
+      connect_as: 'line',
     }
     onCurveChange([...curves, newCurve])
     onActiveChange(newCurve.id)
@@ -217,10 +218,29 @@ export function CurveList({
                   className="w-14 rounded border border-slate-600 bg-slate-900 px-1 py-0.5"
                 />
               </label>
+              <label className="flex items-center gap-1 text-slate-300">
+                Draw
+                <select
+                  value={curve.connect_as ?? 'line'}
+                  onChange={(e) =>
+                    updateCurve(curve.id, {
+                      connect_as: e.target.value === 'scatter' ? 'scatter' : 'line',
+                    })
+                  }
+                  className="rounded border border-slate-600 bg-slate-900 px-1 py-0.5"
+                >
+                  <option value="line">Line</option>
+                  <option value="scatter">Scatter</option>
+                </select>
+              </label>
               <button
                 type="button"
-                disabled={busy || curve.points.length < 2}
-                title="Interpolate evenly spaced points along the curve"
+                disabled={busy || curve.points.length < 2 || curve.connect_as === 'scatter'}
+                title={
+                  curve.connect_as === 'scatter'
+                    ? 'Densify is not applicable to scatter curves'
+                    : 'Interpolate evenly spaced points along the curve'
+                }
                 className="rounded bg-slate-600 px-2 py-1 text-[11px] hover:bg-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
                 onClick={() => onResample(curve.id)}
               >
@@ -228,11 +248,13 @@ export function CurveList({
               </button>
               <button
                 type="button"
-                disabled={busy || !canImprove(curve)}
+                disabled={busy || !canImprove(curve) || curve.connect_as === 'scatter'}
                 title={
-                  canImprove(curve)
-                    ? 'Trace the line in the corridor defined by your points (OpenCV)'
-                    : 'Place at least 2 points on this curve first'
+                  curve.connect_as === 'scatter'
+                    ? 'Improve is not applicable to scatter curves'
+                    : canImprove(curve)
+                      ? 'Trace the line in the corridor defined by your points (OpenCV)'
+                      : 'Place at least 2 points on this curve first'
                 }
                 className="rounded bg-sky-700 px-2 py-1 text-[11px] hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-50"
                 onClick={() => onImprove(curve.id)}

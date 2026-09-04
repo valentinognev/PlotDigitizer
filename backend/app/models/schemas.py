@@ -11,6 +11,7 @@ Origin = Literal["ai", "user"]
 CurveStyle = Literal["solid", "dashed", "dotted", "unknown"]
 CalibrationSource = Literal["manual"]
 FilterMode = Literal["intensity", "foreground", "hue", "saturation", "value"]
+ConnectAs = Literal["line", "scatter"]
 
 
 class ColorFilter(BaseModel):
@@ -93,6 +94,7 @@ class Curve(BaseModel):
     target_point_count: int = Field(default=DEFAULT_POINT_COUNT, ge=2, le=200)
     points: list[Point] = Field(default_factory=list)
     filter: ColorFilter | None = None
+    connect_as: ConnectAs = "line"
 
     @property
     def cv_color(self) -> str:
