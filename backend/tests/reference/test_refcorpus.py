@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import io
 import struct
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import numpy as np
@@ -10,7 +11,9 @@ import pytest
 from PIL import Image
 
 from refcorpus import (
+    BINARY_V5_DIGS,
     DEFAULT_REF_DIR,
+    POLAR_WITH_AXIS_POINTS,
     ReferenceAxisPoint,
     ReferenceDoc,
     iter_docs,
@@ -29,14 +32,6 @@ GROUND_TRUTH_DOCS = [
     "guidelines_polar.xml",
     "guidelines_polar_log.xml",
     "points_along_axes.xml",
-]
-
-# Polar + axis points only. Reading the first TypeString misclassifies all of these.
-POLAR_WITH_AXIS_POINTS = [
-    "guidelines_polar.xml",
-    "guidelines_polar_log.xml",
-    "polar_linear_linear_3curve.xml",
-    "polar_linear_linear_nonzero_center.xml",
 ]
 
 GRID_PAIR_BASES = [
@@ -192,6 +187,7 @@ def test_load_doc_parses_dig_curve_points(tmp_path: Path):
         "  </CurvesGraphs>\n",
     )
     doc = load_doc(xml)
+    assert doc.name == "saved.dig"
     assert doc.axis_points == [
         ReferenceAxisPoint(pixel=(38.0, 385.0), graph_x=0.0, graph_y=0.0, is_x_only=False),
     ]
@@ -213,6 +209,33 @@ def test_load_doc_missing_png_yields_empty_image(tmp_path: Path):
     assert doc.expected_csv is None
 
 
+def test_load_doc_malformed_xml_raises(tmp_path: Path):
+    path = tmp_path / "broken.xml"
+    path.write_text("<?xml version='1.0'?>\n<Document><unclosed>", encoding="utf-8")
+    (tmp_path / "broken.csv_expected_1").write_text("x,Curve1\n1,2\n", encoding="utf-8")
+    with pytest.raises(ET.ParseError):
+        load_doc(path)
+
+
+def test_load_doc_unknown_binary_raises(tmp_path: Path):
+    path = tmp_path / "mystery.dig"
+    path.write_bytes(b"\x00\x00\xca\xfe" + b"\x00" * 32)
+    with pytest.raises(ET.ParseError):
+        load_doc(path)
+
+
+def test_known_binary_stub_drops_sibling_csv(tmp_path: Path):
+    path = tmp_path / "version5_1.dig"
+    path.write_bytes(b"\x00\x00\xca\xfe" + b"\x00" * 32)
+    (tmp_path / "version5_1.csv_expected_1").write_text("x,Curve1\n1,2\n", encoding="utf-8")
+    doc = load_doc(path)
+    assert doc.name == "version5_1.dig"
+    assert doc.expected_csv is None
+    assert doc.image.size == 0
+    assert doc.coords_type == ""
+    assert doc.axis_points == []
+
+
 @pytest.mark.reference
 def test_corpus_has_85_docs(plotdig_ref_dir: Path):
     docs = list(iter_docs(plotdig_ref_dir))
@@ -229,6 +252,24 @@ def test_corpus_png_count(plotdig_ref_dir: Path):
     for d in with_png:
         assert d.image.ndim == 3 and d.image.shape[2] == 3
         assert d.image.dtype == np.uint8
+
+
+@pytest.mark.reference
+def test_only_known_binaries_are_unparsed(plotdig_ref_dir: Path):
+    test_dir = plotdig_ref_dir / "test"
+    unparsed: list[str] = []
+    for path in sorted(list(test_dir.glob("*.xml")) + list(test_dir.glob("*.dig"))):
+        try:
+            ET.parse(path)
+        except ET.ParseError:
+            unparsed.append(path.name)
+    assert set(unparsed) == BINARY_V5_DIGS
+    for name in unparsed:
+        doc = load_doc(test_dir / name)
+        assert doc.expected_csv is None, name
+        assert doc.image.size == 0, name
+        assert doc.coords_type == "", name
+        assert doc.axis_points == [], name
 
 
 @pytest.mark.reference

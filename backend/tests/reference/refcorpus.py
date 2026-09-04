@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import csv
 import os
 import xml.etree.ElementTree as ET
@@ -13,6 +14,35 @@ import numpy as np
 
 DEFAULT_REF_DIR = Path("/home/valentin/Projects/t/engauge-digitizer")
 _PNG_MAGIC = b"\x89PNG"
+
+# Pre-XML Engauge v5 dumps. The only files allowed to become stubs on ParseError.
+# Filename whitelist (not XML-magic): a new binary or truncated XML must fail the run.
+BINARY_V5_DIGS = frozenset(
+    {
+        "version5_1.dig",
+        "version5_2.dig",
+        "version5_3.dig",
+    }
+)
+
+# Polar + CmdAddPointAxis (3 each). Curated transform ground truth.
+# Filtering iter_docs for coords_type=="polar" and axis_points also yields four
+# incidental .dig files (POLAR_AXIS_INCIDENTAL) that have zero CmdAddPointAxis.
+POLAR_WITH_AXIS_POINTS = (
+    "guidelines_polar.xml",
+    "guidelines_polar_log.xml",
+    "polar_linear_linear_3curve.xml",
+    "polar_linear_linear_nonzero_center.xml",
+)
+
+# Polar with axis points via .dig <Point IsAxisPoint> only — not transform GT.
+POLAR_AXIS_INCIDENTAL = (
+    "extract_image_only_2.dig",
+    "guidelines_polar_linear_shear.dig",
+    "guidelines_polar_log_rotated.dig",
+    "version8_2.dig",
+)
+
 _FILTER_KEYS = (
     "IntensityLow",
     "IntensityHigh",
@@ -67,7 +97,7 @@ def _decode_embedded_image(text: str | None) -> np.ndarray:
     compact = "".join(text.split())
     try:
         raw = base64.b64decode(compact, validate=False)
-    except Exception:
+    except binascii.Error:
         return _empty_image()
     png_at = raw.find(_PNG_MAGIC)
     blob = raw[png_at:] if png_at >= 0 else (raw[4:] if len(raw) > 4 else raw)
@@ -79,13 +109,7 @@ def _decode_embedded_image(text: str | None) -> np.ndarray:
     return img
 
 
-def _lc_type(value: str | None) -> str:
-    if not value:
-        return ""
-    return value.strip().lower()
-
-
-def _lc_scale(value: str | None) -> str:
+def _lc(value: str | None) -> str:
     if not value:
         return ""
     return value.strip().lower()
@@ -122,13 +146,13 @@ def _parse_coords(root: ET.Element) -> tuple[str, str, str]:
     for elem in root.iter("Coords"):
         ts = elem.get("TypeString")
         if ts is not None:
-            coords_type = _lc_type(ts)
+            coords_type = _lc(ts)
         sx = elem.get("ScaleXThetaString")
         if sx is not None:
-            scale_x = _lc_scale(sx)
+            scale_x = _lc(sx)
         sy = elem.get("ScaleYRadiusString")
         if sy is not None:
-            scale_y = _lc_scale(sy)
+            scale_y = _lc(sy)
     return coords_type, scale_x, scale_y
 
 
@@ -281,7 +305,7 @@ def _stub_doc(path: Path) -> ReferenceDoc:
         scale_y="",
         axis_points=[],
         curve_points={},
-        expected_csv=_load_expected_csv(path),
+        expected_csv=None,
         color_filter={},
         segment_settings={},
         point_match_size=None,
@@ -293,6 +317,8 @@ def load_doc(path: Path) -> ReferenceDoc:
     try:
         tree = ET.parse(path)
     except ET.ParseError:
+        if path.name not in BINARY_V5_DIGS:
+            raise
         return _stub_doc(path)
     root = tree.getroot()
     image_elem = root.find(".//Image")
