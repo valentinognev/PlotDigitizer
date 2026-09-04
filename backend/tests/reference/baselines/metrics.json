@@ -34,6 +34,8 @@
   "grid_removal/gnuplot_x_y_linespoints/recall": 0.9854240967591875,
   "grid_removal/gnuplot_x_y_points/f1": 0.9881377283224858,
   "grid_removal/gnuplot_x_y_points/recall": 0.9797044129891757,
+  "improve_v1_synth_line_rms": 0.0430117905584646,
+  "improve_v1_synth_sine_rms": 0.018909416795518712,
   "segment_fill_ref_gnuplot_xlogy_rms": 1.7918684955685107,
   "segment_fill_ref_gnuplot_xy_rms": 0.15457331378665795,
   "segment_fill_synth_sine_rms": 0.00427717418230258
