@@ -2,6 +2,15 @@ import type { Calibration, Curve, Session, WorkspaceState } from '../types'
 
 const DEFAULT_TIMEOUT_MS = 120_000
 
+export function shouldRevertSessionOnPrefsError(err: unknown): boolean {
+  return !(
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    (err as { code?: string }).code === 'calibration_invalid'
+  )
+}
+
 async function request<T>(path: string, init?: RequestInit, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -26,11 +35,19 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs = DEFAULT_
       /* ignore */
     }
     const err = 'error' in body && body.error ? body.error : body.detail
+    const nested =
+      typeof err === 'object' && err && 'error' in err
+        ? (err as { error: { code?: string; message?: string } }).error
+        : err
     const message =
-      typeof err === 'object' && err && 'message' in err
-        ? String((err as { message: string }).message)
+      typeof nested === 'object' && nested && 'message' in nested
+        ? String((nested as { message: string }).message)
         : JSON.stringify(err)
-    throw new Error(message)
+    const code =
+      typeof nested === 'object' && nested && 'code' in nested
+        ? String((nested as { code: string }).code)
+        : undefined
+    throw Object.assign(new Error(message), { code })
   }
   if (res.headers.get('content-type')?.includes('application/json')) {
     return res.json()

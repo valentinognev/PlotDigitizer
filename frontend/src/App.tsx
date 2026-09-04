@@ -10,6 +10,7 @@ import {
   patchSessionPreferences,
   resampleSession,
   setCalibration,
+  shouldRevertSessionOnPrefsError,
   undoSession,
   redoSession,
   uploadSession,
@@ -387,6 +388,7 @@ export default function App() {
           .catch((e) => {
             if (seq !== prefsSeq.current) return
             toast(e instanceof Error ? e.message : 'Calibration save failed')
+            if (!shouldRevertSessionOnPrefsError(e)) return
             getLastSession()
               .then(syncSessionUi)
               .catch(() => {})

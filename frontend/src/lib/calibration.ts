@@ -42,6 +42,12 @@ export function createEmptyCalibration(width: number, height: number): Calibrati
   }
 }
 
+export function showFourBoundMarks(cal: Calibration | null | undefined): boolean {
+  if (!cal) return false
+  if ((cal.coords_type ?? 'cartesian') !== 'cartesian') return false
+  return (cal.axis_points?.length ?? 0) === 0
+}
+
 export function setAxisBoundPixel(
   cal: Calibration,
   key: AxisBoundKey,

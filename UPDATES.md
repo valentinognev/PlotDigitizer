@@ -40,6 +40,12 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [2.3.2] — 2026-09-04
+### Fixed
+- `PATCH /preferences` persists incomplete Precise/polar/map calibration drafts (no `validate_calibration`); Save still validates. Quiet prefs errors with `calibration_invalid` no longer revert the in-progress draft.
+- TypeScript projective solver matches Python: reject all-collinear points, not any collinear triple (four corners + edge midpoint stays projective).
+- Precise mode hides XMIN/XMAX/YMIN/YMAX marks so they cannot drag ignored `ref_points`.
+
 ## [2.3.1] — 2026-09-04
 ### Fixed
 - Last-session / project restore of `canvas_mode: axis` now reopens cartesian Precise (and drops map axis to select); Place points clears the Precise checkbox.

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { Calibration } from '../../types'
 import { formatAxisValue, getAxisBounds, pixelToData } from '../transform'
+import { solveTransform, type Constraint } from '../transform2d'
 
 const linearCal: Calibration = {
   x: {
@@ -86,6 +87,45 @@ describe('Python ↔ TS orthogonal parity fixture', () => {
         expect(got[0], cse.name).toBeCloseTo(sample.data[0], 9)
         expect(got[1], cse.name).toBeCloseTo(sample.data[1], 9)
       }
+    }
+  })
+})
+
+function applyH(H: number[][], pixel: [number, number]): [number, number] {
+  const w = H[2][0] * pixel[0] + H[2][1] * pixel[1] + H[2][2]
+  return [
+    (H[0][0] * pixel[0] + H[0][1] * pixel[1] + H[0][2]) / w,
+    (H[1][0] * pixel[0] + H[1][1] * pixel[1] + H[1][2]) / w,
+  ]
+}
+
+describe('solveTransform projective (Python 9a5faa5 parity)', () => {
+  it('auto keeps projective when fifth point is on an edge', () => {
+    const H = [
+      [1.2, 0.15, 4.0],
+      [-0.08, 0.9, 3.0],
+      [0.0004, -0.0003, 1.0],
+    ]
+    const corners: [number, number][] = [
+      [0.0, 0.0],
+      [200.0, 0.0],
+      [0.0, 180.0],
+      [200.0, 180.0],
+    ]
+    const pixels = [...corners, [100.0, 0.0] as [number, number]]
+    const constraints: Constraint[] = []
+    for (const p of pixels) {
+      const [u, v] = applyH(H, p)
+      constraints.push({ pixel: p, axis: 'u', value: u })
+      constraints.push({ pixel: p, axis: 'v', value: v })
+    }
+    const t = solveTransform(constraints, 'auto')
+    expect(t.model).toBe('projective')
+    for (const p of corners) {
+      const got = applyH(t.matrix, p)
+      const exp = applyH(H, p)
+      expect(got[0]).toBeCloseTo(exp[0], 9)
+      expect(got[1]).toBeCloseTo(exp[1], 9)
     }
   })
 })

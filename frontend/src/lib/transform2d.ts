@@ -254,18 +254,10 @@ function solveAffine(constraints: Constraint[]): Transform2D {
 
 function solveProjective(constraints: Constraint[]): Transform2D {
   const full = fullPoints(constraints)
-  const hint = 'Need ≥4 points that each pin both X and Y, with no 3 collinear'
+  const hint = 'Need ≥4 full (X,Y) points that are not all collinear'
   if (full.length < 4) throw new CalibrationError('Projective model needs 4 full (X,Y) points', hint)
   const pixels = full.map((p) => p.pixel)
-  for (let i = 0; i < pixels.length; i++) {
-    for (let j = i + 1; j < pixels.length; j++) {
-      for (let k = j + 1; k < pixels.length; k++) {
-        if (collinear([pixels[i], pixels[j], pixels[k]])) {
-          throw new CalibrationError('Projective axis points have 3 collinear', hint)
-        }
-      }
-    }
-  }
+  if (collinear(pixels)) throw new CalibrationError('Projective axis points are collinear', hint)
   const A: number[][] = []
   const b: number[] = []
   for (const p of full) {

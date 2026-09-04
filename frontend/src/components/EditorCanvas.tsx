@@ -3,7 +3,7 @@ import { Circle, Group, Image as KonvaImage, Layer, Rect, Stage, Text } from 're
 import type { KonvaEventObject } from 'konva/lib/Node'
 import type Konva from 'konva'
 import { getAxisBounds, type AxisBoundKey } from '../lib/transform'
-import { AXIS_PLACE_LABELS } from '../lib/calibration'
+import { AXIS_PLACE_LABELS, showFourBoundMarks } from '../lib/calibration'
 import {
   isMeshTransform,
   mapAxisBoundToDisplay,
@@ -657,7 +657,7 @@ export function EditorCanvas({
               fill="rgba(251, 191, 36, 0.12)"
             />
           )}
-          {(calibration?.coords_type ?? 'cartesian') === 'cartesian' &&
+          {showFourBoundMarks(calibration) &&
             axisBounds &&
             (Object.entries(axisBounds) as [AxisBoundKey, (typeof axisBounds)['xmin']][]).map(
               ([key, bound]) => (

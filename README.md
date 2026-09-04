@@ -147,5 +147,6 @@ cd backend && .venv/bin/pytest -q
 
 ## Status
 
-**v2.2** — manual digitization with optional image unskew (perspective or mesh) for camera
-photos; mesh subdivisions are adjustable (default 3 per edge). Current version: see [`UPDATES.md`](UPDATES.md).
+**v2.3.0** — affine / projective / polar / map calibration plus optional image unskew
+(perspective or mesh) for camera photos; mesh subdivisions are adjustable (default 3 per
+edge). Current version: see [`UPDATES.md`](UPDATES.md).

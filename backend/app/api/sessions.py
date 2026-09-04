@@ -134,10 +134,6 @@ def set_calibration(session_id: str, body: CalibrationUpdate) -> SessionPublic:
 def patch_preferences(session_id: str, body: SessionPreferencesPatch) -> SessionPublic:
     stored = _require(session_id)
     if body.calibration is not None:
-        try:
-            validate_calibration(body.calibration)
-        except CalibrationError as exc:
-            raise _error(exc, "calibration_invalid", exc.hint or "Fix reference points") from exc
         stored.session.calibration = body.calibration
         stored.session.manual_calibration = True
     if body.manual_calibration is not None:
