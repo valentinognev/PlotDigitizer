@@ -19,6 +19,12 @@ export function createEmptyCalibration(width: number, height: number): Calibrati
   const yBottom = height - my
   return {
     source: 'manual',
+    coords_type: 'cartesian',
+    model: 'auto',
+    axis_points: [],
+    theta_units: 'degrees',
+    origin_radius: 0,
+    scale_bar: null,
     x: {
       scale: 'linear',
       ref_points: [

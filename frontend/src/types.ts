@@ -1,6 +1,10 @@
 export type Scale = 'linear' | 'log'
 export type Origin = 'ai' | 'user'
 export type CurveStyle = 'solid' | 'dashed' | 'dotted' | 'unknown'
+export type CoordsType = 'cartesian' | 'polar' | 'map'
+export type ThetaUnits = 'degrees' | 'radians' | 'gradians' | 'turns'
+export type TransformModel = 'auto' | 'orthogonal' | 'affine' | 'projective'
+export type CanvasMode = 'select' | 'place' | 'axis' | 'pick-color' | 'segment-fill' | 'point-match'
 
 export interface RefPoint {
   pixel: [number, number]
@@ -12,10 +16,30 @@ export interface CalibrationAxis {
   ref_points: RefPoint[]
 }
 
+export interface AxisPoint {
+  id: string
+  pixel: [number, number]
+  x_value?: number | null
+  y_value?: number | null
+}
+
+export interface ScaleBar {
+  pixel_a: [number, number]
+  pixel_b: [number, number]
+  length: number
+  units?: string
+}
+
 export interface Calibration {
   x: CalibrationAxis
   y: CalibrationAxis
   source: 'manual'
+  coords_type?: CoordsType
+  model?: TransformModel
+  axis_points?: AxisPoint[]
+  theta_units?: ThetaUnits
+  origin_radius?: number
+  scale_bar?: ScaleBar | null
 }
 
 export interface Point {
@@ -52,6 +76,8 @@ export interface WorkspaceState {
   resample_count?: number
   unskew_mode?: 'perspective' | 'mesh'
   mesh?: MeshGridPayload | null
+  canvas_mode?: CanvasMode
+  show_axes_checker?: boolean
 }
 
 export interface MeshVertexPayload {

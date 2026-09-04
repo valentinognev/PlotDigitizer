@@ -70,16 +70,18 @@ describe('Python ↔ TS orthogonal parity fixture', () => {
     const here = dirname(fileURLToPath(import.meta.url))
     const fixturePath = join(here, '..', '__fixtures__', 'transform-vectors.json')
     const payload = JSON.parse(readFileSync(fixturePath, 'utf8')) as {
-      tolerance: number
       cases: Array<{
         name: string
         calibration: Calibration
-        samples: Array<{ pixel: [number, number]; data: [number, number] }>
+        pixel: [number, number]
+        data: [number, number]
+        samples?: Array<{ pixel: [number, number]; data: [number, number] }>
       }>
     }
     expect(payload.cases.length).toBeGreaterThan(0)
     for (const cse of payload.cases) {
-      for (const sample of cse.samples) {
+      const samples = cse.samples ?? [{ pixel: cse.pixel, data: cse.data }]
+      for (const sample of samples) {
         const got = pixelToData(cse.calibration, sample.pixel)
         expect(got[0], cse.name).toBeCloseTo(sample.data[0], 9)
         expect(got[1], cse.name).toBeCloseTo(sample.data[1], 9)

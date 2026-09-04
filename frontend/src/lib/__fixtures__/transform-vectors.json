@@ -1,10 +1,15 @@
 {
-  "generated_by": "backend/tests/synth/gen_transform_vectors.py",
-  "tolerance": 1e-09,
-  "note": "Synthetic orthogonal (independent 1D) mapping only. Phase 1 extends this fixture with affine/projective/polar vectors. Never derived from PLOTDIG_REF_DIR.",
   "cases": [
     {
-      "name": "linear_orthogonal",
+      "name": "orthogonal_linear_linear",
+      "pixel": [
+        300.0,
+        250.0
+      ],
+      "data": [
+        4.9999999999999964,
+        2.500000000000001
+      ],
       "calibration": {
         "x": {
           "scale": "linear",
@@ -44,270 +49,40 @@
             }
           ]
         },
-        "source": "manual"
-      },
-      "samples": [
-        {
-          "pixel": [
-            100.0,
-            400.0
-          ],
-          "data": [
-            0.0,
-            0.0
-          ]
-        },
-        {
-          "pixel": [
-            300.0,
-            250.0
-          ],
-          "data": [
-            5.0,
-            2.5
-          ]
-        },
-        {
-          "pixel": [
-            500.0,
-            100.0
-          ],
-          "data": [
-            10.0,
-            5.0
-          ]
-        },
-        {
-          "pixel": [
-            220.0,
-            310.0
-          ],
-          "data": [
-            3.0,
-            1.5
-          ]
-        },
-        {
-          "pixel": [
-            480.0,
-            180.0
-          ],
-          "data": [
-            9.5,
-            3.666666666666667
-          ]
-        }
-      ]
+        "source": "manual",
+        "coords_type": "cartesian",
+        "model": "auto",
+        "axis_points": [],
+        "theta_units": "degrees",
+        "origin_radius": 0.0,
+        "scale_bar": null
+      }
     },
     {
-      "name": "log_x_linear_y",
+      "name": "orthogonal_log_log",
+      "pixel": [
+        120.0,
+        240.0
+      ],
+      "data": [
+        3.162277660168376,
+        0.39810717055349776
+      ],
       "calibration": {
         "x": {
           "scale": "log",
           "ref_points": [
             {
               "pixel": [
-                100.0,
-                400.0
+                20.0,
+                480.0
               ],
               "value": 1.0
             },
             {
               "pixel": [
-                500.0,
-                400.0
-              ],
-              "value": 100.0
-            }
-          ]
-        },
-        "y": {
-          "scale": "linear",
-          "ref_points": [
-            {
-              "pixel": [
-                100.0,
-                400.0
-              ],
-              "value": 0.0
-            },
-            {
-              "pixel": [
-                100.0,
-                100.0
-              ],
-              "value": 5.0
-            }
-          ]
-        },
-        "source": "manual"
-      },
-      "samples": [
-        {
-          "pixel": [
-            100.0,
-            400.0
-          ],
-          "data": [
-            1.0,
-            0.0
-          ]
-        },
-        {
-          "pixel": [
-            300.0,
-            250.0
-          ],
-          "data": [
-            10.0,
-            2.5
-          ]
-        },
-        {
-          "pixel": [
-            500.0,
-            100.0
-          ],
-          "data": [
-            100.0,
-            5.0
-          ]
-        },
-        {
-          "pixel": [
-            220.0,
-            310.0
-          ],
-          "data": [
-            3.981071705534973,
-            1.5
-          ]
-        },
-        {
-          "pixel": [
-            480.0,
-            180.0
-          ],
-          "data": [
-            79.43282347242814,
-            3.666666666666667
-          ]
-        }
-      ]
-    },
-    {
-      "name": "linear_x_log_y",
-      "calibration": {
-        "x": {
-          "scale": "linear",
-          "ref_points": [
-            {
-              "pixel": [
-                100.0,
-                400.0
-              ],
-              "value": 0.0
-            },
-            {
-              "pixel": [
-                500.0,
-                400.0
-              ],
-              "value": 10.0
-            }
-          ]
-        },
-        "y": {
-          "scale": "log",
-          "ref_points": [
-            {
-              "pixel": [
-                100.0,
-                400.0
-              ],
-              "value": 1.0
-            },
-            {
-              "pixel": [
-                100.0,
-                100.0
-              ],
-              "value": 100.0
-            }
-          ]
-        },
-        "source": "manual"
-      },
-      "samples": [
-        {
-          "pixel": [
-            100.0,
-            400.0
-          ],
-          "data": [
-            0.0,
-            1.0
-          ]
-        },
-        {
-          "pixel": [
-            300.0,
-            250.0
-          ],
-          "data": [
-            5.0,
-            10.000000000000005
-          ]
-        },
-        {
-          "pixel": [
-            500.0,
-            100.0
-          ],
-          "data": [
-            10.0,
-            100.0
-          ]
-        },
-        {
-          "pixel": [
-            220.0,
-            310.0
-          ],
-          "data": [
-            3.0,
-            3.981071705534973
-          ]
-        },
-        {
-          "pixel": [
-            480.0,
-            180.0
-          ],
-          "data": [
-            9.5,
-            29.286445646252375
-          ]
-        }
-      ]
-    },
-    {
-      "name": "log_log",
-      "calibration": {
-        "x": {
-          "scale": "log",
-          "ref_points": [
-            {
-              "pixel": [
-                100.0,
-                400.0
-              ],
-              "value": 1.0
-            },
-            {
-              "pixel": [
-                500.0,
-                400.0
+                620.0,
+                480.0
               ],
               "value": 1000.0
             }
@@ -318,74 +93,244 @@
           "ref_points": [
             {
               "pixel": [
-                100.0,
-                400.0
+                20.0,
+                480.0
               ],
-              "value": 0.1
+              "value": 0.01
             },
             {
               "pixel": [
-                100.0,
-                100.0
+                20.0,
+                30.0
               ],
               "value": 10.0
             }
           ]
         },
-        "source": "manual"
-      },
-      "samples": [
-        {
-          "pixel": [
-            100.0,
-            400.0
-          ],
-          "data": [
-            1.0,
-            0.09999999999999995
-          ]
+        "source": "manual",
+        "coords_type": "cartesian",
+        "model": "auto",
+        "axis_points": [],
+        "theta_units": "degrees",
+        "origin_radius": 0.0,
+        "scale_bar": null
+      }
+    },
+    {
+      "name": "affine_three_point",
+      "pixel": [
+        45.0,
+        40.0
+      ],
+      "data": [
+        1.6080000000000014,
+        1.455500000000001
+      ],
+      "calibration": {
+        "x": {
+          "scale": "linear",
+          "ref_points": []
         },
-        {
-          "pixel": [
-            300.0,
-            250.0
-          ],
-          "data": [
-            31.622776601683793,
-            1.0
-          ]
+        "y": {
+          "scale": "linear",
+          "ref_points": []
         },
-        {
-          "pixel": [
-            500.0,
-            100.0
-          ],
-          "data": [
-            1000.0,
-            10.0
-          ]
+        "source": "manual",
+        "coords_type": "cartesian",
+        "model": "affine",
+        "axis_points": [
+          {
+            "id": "580efc03-ecaf-4197-87c2-db545adecd15",
+            "pixel": [
+              10.0,
+              20.0
+            ],
+            "x_value": 0.0,
+            "y_value": 0.0
+          },
+          {
+            "id": "0ca6834f-9e00-456e-8c2d-0a21a6c033b4",
+            "pixel": [
+              80.0,
+              15.0
+            ],
+            "x_value": 3.0,
+            "y_value": 0.4
+          },
+          {
+            "id": "d1ab218e-f84c-441d-8e38-2df5cc5d97e0",
+            "pixel": [
+              30.0,
+              90.0
+            ],
+            "x_value": 1.2,
+            "y_value": 4.1
+          }
+        ],
+        "theta_units": "degrees",
+        "origin_radius": 0.0,
+        "scale_bar": null
+      }
+    },
+    {
+      "name": "projective_four_point",
+      "pixel": [
+        90.0,
+        80.0
+      ],
+      "data": [
+        4.358292348079672,
+        3.826675054908085
+      ],
+      "calibration": {
+        "x": {
+          "scale": "linear",
+          "ref_points": []
         },
-        {
-          "pixel": [
-            220.0,
-            310.0
-          ],
-          "data": [
-            7.943282347242813,
-            0.39810717055349715
-          ]
+        "y": {
+          "scale": "linear",
+          "ref_points": []
         },
-        {
-          "pixel": [
-            480.0,
-            180.0
+        "source": "manual",
+        "coords_type": "cartesian",
+        "model": "projective",
+        "axis_points": [
+          {
+            "id": "061fa802-8438-4a0d-a727-5bf4d3900853",
+            "pixel": [
+              0.0,
+              0.0
+            ],
+            "x_value": 0.0,
+            "y_value": 0.0
+          },
+          {
+            "id": "e51d7a3c-27e8-4c2e-92e8-d4908f798709",
+            "pixel": [
+              200.0,
+              10.0
+            ],
+            "x_value": 10.0,
+            "y_value": 0.2
+          },
+          {
+            "id": "cc68d6d7-cdb5-4c7b-9ccf-83a0d6812171",
+            "pixel": [
+              15.0,
+              180.0
+            ],
+            "x_value": 0.4,
+            "y_value": 9.0
+          },
+          {
+            "id": "a8e465b2-b060-4ba9-ba94-c90f7d25d512",
+            "pixel": [
+              190.0,
+              170.0
+            ],
+            "x_value": 9.5,
+            "y_value": 8.4
+          }
+        ],
+        "theta_units": "degrees",
+        "origin_radius": 0.0,
+        "scale_bar": null
+      }
+    },
+    {
+      "name": "polar_degrees",
+      "pixel": [
+        240.0,
+        160.0
+      ],
+      "data": [
+        44.9999999999942,
+        1.414213562372923
+      ],
+      "calibration": {
+        "x": {
+          "scale": "linear",
+          "ref_points": []
+        },
+        "y": {
+          "scale": "linear",
+          "ref_points": []
+        },
+        "source": "manual",
+        "coords_type": "polar",
+        "model": "affine",
+        "axis_points": [
+          {
+            "id": "4672c0ce-c263-4db2-9c4d-ab084a36183d",
+            "pixel": [
+              200.0,
+              200.0
+            ],
+            "x_value": 0.0,
+            "y_value": 0.0
+          },
+          {
+            "id": "aa8ed87b-c600-40fd-b87b-a17e7ff182f6",
+            "pixel": [
+              280.0,
+              200.0
+            ],
+            "x_value": 0.0,
+            "y_value": 2.0
+          },
+          {
+            "id": "343a2095-7eb7-4777-876e-6941d3bd60bc",
+            "pixel": [
+              200.0,
+              120.0
+            ],
+            "x_value": 90.0,
+            "y_value": 2.0
+          }
+        ],
+        "theta_units": "degrees",
+        "origin_radius": 0.0,
+        "scale_bar": null
+      }
+    },
+    {
+      "name": "map_horizontal",
+      "pixel": [
+        60.0,
+        10.0
+      ],
+      "data": [
+        25.0,
+        20.0
+      ],
+      "calibration": {
+        "x": {
+          "scale": "linear",
+          "ref_points": []
+        },
+        "y": {
+          "scale": "linear",
+          "ref_points": []
+        },
+        "source": "manual",
+        "coords_type": "map",
+        "model": "auto",
+        "axis_points": [],
+        "theta_units": "degrees",
+        "origin_radius": 0.0,
+        "scale_bar": {
+          "pixel_a": [
+            10.0,
+            50.0
           ],
-          "data": [
-            707.9457843841374,
-            2.9286445646252357
-          ]
+          "pixel_b": [
+            110.0,
+            50.0
+          ],
+          "length": 50.0,
+          "units": "m"
         }
-      ]
+      }
     }
   ]
 }

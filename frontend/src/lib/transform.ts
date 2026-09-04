@@ -1,6 +1,5 @@
 import type { Calibration, RefPoint } from '../types'
-
-export class CalibrationError extends Error {}
+export { CalibrationError, pixelToData, isCalibrationValid } from './transform2d'
 
 export type AxisBoundKey = 'xmin' | 'xmax' | 'ymin' | 'ymax'
 
@@ -8,36 +7,6 @@ export interface AxisBound {
   value: number
   pixel: [number, number]
   refIndex: number
-}
-
-function axisPixelToValue(
-  pixel: number,
-  slope: number,
-  intercept: number,
-  scale: 'linear' | 'log',
-): number {
-  const t = slope * pixel + intercept
-  return scale === 'log' ? 10 ** t : t
-}
-
-export function pixelToData(cal: Calibration, pixel: [number, number]): [number, number] {
-  const [xs, xi] = fitAxisTwoPoint(cal.x.ref_points, 'x', cal.x.scale)
-  const [ys, yi] = fitAxisTwoPoint(cal.y.ref_points, 'y', cal.y.scale)
-  return [
-    axisPixelToValue(pixel[0], xs, xi, cal.x.scale),
-    axisPixelToValue(pixel[1], ys, yi, cal.y.scale),
-  ]
-}
-
-export function isCalibrationValid(cal: Calibration | null): boolean {
-  if (!cal) return false
-  try {
-    fitAxisTwoPoint(cal.x.ref_points, 'x', cal.x.scale)
-    fitAxisTwoPoint(cal.y.ref_points, 'y', cal.y.scale)
-    return true
-  } catch {
-    return false
-  }
 }
 
 function extremeRefIndex(refs: RefPoint[], axis: 'x' | 'y', which: 'min' | 'max'): number {
@@ -57,11 +26,19 @@ export function areCalibrationPixelsInImage(
   imageWidth: number,
   imageHeight: number,
 ): boolean {
+  const inside = (x: number, y: number) => x >= 0 && y >= 0 && x <= imageWidth && y <= imageHeight
   for (const axis of [calibration.x, calibration.y]) {
     for (const ref of axis.ref_points) {
-      const [x, y] = ref.pixel
-      if (x < 0 || y < 0 || x > imageWidth || y > imageHeight) return false
+      if (!inside(ref.pixel[0], ref.pixel[1])) return false
     }
+  }
+  for (const pt of calibration.axis_points ?? []) {
+    if (!inside(pt.pixel[0], pt.pixel[1])) return false
+  }
+  const bar = calibration.scale_bar
+  if (bar) {
+    if (!inside(bar.pixel_a[0], bar.pixel_a[1])) return false
+    if (!inside(bar.pixel_b[0], bar.pixel_b[1])) return false
   }
   return true
 }
@@ -112,46 +89,6 @@ export function updateAxisBound(
     source: 'manual',
     [axis]: { ...cal[axis], ref_points: refPoints },
   }
-}
-
-/** Two-point fit at extreme pixel refs — matches xmin/xmax/ymin/ymax UI. */
-function fitAxisTwoPoint(
-  refPoints: RefPoint[],
-  axis: 'x' | 'y',
-  scale: 'linear' | 'log',
-): [number, number] {
-  if (refPoints.length < 2) throw new CalibrationError('Need at least 2 reference points')
-
-  let pA: RefPoint
-  let pB: RefPoint
-  let pixA: number
-  let pixB: number
-
-  if (axis === 'x') {
-    pA = refPoints[extremeRefIndex(refPoints, 'x', 'min')]
-    pB = refPoints[extremeRefIndex(refPoints, 'x', 'max')]
-    pixA = pA.pixel[0]
-    pixB = pB.pixel[0]
-  } else {
-    pA = refPoints[extremeRefIndex(refPoints, 'y', 'min')]
-    pB = refPoints[extremeRefIndex(refPoints, 'y', 'max')]
-    pixA = pA.pixel[1]
-    pixB = pB.pixel[1]
-  }
-
-  if (Math.abs(pixB - pixA) < 1e-9) throw new CalibrationError('Degenerate reference pixels')
-
-  let vA = pA.value
-  let vB = pB.value
-  if (scale === 'log') {
-    if (vA <= 0 || vB <= 0) throw new CalibrationError('Log scale requires values > 0')
-    vA = Math.log10(vA)
-    vB = Math.log10(vB)
-  }
-
-  const slope = (vB - vA) / (pixB - pixA)
-  const intercept = vA - slope * pixA
-  return [slope, intercept]
 }
 
 export function formatAxisValue(value: number): string {

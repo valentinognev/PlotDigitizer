@@ -3,96 +3,123 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Literal
 
 BACKEND = Path(__file__).resolve().parents[2]
-REPO = BACKEND.parent
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
-from app.calibration.calibration import pixel_to_data  # noqa: E402
-from app.models.schemas import Calibration, CalibrationAxis, RefPoint  # noqa: E402
+from app.calibration.coords import pixel_to_data  # noqa: E402
+from app.models.schemas import (
+    AxisPoint,
+    Calibration,
+    CalibrationAxis,
+    RefPoint,
+    ScaleBar,
+)
 
-Scale = Literal["linear", "log"]
-
-DEFAULT_OUT = REPO / "frontend" / "src" / "lib" / "__fixtures__" / "transform-vectors.json"
-
-
-def _cal(
-    x_scale: Scale,
-    y_scale: Scale,
-    x_vals: tuple[float, float],
-    y_vals: tuple[float, float],
-) -> Calibration:
-    return Calibration(
-        x=CalibrationAxis(
-            scale=x_scale,
-            ref_points=[
-                RefPoint(pixel=(100.0, 400.0), value=x_vals[0]),
-                RefPoint(pixel=(500.0, 400.0), value=x_vals[1]),
-            ],
-        ),
-        y=CalibrationAxis(
-            scale=y_scale,
-            ref_points=[
-                RefPoint(pixel=(100.0, 400.0), value=y_vals[0]),
-                RefPoint(pixel=(100.0, 100.0), value=y_vals[1]),
-            ],
-        ),
-        source="manual",
-    )
+ROOT = Path(__file__).resolve().parents[3]
+OUT = ROOT / "frontend" / "src" / "lib" / "__fixtures__" / "transform-vectors.json"
 
 
 def _dump_cal(cal: Calibration) -> dict:
+    payload = cal.model_dump()
+    return payload
+
+
+def _case(name: str, cal: Calibration, pixel: tuple[float, float]) -> dict:
+    data = pixel_to_data(cal, pixel)
     return {
-        "x": {
-            "scale": cal.x.scale,
-            "ref_points": [{"pixel": list(p.pixel), "value": p.value} for p in cal.x.ref_points],
-        },
-        "y": {
-            "scale": cal.y.scale,
-            "ref_points": [{"pixel": list(p.pixel), "value": p.value} for p in cal.y.ref_points],
-        },
-        "source": cal.source,
+        "name": name,
+        "pixel": [float(pixel[0]), float(pixel[1])],
+        "data": [float(data[0]), float(data[1])],
+        "calibration": _dump_cal(cal),
     }
 
 
-def build_vectors() -> dict:
-    pixels = [(100.0, 400.0), (300.0, 250.0), (500.0, 100.0), (220.0, 310.0), (480.0, 180.0)]
-    specs = [
-        ("linear_orthogonal", "linear", "linear", (0.0, 10.0), (0.0, 5.0)),
-        ("log_x_linear_y", "log", "linear", (1.0, 100.0), (0.0, 5.0)),
-        ("linear_x_log_y", "linear", "log", (0.0, 10.0), (1.0, 100.0)),
-        ("log_log", "log", "log", (1.0, 1000.0), (0.1, 10.0)),
-    ]
-    cases = []
-    for name, x_scale, y_scale, x_vals, y_vals in specs:
-        cal = _cal(x_scale, y_scale, x_vals, y_vals)
-        samples = []
-        for pixel in pixels:
-            data = pixel_to_data(cal, pixel)
-            samples.append({"pixel": [pixel[0], pixel[1]], "data": [data[0], data[1]]})
-        cases.append({"name": name, "calibration": _dump_cal(cal), "samples": samples})
-    return {
-        "generated_by": "backend/tests/synth/gen_transform_vectors.py",
-        "tolerance": 1e-9,
-        "note": (
-            "Synthetic orthogonal (independent 1D) mapping only. "
-            "Phase 1 extends this fixture with affine/projective/polar vectors. "
-            "Never derived from PLOTDIG_REF_DIR."
+def main() -> None:
+    cases: list[dict] = []
+    ortho = Calibration(
+        x=CalibrationAxis(
+            scale="linear",
+            ref_points=[
+                RefPoint(pixel=(100.0, 400.0), value=0.0),
+                RefPoint(pixel=(500.0, 400.0), value=10.0),
+            ],
         ),
-        "cases": cases,
-    }
-
-
-def write_vectors(path: Path | None = None) -> Path:
-    out = Path(path) if path is not None else DEFAULT_OUT
-    out.parent.mkdir(parents=True, exist_ok=True)
-    payload = build_vectors()
-    out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    return out
+        y=CalibrationAxis(
+            scale="linear",
+            ref_points=[
+                RefPoint(pixel=(100.0, 400.0), value=0.0),
+                RefPoint(pixel=(100.0, 100.0), value=5.0),
+            ],
+        ),
+    )
+    cases.append(_case("orthogonal_linear_linear", ortho, (300.0, 250.0)))
+    loglog = Calibration(
+        x=CalibrationAxis(
+            scale="log",
+            ref_points=[
+                RefPoint(pixel=(20.0, 480.0), value=1.0),
+                RefPoint(pixel=(620.0, 480.0), value=1000.0),
+            ],
+        ),
+        y=CalibrationAxis(
+            scale="log",
+            ref_points=[
+                RefPoint(pixel=(20.0, 480.0), value=0.01),
+                RefPoint(pixel=(20.0, 30.0), value=10.0),
+            ],
+        ),
+    )
+    cases.append(_case("orthogonal_log_log", loglog, (120.0, 240.0)))
+    affine = Calibration(
+        x=CalibrationAxis(scale="linear", ref_points=[]),
+        y=CalibrationAxis(scale="linear", ref_points=[]),
+        model="affine",
+        axis_points=[
+            AxisPoint(pixel=(10.0, 20.0), x_value=0.0, y_value=0.0),
+            AxisPoint(pixel=(80.0, 15.0), x_value=3.0, y_value=0.4),
+            AxisPoint(pixel=(30.0, 90.0), x_value=1.2, y_value=4.1),
+        ],
+    )
+    cases.append(_case("affine_three_point", affine, (45.0, 40.0)))
+    proj = Calibration(
+        x=CalibrationAxis(scale="linear", ref_points=[]),
+        y=CalibrationAxis(scale="linear", ref_points=[]),
+        model="projective",
+        axis_points=[
+            AxisPoint(pixel=(0.0, 0.0), x_value=0.0, y_value=0.0),
+            AxisPoint(pixel=(200.0, 10.0), x_value=10.0, y_value=0.2),
+            AxisPoint(pixel=(15.0, 180.0), x_value=0.4, y_value=9.0),
+            AxisPoint(pixel=(190.0, 170.0), x_value=9.5, y_value=8.4),
+        ],
+    )
+    cases.append(_case("projective_four_point", proj, (90.0, 80.0)))
+    polar = Calibration(
+        x=CalibrationAxis(scale="linear", ref_points=[]),
+        y=CalibrationAxis(scale="linear", ref_points=[]),
+        coords_type="polar",
+        model="affine",
+        theta_units="degrees",
+        origin_radius=0.0,
+        axis_points=[
+            AxisPoint(pixel=(200.0, 200.0), x_value=0.0, y_value=0.0),
+            AxisPoint(pixel=(280.0, 200.0), x_value=0.0, y_value=2.0),
+            AxisPoint(pixel=(200.0, 120.0), x_value=90.0, y_value=2.0),
+        ],
+    )
+    cases.append(_case("polar_degrees", polar, (240.0, 160.0)))
+    mapping = Calibration(
+        x=CalibrationAxis(scale="linear", ref_points=[]),
+        y=CalibrationAxis(scale="linear", ref_points=[]),
+        coords_type="map",
+        scale_bar=ScaleBar(pixel_a=(10.0, 50.0), pixel_b=(110.0, 50.0), length=50.0, units="m"),
+    )
+    cases.append(_case("map_horizontal", mapping, (60.0, 10.0)))
+    OUT.parent.mkdir(parents=True, exist_ok=True)
+    OUT.write_text(json.dumps({"cases": cases}, indent=2) + "\n")
+    print(f"wrote {len(cases)} cases to {OUT}")
 
 
 if __name__ == "__main__":
-    written = write_vectors()
-    print(f"wrote {written}")
+    main()
