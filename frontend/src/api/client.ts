@@ -318,6 +318,11 @@ export async function snapPixels(
   return body.pixels
 }
 
-export function sessionMaskUrl(sessionId: string, curveId: string, rev: number): string {
-  return maskPreviewUrl(sessionId, curveId, rev)
+export function sessionMaskUrl(
+  sessionId: string,
+  curveId: string,
+  rev: number,
+  stamp?: string | number,
+): string {
+  return maskPreviewUrl(sessionId, curveId, rev, stamp)
 }

@@ -22,8 +22,15 @@ export function displayToNorm(mode: FilterMode, display: number): number {
   return display / max
 }
 
-export function maskPreviewUrl(sessionId: string, curveId: string, rev: number): string {
-  return `/sessions/${sessionId}/mask?curve_id=${encodeURIComponent(curveId)}&rev=${rev}`
+export function maskPreviewUrl(
+  sessionId: string,
+  curveId: string,
+  rev: number,
+  stamp?: string | number,
+): string {
+  const base = `/sessions/${sessionId}/mask?curve_id=${encodeURIComponent(curveId)}&rev=${rev}`
+  if (stamp === undefined || stamp === '') return base
+  return `${base}&stamp=${encodeURIComponent(String(stamp))}`
 }
 
 export function hexToRgb(hex: string): [number, number, number] | null {

@@ -40,6 +40,12 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [2.4.1] — 2026-09-04
+### Fixed
+- Pick-colour exits to select (workspace `canvas_mode` persisted; in-flight prefs writes invalidated).
+- Mask overlay cache-busts on filter/grid changes (`stamp` query), not only image revision.
+- Filter threshold sliders stay enabled while PATCHes debounce; no `run()` busy lock.
+
 ## [2.4.0] — 2026-09-04 — Colour filter, grid removal and subpixel snap
 ### Added
 - Precision toolkit phase 2: per-curve colour filter (intensity / foreground / hue / saturation / value), optional grid detection + removal with stump healing, subpixel ink snap, FilterPanel with pick-colour mode and mask overlay. Shared compose point `build_curve_mask` for later auto-digitize tools.

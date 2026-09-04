@@ -102,7 +102,7 @@ export function FilterPanel({
           min={0}
           max={max}
           value={lowDisp}
-          disabled={disabled || busy}
+          disabled={disabled}
           onChange={(e) =>
             onFilterChange({ ...flt, low: displayToNorm(flt.mode, Number(e.target.value)) })
           }
@@ -112,7 +112,7 @@ export function FilterPanel({
           min={0}
           max={max}
           value={highDisp}
-          disabled={disabled || busy}
+          disabled={disabled}
           onChange={(e) =>
             onFilterChange({ ...flt, high: displayToNorm(flt.mode, Number(e.target.value)) })
           }

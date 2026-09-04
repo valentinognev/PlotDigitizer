@@ -98,7 +98,9 @@ export default function App() {
   const meshSyncedQuadRef = useRef<PlotQuad | null>(null)
   const patchSeq = useRef(0)
   const prefsSeq = useRef(0)
+  const filterSeq = useRef(0)
   const prefsDebounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const filterDebounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const pendingPrefsPatch = useRef<{
     calibration?: Calibration
     manual_calibration?: boolean
@@ -252,7 +254,28 @@ export default function App() {
 
   const commitFilter = (next: ColorFilter) => {
     if (!session || !activeCurveId) return
-    run(() => patchCurveFilter(session.id, activeCurveId, next), 'Saving filter…')
+    const sessionId = session.id
+    const curveId = activeCurveId
+    setSession((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        curves: prev.curves.map((c) => (c.id === curveId ? { ...c, filter: next } : c)),
+      }
+    })
+    clearTimeout(filterDebounce.current)
+    filterDebounce.current = setTimeout(() => {
+      const seq = ++filterSeq.current
+      patchCurveFilter(sessionId, curveId, next)
+        .then((saved) => {
+          if (seq !== filterSeq.current) return
+          setSession((prev) => mergeSessionUpdate(prev, saved))
+        })
+        .catch((e) => {
+          if (seq !== filterSeq.current) return
+          toast(e instanceof Error ? e.message : 'Save failed')
+        })
+    }, 80)
   }
 
   const handlePickColor = () => {
@@ -269,8 +292,16 @@ export default function App() {
         remove_grid: activeCurve?.filter?.remove_grid ?? false,
       }
       const saved = await patchCurveFilter(session.id, activeCurveId, merged)
+      ++prefsSeq.current
+      const withMode = await patchSessionPreferences(session.id, {
+        workspace: { ...(saved.workspace ?? {}), canvas_mode: 'select' },
+      })
       setCanvasMode('select')
-      return saved
+      return {
+        ...withMode,
+        curves: withMode.curves ?? saved.curves,
+        workspace: { ...(withMode.workspace ?? saved.workspace ?? {}), canvas_mode: 'select' },
+      }
     }, 'Sampling colour…')
   }
 
@@ -340,6 +371,8 @@ export default function App() {
   )
 
   const workspaceAutosaveReady = useRef(false)
+  const sessionWorkspaceRef = useRef(session?.workspace)
+  sessionWorkspaceRef.current = session?.workspace
 
   useEffect(() => {
     workspaceAutosaveReady.current = false
@@ -351,6 +384,7 @@ export default function App() {
       meshOverride?: MeshGridState | null
       modeOverride?: UnskewMode
       showAxesCheckerOverride?: boolean
+      canvasModeOverride?: CanvasMode
     }) => {
       const sessionId = session?.id
       if (!sessionId) return
@@ -358,12 +392,14 @@ export default function App() {
       const mode = options?.modeOverride ?? unskewMode
       const meshState = options?.meshOverride !== undefined ? options.meshOverride : meshGrid
       const workspace = {
+        ...(sessionWorkspaceRef.current ?? {}),
         active_curve_id: activeCurveId,
         resample_count: resampleCount,
         unskew_mode: mode,
         mesh: meshState ? meshToPayload(meshState) : null,
-        canvas_mode: canvasMode,
+        canvas_mode: options?.canvasModeOverride ?? canvasMode,
         show_axes_checker: options?.showAxesCheckerOverride ?? showAxesChecker,
+        show_mask: maskView !== 'none',
       }
 
       pendingPrefsPatch.current = {
@@ -391,7 +427,7 @@ export default function App() {
         flush()
       }
     },
-    [session?.id, activeCurveId, resampleCount, unskewMode, meshGrid, canvasMode, showAxesChecker],
+    [session?.id, activeCurveId, resampleCount, unskewMode, meshGrid, canvasMode, showAxesChecker, maskView],
   )
 
   useEffect(() => {
@@ -1117,7 +1153,15 @@ export default function App() {
               onPickColor={handlePickedPixel}
               maskUrl={
                 session && activeCurveId && maskView !== 'none'
-                  ? maskPreviewUrl(session.id, activeCurveId, session.image_meta.revision ?? 0)
+                  ? maskPreviewUrl(
+                      session.id,
+                      activeCurveId,
+                      session.image_meta.revision ?? 0,
+                      JSON.stringify({
+                        filter: activeCurve?.filter ?? null,
+                        grid: session.workspace?.grid ?? null,
+                      }),
+                    )
                   : null
               }
               maskView={maskView}

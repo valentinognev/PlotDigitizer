@@ -24,6 +24,9 @@ describe('colorFilter helpers', () => {
     expect(maskPreviewUrl('abc', 'curve-1', 4)).toBe(
       '/sessions/abc/mask?curve_id=curve-1&rev=4',
     )
+    expect(maskPreviewUrl('abc', 'curve-1', 4, 'hue:0.1')).toBe(
+      '/sessions/abc/mask?curve_id=curve-1&rev=4&stamp=hue%3A0.1',
+    )
   })
 
   it('previews hue mode for saturated hex and intensity for gray', () => {
