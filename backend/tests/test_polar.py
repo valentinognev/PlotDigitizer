@@ -103,6 +103,18 @@ def test_polar_checker_is_annular():
     assert len(poly) >= 16
 
 
+def test_polar_log_checker_skips_non_positive_inner_radius():
+    points = [
+        AxisPoint(pixel=(200.0, 200.0), x_value=0.0, y_value=1.0),
+        AxisPoint(pixel=(280.0, 200.0), x_value=0.0, y_value=100.0),
+        AxisPoint(pixel=(200.0, 120.0), x_value=90.0, y_value=100.0),
+    ]
+    cal = _polar_cal(points, radius_scale="log", origin_radius=0.0)
+    validate_calibration(cal)
+    poly = axes_checker_polyline(cal, (400, 400))
+    assert poly
+
+
 @pytest.mark.reference
 @pytest.mark.parametrize("name", POLAR_DOCS)
 def test_polar_reference_docs(name: str):

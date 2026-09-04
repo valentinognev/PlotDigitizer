@@ -178,8 +178,15 @@ def _data_limits(cal: Calibration) -> tuple[float, float, float, float]:
 def _polar_checker(cal: Calibration) -> list[tuple[float, float]]:
     radii = [float(pt.y_value) for pt in cal.axis_points if pt.y_value is not None]
     thetas = [float(pt.x_value) for pt in cal.axis_points if pt.x_value is not None]
-    r_inner = cal.origin_radius
-    r_outer = max(radii) if radii else r_inner + 1.0
+    if cal.y.scale == "log":
+        # Log radius cannot draw R≤0. Inner ring is the smallest pinned R > 0
+        # (fallback 1.0 if none). origin_radius is unchanged for pixel_to_data.
+        positive = [r for r in radii if r > 0]
+        r_inner = min(positive) if positive else 1.0
+        r_outer = max(positive) if positive else r_inner
+    else:
+        r_inner = cal.origin_radius
+        r_outer = max(radii) if radii else r_inner + 1.0
     t0 = min(thetas) if thetas else 0.0
     t1 = max(thetas) if thetas else (
         360.0 if cal.theta_units == "degrees" else math.pi * 2 if cal.theta_units == "radians" else 400.0 if cal.theta_units == "gradians" else 1.0
