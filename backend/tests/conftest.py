@@ -30,6 +30,8 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    if exitstatus != 0:
+        return
     from metrics import flush_baselines
 
     flush_baselines()

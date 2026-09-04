@@ -30,9 +30,15 @@ def flush_baselines() -> None:
     _PATH.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
+def _require_same_shape(left: np.ndarray, right: np.ndarray) -> None:
+    if left.shape != right.shape:
+        raise ValueError(f"shape mismatch: {left.shape} vs {right.shape}")
+
+
 def rms_error(predicted: np.ndarray, truth: np.ndarray) -> float:
     predicted = np.asarray(predicted, dtype=np.float64)
     truth = np.asarray(truth, dtype=np.float64)
+    _require_same_shape(predicted, truth)
     diff = predicted - truth
     return float(np.sqrt(np.mean(diff * diff)))
 
@@ -40,6 +46,7 @@ def rms_error(predicted: np.ndarray, truth: np.ndarray) -> float:
 def max_abs_error(predicted: np.ndarray, truth: np.ndarray) -> float:
     predicted = np.asarray(predicted, dtype=np.float64)
     truth = np.asarray(truth, dtype=np.float64)
+    _require_same_shape(predicted, truth)
     return float(np.max(np.abs(predicted - truth)))
 
 
@@ -48,6 +55,9 @@ def _binary(mask: np.ndarray) -> np.ndarray:
 
 
 def mask_recall(pred: np.ndarray, truth: np.ndarray) -> float:
+    pred = np.asarray(pred)
+    truth = np.asarray(truth)
+    _require_same_shape(pred, truth)
     t = _binary(truth)
     p = _binary(pred)
     tp = np.logical_and(t, p).sum()
@@ -57,6 +67,9 @@ def mask_recall(pred: np.ndarray, truth: np.ndarray) -> float:
 
 
 def mask_f1(pred: np.ndarray, truth: np.ndarray) -> float:
+    pred = np.asarray(pred)
+    truth = np.asarray(truth)
+    _require_same_shape(pred, truth)
     t = _binary(truth)
     p = _binary(pred)
     tp = float(np.logical_and(t, p).sum())
@@ -65,7 +78,7 @@ def mask_f1(pred: np.ndarray, truth: np.ndarray) -> float:
     precision = tp / (tp + fp) if (tp + fp) else 1.0
     recall = tp / (tp + fn) if (tp + fn) else 1.0
     if precision + recall == 0:
-        return 1.0
+        return 0.0
     return float(2.0 * precision * recall / (precision + recall))
 
 
