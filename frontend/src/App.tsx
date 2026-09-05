@@ -76,6 +76,7 @@ import {
   reducePointMatch,
 } from './lib/pointMatch'
 import { appendAxisPoint, restoreAxisUiFlags, setScaleBarPixel } from './lib/axesChecker'
+import { imageSourceLabel } from './lib/imageSource'
 import { getAxisBounds, isCalibrationValid, updateAxisBound, areCalibrationPixelsInImage, type AxisBoundKey } from './lib/transform'
 import type { Calibration, CanvasMode, ColorFilter, SegmentPublic, Session } from './types'
 
@@ -791,6 +792,7 @@ export default function App() {
   }
 
   const imageUrl = session ? session.image_url : null
+  const imageLabel = imageSourceLabel(session?.image_source)
   const calibration = draftCalibration ?? session?.calibration ?? null
   const imageWidth = session?.image_meta.width ?? 0
   const imageHeight = session?.image_meta.height ?? 0
@@ -1136,11 +1138,13 @@ export default function App() {
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <header className="shrink-0 flex items-center justify-between border-b border-slate-700 px-4 py-2">
-        <div>
+        <div className="min-w-0 flex-1 pr-3">
           <h1 className="text-lg font-bold text-slate-100">PlotDigitizer</h1>
-          <p className="text-xs text-slate-400">Manual plot digitization</p>
+          <p className="truncate text-xs text-slate-400" title={imageLabel}>
+            {imageLabel}
+          </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <label className="cursor-pointer rounded bg-slate-700 px-3 py-1.5 text-xs hover:bg-slate-600">
             Upload image
             <input

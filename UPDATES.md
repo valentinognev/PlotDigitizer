@@ -40,6 +40,10 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [2.8.0] — 2026-09-05
+### Added
+- Header subtitle shows the current image path (`image_source.path` if a project stored one, otherwise the uploaded filename). Empty session: `No image loaded`. Long names ellipsis; full path is in the tooltip.
+
 ## [2.6.1] — 2026-09-04
 ### Fixed
 - Pipeline reference tests score `fill_segment` samples vs expected CSV (achieved ~0.039 / ~0.131 / ~2.30°) instead of Phase 1 vertex calibration; `huge.png` match baseline floored at 0.3 s.
