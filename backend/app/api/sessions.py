@@ -9,6 +9,7 @@ from fastapi.responses import Response, StreamingResponse
 from PIL import Image
 
 from app.calibration.calibration import CalibrationError, validate_calibration
+from app.calibration.session_cal import upsert_session_calibration
 from app.cv.color_filter import build_filter_mask, suggest_filter_from_pixel
 from app.cv.grid_removal import GridGeometry, detect_grid
 from app.cv.snap import snap_to_ink
@@ -79,6 +80,7 @@ def _to_public(stored) -> SessionPublic:
         image_meta=s.image_meta,
         image_source=s.image_source,
         calibration=s.calibration,
+        calibrations=s.calibrations,
         manual_calibration=s.manual_calibration,
         curves=s.curves,
         workspace=s.workspace,
@@ -183,7 +185,7 @@ def set_calibration(session_id: str, body: CalibrationUpdate) -> SessionPublic:
     except CalibrationError as exc:
         raise _error(exc, "calibration_invalid", exc.hint or "Fix reference points") from exc
     session_store.push_history(stored, "calibration")
-    stored.session.calibration = body.calibration
+    upsert_session_calibration(stored.session, body.calibration)
     stored.session.manual_calibration = True
     session_store.update(session_id, stored.session)
     return _to_public(stored)
@@ -193,7 +195,7 @@ def set_calibration(session_id: str, body: CalibrationUpdate) -> SessionPublic:
 def patch_preferences(session_id: str, body: SessionPreferencesPatch) -> SessionPublic:
     stored = _require(session_id)
     if body.calibration is not None:
-        stored.session.calibration = body.calibration
+        upsert_session_calibration(stored.session, body.calibration)
         stored.session.manual_calibration = True
     if body.manual_calibration is not None:
         stored.session.manual_calibration = body.manual_calibration

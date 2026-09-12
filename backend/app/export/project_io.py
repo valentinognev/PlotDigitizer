@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from app.calibration.calibration import CalibrationError, pixel_to_data, validate_calibration
+from app.calibration.session_cal import calibration_for_curve
 from app.models.schemas import (
     Calibration,
     Curve,
@@ -38,13 +39,14 @@ def project_export_filename(session: Session) -> str:
 
 def _curve_export_entry(session: Session, curve: Curve) -> dict[str, Any]:
     entry = curve.model_dump()
-    if session.calibration:
+    cal = calibration_for_curve(session, curve)
+    if cal:
         try:
-            validate_calibration(session.calibration)
+            validate_calibration(cal)
             entry["points"] = [
                 {
                     **p.model_dump(),
-                    "data": list(pixel_to_data(session.calibration, p.pixel)),
+                    "data": list(pixel_to_data(cal, p.pixel)),
                 }
                 for p in curve.points
             ]
@@ -69,6 +71,7 @@ def export_project_json(session: Session, *, image_bytes: bytes) -> str:
             "data": base64.b64encode(image_bytes).decode("ascii"),
         },
         "calibration": session.calibration.model_dump() if session.calibration else None,
+        "calibrations": [c.model_dump() for c in session.calibrations],
         "manual_calibration": session.manual_calibration,
         "curves": [_curve_export_entry(session, curve) for curve in session.curves],
         "workspace": (session.workspace or WorkspaceState()).model_dump(),
@@ -142,6 +145,15 @@ def load_project_from_text(text: str) -> tuple[Session, bytes]:
     cal_raw = payload.get("calibration")
     calibration = Calibration(**cal_raw) if isinstance(cal_raw, dict) else None
 
+    cals_raw = payload.get("calibrations")
+    calibrations: list[Calibration] = []
+    if isinstance(cals_raw, list) and cals_raw:
+        for item in cals_raw:
+            if isinstance(item, dict):
+                calibrations.append(Calibration(**item))
+    elif calibration is not None:
+        calibrations = [calibration]
+
     workspace_raw = payload.get("workspace")
     workspace = (
         WorkspaceState(**workspace_raw) if isinstance(workspace_raw, dict) else WorkspaceState()
@@ -154,6 +166,7 @@ def load_project_from_text(text: str) -> tuple[Session, bytes]:
         image_meta=image_meta,
         image_source=image_source,
         calibration=calibration,
+        calibrations=calibrations,
         manual_calibration=bool(payload.get("manual_calibration", False)),
         curves=_curves_from_project(payload),
         workspace=workspace,

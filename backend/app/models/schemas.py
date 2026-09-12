@@ -67,6 +67,8 @@ class ScaleBar(BaseModel):
 
 
 class Calibration(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    name: str = "Axes"
     x: CalibrationAxis
     y: CalibrationAxis
     source: CalibrationSource = "manual"
@@ -112,6 +114,7 @@ class Curve(BaseModel):
     filter: ColorFilter | None = None
     connect_as: ConnectAs = "line"
     region: RegionMask | None = None
+    calibration_id: str | None = None
 
     @property
     def cv_color(self) -> str:
@@ -185,6 +188,7 @@ class Session(BaseModel):
     image_meta: ImageMeta
     image_source: ImageSource | None = None
     calibration: Calibration | None = None
+    calibrations: list[Calibration] = Field(default_factory=list)
     manual_calibration: bool = True
     curves: list[Curve] = Field(default_factory=list)
     workspace: WorkspaceState | None = None
@@ -197,6 +201,7 @@ class SessionPublic(BaseModel):
     image_meta: ImageMeta
     image_source: ImageSource | None = None
     calibration: Calibration | None
+    calibrations: list[Calibration] = Field(default_factory=list)
     manual_calibration: bool = True
     curves: list[Curve]
     workspace: WorkspaceState | None = None

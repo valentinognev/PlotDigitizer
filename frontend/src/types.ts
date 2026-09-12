@@ -60,6 +60,8 @@ export interface ScaleBar {
 }
 
 export interface Calibration {
+  id?: string
+  name?: string
   x: CalibrationAxis
   y: CalibrationAxis
   source: 'manual'
@@ -105,6 +107,7 @@ export interface Curve {
   filter?: ColorFilter | null
   connect_as?: ConnectAs
   region?: RegionMask | null
+  calibration_id?: string | null
 }
 
 export interface ImageMeta {
@@ -169,6 +172,7 @@ export interface Session {
   image_meta: ImageMeta
   image_source?: ImageSource | null
   calibration: Calibration | null
+  calibrations?: Calibration[]
   manual_calibration?: boolean
   curves: Curve[]
   workspace?: WorkspaceState | null

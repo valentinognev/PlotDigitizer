@@ -6,6 +6,7 @@ import io
 from app.calibration.calibration import CalibrationError, validate_calibration
 from app.calibration.coords import pixel_to_data
 from app.calibration.dates import format_unix_days
+from app.calibration.session_cal import calibration_for_curve
 from app.export.project_io import export_project_json
 from app.models.schemas import Calibration, Session
 
@@ -75,15 +76,18 @@ def export_csv(session: Session) -> str:
     for curve in session.curves:
         if not curve.visible:
             continue
+        cal = calibration_for_curve(session, curve)
+        if cal is None:
+            continue
         for p in curve.points:
-            x, y = pixel_to_data(session.calibration, p.pixel)
+            x, y = pixel_to_data(cal, p.pixel)
             if bar:
                 writer.writerow(
                     [
                         curve.id,
                         curve.label,
                         p.label or "",
-                        _csv_cell(x, session.calibration.y.scale),
+                        _csv_cell(x, cal.y.scale),
                     ]
                 )
             else:
@@ -91,8 +95,8 @@ def export_csv(session: Session) -> str:
                     [
                         curve.id,
                         curve.label,
-                        _csv_cell(x, session.calibration.x.scale),
-                        _csv_cell(y, session.calibration.y.scale),
+                        _csv_cell(x, cal.x.scale),
+                        _csv_cell(y, cal.y.scale),
                     ]
                 )
     return buf.getvalue()
