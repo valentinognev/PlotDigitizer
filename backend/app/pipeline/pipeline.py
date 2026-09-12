@@ -5,7 +5,12 @@ import numpy as np
 
 from app.calibration.coords import validate_calibration
 from app.cv.averaging_window import averaging_window
-from app.cv.color_filter import build_filter_mask
+from app.cv.color_filter import (
+    _bgr_to_hex,
+    _clip_pixel,
+    build_filter_mask,
+    dominant_trace_colors,
+)
 from app.cv.erase import remove_curve_from_image
 from app.cv.grid_removal import GridGeometry, detect_grid, remove_grid
 from app.cv.improve import improve_curve_from_hints
@@ -318,6 +323,60 @@ def run_averaging_window(
     session.curves = _replace_curve_points(
         session.curves, curve_id, _extracted_points(curve, pts, replace)
     )
+    return session
+
+
+def run_extract_by_color(
+    session: Session,
+    image_bytes: bytes,
+    curve_id: str,
+    pixel: tuple[float, float],
+    distance: float | None = None,
+    dx: float = 10.0,
+    dy: float = 10.0,
+    replace: bool = True,
+) -> Session:
+    _require_curve(session, curve_id)
+    img = _decode_bgr(image_bytes)
+    x, y = _clip_pixel(img, pixel)
+    hex_color = _bgr_to_hex(img[y, x])
+    flt = ColorFilter(mode="sample", high=distance or 0.12, sample_color=hex_color)
+    session.curves = [
+        c.model_copy(update={"filter": flt}) if c.id == curve_id else c
+        for c in session.curves
+    ]
+    return run_averaging_window(
+        session, image_bytes, curve_id, dx=dx, dy=dy, replace=replace
+    )
+
+
+def run_propose_curves(
+    session: Session,
+    image_bytes: bytes,
+    limit: int = 8,
+    extract: bool = False,
+) -> Session:
+    img = _decode_bgr(image_bytes)
+    colors = dominant_trace_colors(img, limit=limit)
+    kept = 0
+    for hex_color in colors:
+        flt = ColorFilter(mode="sample", high=0.12, sample_color=hex_color)
+        curve = Curve(
+            label=f"Colour {kept + 1}",
+            color=hex_color,
+            trace_color=hex_color,
+            filter=flt,
+        )
+        session.curves = list(session.curves) + [curve]
+        if extract:
+            session = run_averaging_window(
+                session, image_bytes, curve.id, dx=10.0, dy=10.0, replace=True
+            )
+            updated = _require_curve(session, curve.id)
+            if len(updated.points) < 3:
+                session.curves = [c for c in session.curves if c.id != curve.id]
+                continue
+        kept += 1
     return session
 
 

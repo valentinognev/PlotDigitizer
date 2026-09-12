@@ -22,6 +22,37 @@ def _png_with_black_line() -> bytes:
     return buf.getvalue()
 
 
+def _png_with_red_stroke() -> bytes:
+    img = Image.new("RGB", (120, 80), "white")
+    draw = ImageDraw.Draw(img)
+    draw.line([(10, 40), (110, 40)], fill=(255, 0, 0), width=5)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _png_red_stroke_tiny_blue() -> bytes:
+    img = Image.new("RGB", (120, 80), "white")
+    draw = ImageDraw.Draw(img)
+    draw.line([(10, 40), (110, 40)], fill=(255, 0, 0), width=5)
+    img.putpixel((2, 2), (0, 0, 255))
+    img.putpixel((3, 2), (0, 0, 255))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _hex_rgb(hex_color: str) -> tuple[int, int, int]:
+    h = hex_color.lstrip("#")
+    return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+
+
+def _hex_near(got: str, want: str, tol: int = 8) -> bool:
+    g = _hex_rgb(got)
+    w = _hex_rgb(want)
+    return all(abs(a - b) <= tol for a, b in zip(g, w, strict=True))
+
+
 def _linear_four_bound() -> dict:
     cal = Calibration(
         x=CalibrationAxis(
@@ -138,3 +169,101 @@ def test_patch_region_persists_and_undo_restores():
     undone = client.post(f"/sessions/{session_id}/undo")
     assert undone.status_code == 200
     assert undone.json()["curves"][0]["region"] is None
+
+
+def test_extract_color_dominant_and_propose_on_red_stroke():
+    session_id, curve_id = _session_with_curve(image=_png_with_red_stroke())
+    res = client.post(
+        f"/sessions/{session_id}/curves/{curve_id}/extract-color",
+        json={"pixel": [60.0, 40.0]},
+    )
+    assert res.status_code == 200
+    curve = next(c for c in res.json()["curves"] if c["id"] == curve_id)
+    assert len(curve["points"]) >= 5
+    assert curve["filter"]["mode"] == "sample"
+    assert curve["filter"]["high"] == pytest.approx(0.12)
+    assert _hex_near(curve["filter"]["sample_color"], "#ff0000")
+    actions = [h["action"] for h in res.json()["history"]]
+    assert actions[-1] == "extract_color"
+    assert actions.count("extract_color") == 1
+    assert "averaging_window" not in actions
+    assert "curve_filter" not in actions
+
+    colors = client.post(f"/sessions/{session_id}/dominant-colors")
+    assert colors.status_code == 200
+    assert any(_hex_near(c, "#ff0000") for c in colors.json()["colors"])
+
+    proposed = client.post(
+        f"/sessions/{session_id}/propose-curves",
+        json={"extract": True},
+    )
+    assert proposed.status_code == 200
+    with_points = [c for c in proposed.json()["curves"] if len(c["points"]) >= 1]
+    assert len(with_points) >= 1
+
+
+def test_extract_color_undo_restores_filter_and_points():
+    session_id, curve_id = _session_with_curve(image=_png_with_red_stroke())
+    before = client.get(f"/sessions/{session_id}").json()["curves"][0]
+    res = client.post(
+        f"/sessions/{session_id}/curves/{curve_id}/extract-color",
+        json={"pixel": [60.0, 40.0], "distance": 0.2},
+    )
+    assert res.status_code == 200
+    extracted = res.json()["curves"][0]
+    assert extracted["filter"]["mode"] == "sample"
+    assert extracted["filter"]["high"] == pytest.approx(0.2)
+    assert len(extracted["points"]) >= 5
+    undone = client.post(f"/sessions/{session_id}/undo")
+    assert undone.status_code == 200
+    restored = undone.json()["curves"][0]
+    assert restored["filter"]["mode"] == before["filter"]["mode"]
+    assert restored["points"] == before["points"]
+
+
+def test_extract_color_missing_curve_is_404():
+    session_id, _curve_id = _session_with_curve(image=_png_with_red_stroke())
+    res = client.post(
+        f"/sessions/{session_id}/curves/missing/extract-color",
+        json={"pixel": [60.0, 40.0]},
+    )
+    assert res.status_code == 404
+    assert res.json()["detail"] == "Curve not found"
+
+
+def test_dominant_colors_does_not_mutate():
+    session_id, _curve_id = _session_with_curve(image=_png_with_red_stroke())
+    before = client.get(f"/sessions/{session_id}").json()
+    res = client.post(f"/sessions/{session_id}/dominant-colors")
+    assert res.status_code == 200
+    assert any(_hex_near(c, "#ff0000") for c in res.json()["colors"])
+    after = client.get(f"/sessions/{session_id}").json()
+    assert after["history"] == before["history"]
+    assert after["curves"] == before["curves"]
+
+
+def test_propose_curves_labels_extracts_skips_sparse_and_undoes_one_shot():
+    session_id, _curve_id = _session_with_curve(image=_png_red_stroke_tiny_blue())
+    before_ids = {c["id"] for c in client.get(f"/sessions/{session_id}").json()["curves"]}
+    res = client.post(
+        f"/sessions/{session_id}/propose-curves",
+        json={"extract": True, "limit": 8},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    actions = [h["action"] for h in body["history"]]
+    assert actions[-1] == "propose_curves"
+    assert actions.count("propose_curves") == 1
+    new_curves = [c for c in body["curves"] if c["id"] not in before_ids]
+    assert new_curves
+    assert all(c["label"].startswith("Colour ") for c in new_curves)
+    assert {c["label"] for c in new_curves} <= {f"Colour {i}" for i in range(1, 9)}
+    extracted = [c for c in new_curves if len(c["points"]) >= 3]
+    assert extracted
+    assert all(c["filter"]["mode"] == "sample" for c in extracted)
+    assert all(c["trace_color"] for c in extracted)
+    assert all(len(c["points"]) >= 3 for c in new_curves)
+    undone = client.post(f"/sessions/{session_id}/undo")
+    assert undone.status_code == 200
+    restored_ids = {c["id"] for c in undone.json()["curves"]}
+    assert restored_ids == before_ids

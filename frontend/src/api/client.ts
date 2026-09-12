@@ -468,6 +468,41 @@ export async function runAveragingWindow(
   })
 }
 
+export async function extractColor(
+  id: string,
+  curveId: string,
+  body: {
+    pixel: [number, number]
+    distance?: number
+    dx?: number
+    dy?: number
+    replace?: boolean
+  },
+): Promise<Session> {
+  return request<Session>(`/sessions/${id}/curves/${curveId}/extract-color`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export async function dominantColors(id: string): Promise<{ colors: string[] }> {
+  return request<{ colors: string[] }>(`/sessions/${id}/dominant-colors`, {
+    method: 'POST',
+  })
+}
+
+export async function proposeCurves(
+  id: string,
+  body: { limit?: number; extract?: boolean } = {},
+): Promise<Session> {
+  return request<Session>(`/sessions/${id}/propose-curves`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
 export async function sampleXStep(
   id: string,
   curveId: string,

@@ -338,6 +338,23 @@ class AveragingWindowRequest(BaseModel):
     replace: bool = True
 
 
+class ExtractColorRequest(BaseModel):
+    pixel: tuple[float, float]
+    distance: float | None = Field(default=None, ge=0.0, le=1.0)
+    dx: float = Field(default=10.0, gt=0)
+    dy: float = Field(default=10.0, gt=0)
+    replace: bool = True
+
+
+class DominantColorsResponse(BaseModel):
+    colors: list[str]
+
+
+class ProposeCurvesRequest(BaseModel):
+    limit: int = Field(default=8, ge=1, le=32)
+    extract: bool = False
+
+
 class XStepRequest(BaseModel):
     xmin: float
     xmax: float

@@ -10,7 +10,7 @@ from PIL import Image
 
 from app.calibration.calibration import CalibrationError, validate_calibration
 from app.calibration.session_cal import upsert_session_calibration
-from app.cv.color_filter import build_filter_mask, suggest_filter_from_pixel
+from app.cv.color_filter import build_filter_mask, dominant_trace_colors, suggest_filter_from_pixel
 from app.cv.grid_removal import GridGeometry, detect_grid
 from app.cv.snap import snap_to_ink
 from app.cv.unskew import UnskewError
@@ -25,6 +25,8 @@ from app.models.schemas import (
     CalibrationUpdate,
     ColorFilter,
     CurvesEditRequest,
+    DominantColorsResponse,
+    ExtractColorRequest,
     FilterSuggestRequest,
     GridDetectRequest,
     GridGeometrySettings,
@@ -33,6 +35,7 @@ from app.models.schemas import (
     PointMatchAcceptRequest,
     PointMatchRequest,
     PointMatchResponse,
+    ProposeCurvesRequest,
     RegionMask,
     ResampleRequest,
     SegmentFillRequest,
@@ -51,8 +54,10 @@ from app.pipeline.pipeline import (
     list_curve_segments,
     run_averaging_window,
     run_cv_improve,
+    run_extract_by_color,
     run_point_match,
     run_point_match_accept,
+    run_propose_curves,
     run_remove_curve_from_plot,
     run_resample,
     run_segment_fill,
@@ -309,6 +314,69 @@ def averaging_window_curve(
         session_store.update(session_id, stored.session)
     except ValueError as exc:
         raise _extract_error(exc, "averaging_window") from exc
+    return _to_public(stored)
+
+
+@router.post(
+    "/{session_id}/curves/{curve_id}/extract-color",
+    response_model=SessionPublic,
+)
+def extract_color_curve(
+    session_id: str, curve_id: str, body: ExtractColorRequest
+) -> SessionPublic:
+    stored = _require(session_id)
+    _require_curve_http(stored.session, curve_id)
+    try:
+        session_store.push_history(stored, "extract_color")
+        stored.session = run_extract_by_color(
+            stored.session,
+            stored.image_bytes,
+            curve_id,
+            pixel=body.pixel,
+            distance=body.distance,
+            dx=body.dx,
+            dy=body.dy,
+            replace=body.replace,
+        )
+        session_store.update(session_id, stored.session)
+    except ValueError as exc:
+        raise _extract_error(exc, "extract_color") from exc
+    return _to_public(stored)
+
+
+@router.post(
+    "/{session_id}/dominant-colors",
+    response_model=DominantColorsResponse,
+)
+def dominant_colors(session_id: str) -> DominantColorsResponse:
+    stored = _require(session_id)
+    try:
+        img = _decode_session_bgr(stored.image_bytes)
+    except ValueError as exc:
+        raise _error(exc, "invalid_image") from exc
+    return DominantColorsResponse(colors=dominant_trace_colors(img))
+
+
+@router.post(
+    "/{session_id}/propose-curves",
+    response_model=SessionPublic,
+)
+def propose_curves(
+    session_id: str, body: ProposeCurvesRequest | None = None
+) -> SessionPublic:
+    stored = _require(session_id)
+    req = body or ProposeCurvesRequest()
+    try:
+        session_store.push_history(stored, "propose_curves")
+        stored.session = run_propose_curves(
+            stored.session,
+            stored.image_bytes,
+            limit=req.limit,
+            extract=req.extract,
+        )
+        session_store.update(session_id, stored.session)
+    except ValueError as exc:
+        raise _error(exc, "propose_curves", str(exc)) from exc
     return _to_public(stored)
 
 
