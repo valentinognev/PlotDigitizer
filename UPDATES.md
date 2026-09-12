@@ -40,6 +40,10 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [2.14.0] — 2026-09-12
+### Added
+- Date axis tokens parse and format as Unix days from 1970-01-01 UTC (`parse_axis_token` / `format_unix_days`, TS mirrors). Shared `date_parity.json` fixture; not wired into Scale=date yet.
+
 ## [2.13.0] — 2026-09-12
 ### Added
 - Auto digitize region mask: Box / Pen / Erase on the canvas, Clear region (empty mask = full image), AND'd with the colour-filter overlay (`GET /mask` refreshes after each region save).
