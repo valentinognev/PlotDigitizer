@@ -31,12 +31,16 @@ def _png_with_red_stroke() -> bytes:
     return buf.getvalue()
 
 
-def _png_red_stroke_tiny_blue() -> bytes:
+def _png_red_stroke_sparse_blue() -> bytes:
+    """Red stroke plus a 12×12 blue square on the ::4 sample grid.
+
+    Dominant-colors sees both. Averaging-window (dx=dy=10) keeps two blue
+    centres — under the extract skip threshold of 3.
+    """
     img = Image.new("RGB", (120, 80), "white")
     draw = ImageDraw.Draw(img)
     draw.line([(10, 40), (110, 40)], fill=(255, 0, 0), width=5)
-    img.putpixel((2, 2), (0, 0, 255))
-    img.putpixel((3, 2), (0, 0, 255))
+    draw.rectangle([0, 0, 11, 11], fill=(0, 0, 255))
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
@@ -202,6 +206,16 @@ def test_extract_color_dominant_and_propose_on_red_stroke():
     assert len(with_points) >= 1
 
 
+def test_extract_color_distance_zero_stores_exact_match():
+    session_id, curve_id = _session_with_curve(image=_png_with_red_stroke())
+    res = client.post(
+        f"/sessions/{session_id}/curves/{curve_id}/extract-color",
+        json={"pixel": [60.0, 40.0], "distance": 0},
+    )
+    assert res.status_code == 200
+    assert res.json()["curves"][0]["filter"]["high"] == 0.0
+
+
 def test_extract_color_undo_restores_filter_and_points():
     session_id, curve_id = _session_with_curve(image=_png_with_red_stroke())
     before = client.get(f"/sessions/{session_id}").json()["curves"][0]
@@ -243,8 +257,13 @@ def test_dominant_colors_does_not_mutate():
 
 
 def test_propose_curves_labels_extracts_skips_sparse_and_undoes_one_shot():
-    session_id, _curve_id = _session_with_curve(image=_png_red_stroke_tiny_blue())
+    session_id, _curve_id = _session_with_curve(image=_png_red_stroke_sparse_blue())
     before_ids = {c["id"] for c in client.get(f"/sessions/{session_id}").json()["curves"]}
+    dominant = client.post(f"/sessions/{session_id}/dominant-colors")
+    assert dominant.status_code == 200
+    colors = dominant.json()["colors"]
+    assert any(_hex_near(c, "#ff0000") for c in colors)
+    assert any(_hex_near(c, "#0000ff") for c in colors)
     res = client.post(
         f"/sessions/{session_id}/propose-curves",
         json={"extract": True, "limit": 8},
@@ -263,6 +282,8 @@ def test_propose_curves_labels_extracts_skips_sparse_and_undoes_one_shot():
     assert all(c["filter"]["mode"] == "sample" for c in extracted)
     assert all(c["trace_color"] for c in extracted)
     assert all(len(c["points"]) >= 3 for c in new_curves)
+    assert any(_hex_near(c["trace_color"], "#ff0000") for c in new_curves)
+    assert not any(_hex_near(c["trace_color"], "#0000ff") for c in new_curves)
     undone = client.post(f"/sessions/{session_id}/undo")
     assert undone.status_code == 200
     restored_ids = {c["id"] for c in undone.json()["curves"]}

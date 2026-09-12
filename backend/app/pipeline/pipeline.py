@@ -340,7 +340,8 @@ def run_extract_by_color(
     img = _decode_bgr(image_bytes)
     x, y = _clip_pixel(img, pixel)
     hex_color = _bgr_to_hex(img[y, x])
-    flt = ColorFilter(mode="sample", high=distance or 0.12, sample_color=hex_color)
+    high = 0.12 if distance is None else distance
+    flt = ColorFilter(mode="sample", high=high, sample_color=hex_color)
     session.curves = [
         c.model_copy(update={"filter": flt}) if c.id == curve_id else c
         for c in session.curves
