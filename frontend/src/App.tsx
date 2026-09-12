@@ -48,6 +48,7 @@ import { curvesNeedDistinctColors, rainbowColors } from './lib/colors'
 import {
   addPoint as addPointLocal,
   deletePoints as deletePointsLocal,
+  nextBarPointLabel,
   patchPointsPixel,
   reassignPoints as reassignPointsLocal,
 } from './lib/sessionPatch'
@@ -86,7 +87,7 @@ import {
   pointMatchKeyAction,
   reducePointMatch,
 } from './lib/pointMatch'
-import { appendAxisPoint, restoreAxisUiFlags, setScaleBarPixel } from './lib/axesChecker'
+import { appendAxisPoint, restoreAxisUiFlags, setBarValuePixel, setScaleBarPixel } from './lib/axesChecker'
 import { imageSourceLabel } from './lib/imageSource'
 import { handleClipboardPaste } from './lib/clipboardPaste'
 import { formatCursorReadout } from './lib/cursorReadout'
@@ -796,7 +797,14 @@ export default function App() {
     if (!placementCurveId) return
     patchCurvesQuiet(
       { add_point: pixel, add_to_curve_id: placementCurveId },
-      (current) => addPointLocal(current, placementCurveId, pixel),
+      (current) => {
+        const curve = current.curves.find((c) => c.id === placementCurveId)
+        const label =
+          current.calibration?.coords_type === 'bar'
+            ? nextBarPointLabel(curve?.points.length ?? 0)
+            : undefined
+        return addPointLocal(current, placementCurveId, pixel, label)
+      },
     )
   }
 
@@ -1201,7 +1209,8 @@ export default function App() {
     const w = session.image_meta.width
     const h = session.image_meta.height
     const cal = draftCalibration ?? createEmptyCalibration(w, h)
-    const next = { ...cal, coords_type: 'map' as const }
+    const coords = cal.coords_type === 'bar' ? ('bar' as const) : ('map' as const)
+    const next = { ...cal, coords_type: coords }
     setDraftCalibration(next)
     setScaleBarStep('a')
     setPreciseMode(false)
@@ -1217,8 +1226,11 @@ export default function App() {
   const handleAxisPointClick = (pixel: [number, number]) => {
     if (!draftCalibration) return
     const coords = draftCalibration.coords_type ?? 'cartesian'
-    if (coords === 'map' && scaleBarStep) {
-      const next = setScaleBarPixel(draftCalibration, scaleBarStep, pixel)
+    if ((coords === 'map' || coords === 'bar') && scaleBarStep) {
+      const next =
+        coords === 'bar'
+          ? setBarValuePixel(draftCalibration, scaleBarStep, pixel)
+          : setScaleBarPixel(draftCalibration, scaleBarStep, pixel)
       setDraftCalibration(next)
       savePreferencesQuiet({ calibration: next, manual_calibration: true })
       bumpChecker()
@@ -1248,7 +1260,10 @@ export default function App() {
 
   const handleMoveScaleBar = (which: 'a' | 'b', pixel: [number, number]) => {
     if (!draftCalibration) return
-    const next = setScaleBarPixel(draftCalibration, which, pixel)
+    const next =
+      draftCalibration.coords_type === 'bar'
+        ? setBarValuePixel(draftCalibration, which, pixel)
+        : setScaleBarPixel(draftCalibration, which, pixel)
     setDraftCalibration(next)
     savePreferencesQuiet({ calibration: next, manual_calibration: true })
     bumpChecker()

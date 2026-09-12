@@ -161,6 +161,21 @@ def _map_cal() -> Calibration:
     )
 
 
+def _bar_cal() -> Calibration:
+    return Calibration(
+        x=CalibrationAxis(scale="linear", ref_points=[]),
+        y=CalibrationAxis(
+            scale="linear",
+            ref_points=[
+                RefPoint(pixel=(50.0, 100.0), value=0.0),
+                RefPoint(pixel=(50.0, 0.0), value=10.0),
+            ],
+        ),
+        coords_type="bar",
+        bar_horizontal=False,
+    )
+
+
 def test_csv_headers_cartesian_unchanged():
     out = export_csv(_session_ready())
     header = [ln for ln in out.splitlines() if ln and not ln.startswith("#")][0]
@@ -180,6 +195,34 @@ def test_csv_headers_and_values_polar():
     parts = lines[1].split(",")
     assert abs(float(parts[2]) - theta) < 1e-9
     assert abs(float(parts[3]) - radius) < 1e-9
+
+
+def test_csv_headers_and_values_bar():
+    from app.calibration.coords import pixel_to_data
+
+    session = _session_ready()
+    session.calibration = _bar_cal()
+    session.curves[0].points = [Point(pixel=(50.0, 50.0), origin="user", label="Bar 1")]
+    out = export_csv(session)
+    lines = [ln for ln in out.splitlines() if ln]
+    assert lines[0] == "curve_id,curve_label,label,value"
+    value, dummy = pixel_to_data(session.calibration, (50.0, 50.0))
+    parts = lines[1].split(",")
+    assert parts[2] == "Bar 1"
+    assert abs(float(parts[3]) - value) < 1e-9
+    assert dummy == 0.0
+
+
+def test_csv_bar_empty_label_writes_blank():
+    session = _session_ready()
+    session.calibration = _bar_cal()
+    session.curves[0].points = [Point(pixel=(50.0, 50.0), origin="user")]
+    out = export_csv(session)
+    lines = [ln for ln in out.splitlines() if ln]
+    assert lines[0] == "curve_id,curve_label,label,value"
+    parts = lines[1].split(",")
+    assert parts[2] == ""
+    assert abs(float(parts[3]) - 5.0) < 1e-9
 
 
 def test_csv_headers_and_values_map_includes_units():

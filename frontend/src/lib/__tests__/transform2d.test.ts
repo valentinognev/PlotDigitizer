@@ -7,6 +7,7 @@ import {
   dataToPixel,
   isCalibrationValid,
   pixelToData,
+  resolvedModel,
   validateCalibration,
   type Calibration,
 } from '../transform2d'
@@ -227,5 +228,15 @@ describe('bar coordinate adapter', () => {
     })
     expect(isCalibrationValid(cal)).toBe(false)
     expect(() => validateCalibration(cal)).toThrow(/distinct/)
+  })
+
+  it('resolvedModel does not require cartesian x refs', () => {
+    expect(resolvedModel(barCal())).toBe('orthogonal')
+  })
+
+  it('axesCheckerPolyline draws the value-axis segment', () => {
+    const poly = axesCheckerPolyline(barCal(), [100, 100])
+    expect(poly[0]).toEqual([50, 100])
+    expect(poly[1]).toEqual([50, 0])
   })
 })

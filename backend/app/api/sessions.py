@@ -536,7 +536,11 @@ def edit_curves(session_id: str, body: CurvesEditRequest) -> SessionPublic:
             if curve.id == body.add_to_curve_id:
                 from app.models.schemas import Point
 
-                curve.points.append(Point(pixel=body.add_point, origin="user"))
+                label = None
+                cal = stored.session.calibration
+                if cal is not None and cal.coords_type == "bar":
+                    label = f"Bar {len(curve.points) + 1}"
+                curve.points.append(Point(pixel=body.add_point, origin="user", label=label))
                 break
 
     if body.point_patches:

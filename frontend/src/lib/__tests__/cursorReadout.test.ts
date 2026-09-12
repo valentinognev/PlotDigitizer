@@ -12,5 +12,8 @@ describe('formatCursorReadout', () => {
     expect(formatCursorReadout([10, 20], [45, 3], 'polar')).toBe(
       'px 10.0, 20.0  ·  θ 45  R 3',
     )
+    expect(formatCursorReadout([10, 20], [5, 0], 'bar')).toBe(
+      'px 10.0, 20.0  ·  value 5',
+    )
   })
 })

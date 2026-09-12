@@ -113,6 +113,40 @@ describe('buildPreviewConfig', () => {
     expect(layout.polar?.radialaxis?.range?.[0]).toBe(2)
   })
 
+  it('uses Plotly bar traces with label or point index on x and value on y', () => {
+    const cal: Calibration = {
+      source: 'manual',
+      coords_type: 'bar',
+      bar_horizontal: false,
+      x: { scale: 'linear', ref_points: [] },
+      y: {
+        scale: 'linear',
+        ref_points: [
+          { pixel: [50, 100], value: 0 },
+          { pixel: [50, 0], value: 10 },
+        ],
+      },
+    }
+    const cfg = buildPreviewConfig(
+      [
+        {
+          ...curve,
+          points: [
+            { id: 'p1', pixel: [50, 50], origin: 'user', label: 'Bar 1' },
+            { id: 'p2', pixel: [50, 20], origin: 'user' },
+          ],
+        },
+      ],
+      cal,
+      200,
+    )
+    expect(cfg.traces[0].type).toBe('bar')
+    expect(cfg.traces[0].x).toEqual(['Bar 1', 1])
+    const ys = cfg.traces[0].y as number[]
+    expect(ys[0]).toBeCloseTo(5, 12)
+    expect(ys[1]).toBeCloseTo(8, 12)
+  })
+
   it('labels map axes with scale-bar units', () => {
     const cal: Calibration = {
       ...cartesianCal(),

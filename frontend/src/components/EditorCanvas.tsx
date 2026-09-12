@@ -786,6 +786,9 @@ export function EditorCanvas({
                       color={curve.color}
                       selected={selectedSet.has(pt.id)}
                       scale={totalScale}
+                      caption={
+                        calibration?.coords_type === 'bar' && pt.label ? pt.label : undefined
+                      }
                       onPointerDown={(e) => handlePointPointerDown(pt, e)}
                       onDragStart={() => {
                         setStageDraggable(false)
@@ -877,7 +880,10 @@ export function EditorCanvas({
                 />
               ),
             )}
-          {(calibration?.axis_points ?? []).map((pt, i) => (
+          {(calibration?.coords_type === 'map' || calibration?.coords_type === 'bar'
+            ? []
+            : (calibration?.axis_points ?? [])
+          ).map((pt, i) => (
             <CalibrationMark
               key={pt.id}
               label={`#${i + 1}`}
@@ -917,6 +923,36 @@ export function EditorCanvas({
                   onMoveScaleBar?.('b', toOriginalCoords(px))
                 }}
               />
+            </>
+          )}
+          {calibration?.coords_type === 'bar' && calibration.y.ref_points[0] && (
+            <>
+              <CalibrationMark
+                label="P1"
+                pixel={toDisplayCoords(calibration.y.ref_points[0].pixel)}
+                color="#34d399"
+                scale={totalScale}
+                active={true}
+                onDragStart={() => setStageDraggable(false)}
+                onDragEnd={(px) => {
+                  setStageDraggable(true)
+                  onMoveScaleBar?.('a', toOriginalCoords(px))
+                }}
+              />
+              {calibration.y.ref_points[1] && (
+                <CalibrationMark
+                  label="P2"
+                  pixel={toDisplayCoords(calibration.y.ref_points[1].pixel)}
+                  color="#34d399"
+                  scale={totalScale}
+                  active={true}
+                  onDragStart={() => setStageDraggable(false)}
+                  onDragEnd={(px) => {
+                    setStageDraggable(true)
+                    onMoveScaleBar?.('b', toOriginalCoords(px))
+                  }}
+                />
+              )}
             </>
           )}
           {showMeshGrid && meshGrid && onUpdateMeshVertex && (
@@ -1092,6 +1128,7 @@ function DraggablePoint({
   color,
   selected,
   scale,
+  caption,
   onPointerDown,
   onDragStart,
   onDragMove,
@@ -1104,6 +1141,7 @@ function DraggablePoint({
   color: string
   selected: boolean
   scale: number
+  caption?: string
   onPointerDown: (e: KonvaEventObject<MouseEvent>) => void
   onDragStart: () => void
   onDragMove: (e: KonvaEventObject<DragEvent>) => void
@@ -1114,6 +1152,7 @@ function DraggablePoint({
   const stroke = selected ? '#fff' : color
   const showUserRing = point.origin === 'user' && !selected
   const strokeWidth = (selected ? 2.5 : 2) / scale
+  const fontSize = 11 / scale
 
   return (
     <Group
@@ -1154,6 +1193,16 @@ function DraggablePoint({
         strokeWidth={strokeWidth}
         hitStrokeWidth={14 / scale}
       />
+      {caption ? (
+        <Text
+          x={radius + 2 / scale}
+          y={-fontSize / 2}
+          text={caption}
+          fontSize={fontSize}
+          fill={color}
+          listening={false}
+        />
+      ) : null}
     </Group>
   )
 }

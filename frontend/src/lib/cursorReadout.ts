@@ -14,5 +14,6 @@ export function formatCursorReadout(
   const a = fmt(data[0])
   const b = fmt(data[1])
   if (coords === 'polar') return `${px}  ·  θ ${a}  R ${b}`
+  if (coords === 'bar') return `${px}  ·  value ${a}`
   return `${px}  ·  x ${a}  y ${b}`
 }

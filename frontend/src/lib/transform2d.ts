@@ -594,6 +594,12 @@ export function resolutionAt(cal: Calibration, pixel: [number, number]): [number
     const s = mapScale(requireBar(cal))
     return [s, s]
   }
+  if (coordsType(cal) === 'bar') {
+    const v0 = barPixelToValue(cal, pixel)
+    const vx = barPixelToValue(cal, [pixel[0] + RESOLVE_EPS, pixel[1]])
+    const vy = barPixelToValue(cal, [pixel[0], pixel[1] + RESOLVE_EPS])
+    return [Math.abs(vx - v0) / RESOLVE_EPS, Math.abs(vy - v0) / RESOLVE_EPS]
+  }
   const a0 = pixelToData(cal, pixel)
   const a1 = pixelToData(cal, [pixel[0] + RESOLVE_EPS, pixel[1]])
   const a2 = pixelToData(cal, [pixel[0], pixel[1] + RESOLVE_EPS])
@@ -601,7 +607,7 @@ export function resolutionAt(cal: Calibration, pixel: [number, number]): [number
 }
 
 export function resolvedModel(cal: Calibration): Exclude<TransformModel, 'auto'> {
-  if (coordsType(cal) === 'map') return 'orthogonal'
+  if (coordsType(cal) === 'map' || coordsType(cal) === 'bar') return 'orthogonal'
   return transformOf(cal).model
 }
 
@@ -626,6 +632,10 @@ function dataLimits(cal: Calibration): [number, number, number, number] {
 
 export function axesCheckerPolyline(cal: Calibration, _imageSize: [number, number]): [number, number][] {
   const kind = coordsType(cal)
+  if (kind === 'bar') {
+    const [p1, p2] = barValueRefs(cal)
+    return [p1.pixel, p2.pixel]
+  }
   if (kind === 'map') {
     const bar = requireBar(cal)
     const a = bar.pixel_a

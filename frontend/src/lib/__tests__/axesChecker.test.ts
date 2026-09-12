@@ -5,6 +5,7 @@ import {
   formatModelLabel,
   formatResolution,
   restoreAxisUiFlags,
+  setBarValuePixel,
   setScaleBarPixel,
 } from '../axesChecker'
 import { axesCheckerPolyline } from '../transform2d'
@@ -62,6 +63,13 @@ describe('appendAxisPoint / setScaleBarPixel', () => {
     expect(cal.scale_bar?.pixel_a).toEqual([5, 6])
     expect(cal.scale_bar?.pixel_b).toEqual([15, 6])
   })
+  it('sets bar value-axis pixels P1 then P2', () => {
+    let cal = setBarValuePixel(empty(), 'a', [40, 90])
+    cal = setBarValuePixel(cal, 'b', [40, 10])
+    expect(cal.coords_type).toBe('bar')
+    expect(cal.y.ref_points[0].pixel).toEqual([40, 90])
+    expect(cal.y.ref_points[1].pixel).toEqual([40, 10])
+  })
 })
 
 describe('axesCheckerPolyline geometry', () => {
@@ -90,6 +98,13 @@ describe('restoreAxisUiFlags', () => {
   })
   it('drops map axis restore to select so clicks do not append axis points', () => {
     expect(restoreAxisUiFlags('axis', 'map')).toEqual({
+      canvasMode: 'select',
+      preciseMode: false,
+      scaleBarStep: null,
+    })
+  })
+  it('drops bar axis restore to select like map', () => {
+    expect(restoreAxisUiFlags('axis', 'bar')).toEqual({
       canvasMode: 'select',
       preciseMode: false,
       scaleBarStep: null,

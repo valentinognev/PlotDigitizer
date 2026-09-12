@@ -15,6 +15,8 @@ __all__ = ["export_csv", "export_json", "export_project_json", "csv_coordinate_c
 def csv_coordinate_columns(cal: Calibration) -> tuple[str, str]:
     if cal.coords_type == "polar":
         return ("theta", "R")
+    if cal.coords_type == "bar":
+        return ("label", "value")
     return ("x", "y")
 
 
@@ -69,17 +71,28 @@ def export_csv(session: Session) -> str:
     writer = csv.writer(buf)
     xname, yname = csv_coordinate_columns(session.calibration)
     writer.writerow(["curve_id", "curve_label", xname, yname])
+    bar = session.calibration.coords_type == "bar"
     for curve in session.curves:
         if not curve.visible:
             continue
         for p in curve.points:
             x, y = pixel_to_data(session.calibration, p.pixel)
-            writer.writerow(
-                [
-                    curve.id,
-                    curve.label,
-                    _csv_cell(x, session.calibration.x.scale),
-                    _csv_cell(y, session.calibration.y.scale),
-                ]
-            )
+            if bar:
+                writer.writerow(
+                    [
+                        curve.id,
+                        curve.label,
+                        p.label or "",
+                        _csv_cell(x, session.calibration.y.scale),
+                    ]
+                )
+            else:
+                writer.writerow(
+                    [
+                        curve.id,
+                        curve.label,
+                        _csv_cell(x, session.calibration.x.scale),
+                        _csv_cell(y, session.calibration.y.scale),
+                    ]
+                )
     return buf.getvalue()

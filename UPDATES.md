@@ -40,6 +40,12 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [2.15.0] — 2026-09-12
+### Added
+- Bar calibration: coords type Bar, click P1/P2 on the value axis, v1/v2, Rotated/horizontal checkbox. Placed points default to `Bar N`; canvas shows the label.
+- Preview uses Plotly `type: 'bar'` (x = label or point index, y = value). Axes checker draws the value-axis segment; `resolvedModel` is orthogonal.
+- CSV headers `curve_id,curve_label,label,value` when `coords_type` is bar. `pixel_to_data` stays `(value, 0.0)`.
+
 ## [2.14.0] — 2026-09-12
 ### Added
 - Date axis tokens parse and format as Unix days from 1970-01-01 UTC (`parse_axis_token` / `format_unix_days`, TS mirrors). Shared `date_parity.json` fixture.

@@ -130,6 +130,7 @@ export function CalibrationPanel({
       const pixel =
         calibration.axis_points?.[0]?.pixel ??
         calibration.x.ref_points[0]?.pixel ??
+        calibration.y.ref_points[0]?.pixel ??
         calibration.scale_bar?.pixel_a ??
         ([0, 0] as [number, number])
       return formatResolution(resolutionAt(calibration, pixel), coords)
@@ -168,7 +169,9 @@ export function CalibrationPanel({
     : preciseMode
       ? 'Click the plot to add a precise axis point'
       : scaleBarStep
-        ? `Click scale-bar ${scaleBarStep === 'a' ? 'start' : 'end'}`
+        ? coords === 'bar'
+          ? `Click value-axis ${scaleBarStep === 'a' ? 'P1' : 'P2'}`
+          : `Click scale-bar ${scaleBarStep === 'a' ? 'start' : 'end'}`
         : 'Click four points on the plot: X min, X max, Y min, Y max'
 
   return (
@@ -184,6 +187,7 @@ export function CalibrationPanel({
           <option value="cartesian">Cartesian</option>
           <option value="polar">Polar</option>
           <option value="map">Map</option>
+          <option value="bar">Bar</option>
         </select>
         {coords === 'cartesian' && (
           <button
@@ -219,6 +223,18 @@ export function CalibrationPanel({
             }`}
           >
             {scaleBarStep ? `Bar ${scaleBarStep.toUpperCase()}` : 'Place scale bar'}
+          </button>
+        )}
+        {coords === 'bar' && (
+          <button
+            type="button"
+            title={placeTitle}
+            onClick={onStartScaleBarPlacement}
+            className={`shrink-0 rounded px-2 py-0.5 font-medium ${
+              scaleBarStep ? 'bg-amber-600 hover:bg-amber-500' : 'bg-sky-600 hover:bg-sky-500'
+            }`}
+          >
+            {scaleBarStep ? `P${scaleBarStep === 'a' ? '1' : '2'}` : 'Place value axis'}
           </button>
         )}
         {coords === 'polar' && (
@@ -484,6 +500,62 @@ export function CalibrationPanel({
                 })
               }
             />
+          </label>
+        </div>
+      )}
+
+      {calibration && coords === 'bar' && (
+        <div className="flex flex-col gap-0.5 text-slate-300">
+          <label className="inline-flex items-center gap-1">
+            Scale
+            <select
+              className="rounded border border-slate-600 bg-slate-900 px-1 py-0.5"
+              value={calibration.y.scale}
+              onChange={(e) => updateScale('y', e.target.value as Scale)}
+            >
+              <option value="linear">lin</option>
+              <option value="log">log</option>
+            </select>
+          </label>
+          <label className="inline-flex items-center gap-1">
+            v1
+            <BoundInput
+              value={calibration.y.ref_points[0]?.value ?? 0}
+              scale={calibration.y.scale}
+              title="Value at P1"
+              onCommit={(value) => {
+                if (value == null) return
+                const refs = [...calibration.y.ref_points]
+                if (!refs[0]) refs[0] = { pixel: [0, 0], value }
+                else refs[0] = { ...refs[0], value }
+                onChange({ ...calibration, source: 'manual', y: { ...calibration.y, ref_points: refs } })
+              }}
+            />
+          </label>
+          <label className="inline-flex items-center gap-1">
+            v2
+            <BoundInput
+              value={calibration.y.ref_points[1]?.value ?? 1}
+              scale={calibration.y.scale}
+              title="Value at P2"
+              onCommit={(value) => {
+                if (value == null) return
+                const refs = [...calibration.y.ref_points]
+                if (!refs[1]) refs[1] = { pixel: [0, 0], value }
+                else refs[1] = { ...refs[1], value }
+                onChange({ ...calibration, source: 'manual', y: { ...calibration.y, ref_points: refs } })
+              }}
+            />
+          </label>
+          <label className="inline-flex items-center gap-1">
+            <input
+              type="checkbox"
+              checked={calibration.bar_horizontal ?? false}
+              onChange={(e) =>
+                onChange({ ...calibration, source: 'manual', bar_horizontal: e.target.checked })
+              }
+            />
+            Rotated/horizontal
           </label>
         </div>
       )}

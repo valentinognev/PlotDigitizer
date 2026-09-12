@@ -20,6 +20,7 @@ export function formatResolution(res: [number, number], coordsType: CoordsType):
   const b = formatAxisValue(res[1])
   if (coordsType === 'polar') return `θ ${a}/px · R ${b}/px`
   if (coordsType === 'map') return `${a} units/px`
+  if (coordsType === 'bar') return `v ${a}/px · ${b}/px`
   return `${a} x/px · ${b} y/px`
 }
 
@@ -66,6 +67,29 @@ export function setScaleBarPixel(
   }
 }
 
+export function setBarValuePixel(
+  cal: Calibration,
+  which: 'a' | 'b',
+  pixel: [number, number],
+): Calibration {
+  const existing = cal.y.ref_points
+  const refs =
+    existing.length >= 2
+      ? existing.map((p) => ({ ...p, pixel: [...p.pixel] as [number, number] }))
+      : [
+          { pixel: [0, 0] as [number, number], value: 0 },
+          { pixel: [0, 0] as [number, number], value: 1 },
+        ]
+  const idx = which === 'a' ? 0 : 1
+  refs[idx] = { ...refs[idx], pixel }
+  return {
+    ...cal,
+    source: 'manual',
+    coords_type: 'bar',
+    y: { ...cal.y, ref_points: refs },
+  }
+}
+
 export function restoreAxisUiFlags(
   canvasMode: CanvasMode | undefined,
   coordsType: CoordsType | undefined,
@@ -76,7 +100,7 @@ export function restoreAxisUiFlags(
 } {
   const mode = canvasMode ?? 'select'
   if (mode === 'axis') {
-    if (coordsType === 'map') {
+    if (coordsType === 'map' || coordsType === 'bar') {
       return { canvasMode: 'select', preciseMode: false, scaleBarStep: null }
     }
     return {

@@ -78,15 +78,21 @@ export function reassignPoints(
   }
 }
 
+export function nextBarPointLabel(existingCount: number): string {
+  return `Bar ${existingCount + 1}`
+}
+
 export function addPoint(
   session: Session,
   curveId: string,
   pixel: [number, number],
+  label?: string | null,
 ): Session {
   const pending: Point = {
     id: `pending-${crypto.randomUUID()}`,
     pixel,
     origin: 'user',
+    ...(label ? { label } : {}),
   }
   return {
     ...session,

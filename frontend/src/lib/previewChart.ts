@@ -54,6 +54,10 @@ function isPlottable(calibration: Calibration, a: number, b: number): boolean {
     if (calibration.y.scale === 'log' && b <= 0) return false
     return true
   }
+  if (coords === 'bar') {
+    if (calibration.y.scale === 'log' && a <= 0) return false
+    return true
+  }
   if (calibration.x.scale === 'log' && a <= 0) return false
   if (calibration.y.scale === 'log' && b <= 0) return false
   return true
@@ -108,6 +112,23 @@ export function buildPreviewConfig(
         name: curve.label,
         line: { color: curve.color },
         marker: { size: 4, color: curve.color },
+      })
+    } else if (coords === 'bar') {
+      const xs: Array<number | string> = []
+      const ys: number[] = []
+      curve.points.forEach((p, i) => {
+        const [value, dummy] = pixelToData(calibration, p.pixel)
+        if (!isPlottable(calibration, value, dummy)) return
+        xs.push(p.label || i)
+        ys.push(value)
+      })
+      if (!xs.length) continue
+      traces.push({
+        type: 'bar',
+        x: xs,
+        y: ys,
+        name: curve.label,
+        marker: { color: curve.color },
       })
     } else {
       const xs: Array<number | string> = []
@@ -164,14 +185,14 @@ export function buildPreviewConfig(
       ...titleLayout,
       height: h,
       xaxis: {
-        title: xlabelText ?? (coords === 'map' ? `x${units}` : 'X'),
+        title: xlabelText ?? (coords === 'map' ? `x${units}` : coords === 'bar' ? 'label' : 'X'),
         gridcolor: '#334155',
         automargin: true,
         autorange: true,
-        type: plotlyAxisType(calibration.x.scale),
+        type: coords === 'bar' ? 'category' : plotlyAxisType(calibration.x.scale),
       },
       yaxis: {
-        title: ylabelText ?? (coords === 'map' ? `y${units}` : 'Y'),
+        title: ylabelText ?? (coords === 'map' ? `y${units}` : coords === 'bar' ? 'value' : 'Y'),
         gridcolor: '#334155',
         automargin: true,
         autorange: true,
