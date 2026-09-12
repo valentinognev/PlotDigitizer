@@ -68,22 +68,73 @@ def _in_hue_range(hue: np.ndarray, low: float, high: float) -> np.ndarray:
     return (hue >= low) | (hue <= high)
 
 
+def _hex_to_bgr(hex_color: str) -> np.ndarray:
+    h = hex_color.strip().lstrip("#")
+    r = int(h[0:2], 16)
+    g = int(h[2:4], 16)
+    b = int(h[4:6], 16)
+    return np.array([b, g, r], dtype=np.float32)
+
+
+def _bgr_dist01(pixels_bgr: np.ndarray, sample_bgr: np.ndarray) -> np.ndarray:
+    delta = pixels_bgr.astype(np.float32) - sample_bgr.reshape((1,) * (pixels_bgr.ndim - 1) + (3,))
+    return np.sqrt(np.sum(delta * delta, axis=-1)) / (255.0 * math.sqrt(3.0))
+
+
 def build_filter_mask(img_bgr: np.ndarray, flt: ColorFilter) -> np.ndarray:
     if flt.mode == "intensity":
         keep = _in_linear_range(_luminance01(img_bgr), flt.low, flt.high)
     elif flt.mode == "foreground":
         bg = _modal_background_bgr(img_bgr)
-        delta = img_bgr.astype(np.float32) - bg.reshape(1, 1, 3)
-        dist = np.sqrt(np.sum(delta * delta, axis=2)) / (255.0 * math.sqrt(3.0))
+        dist = _bgr_dist01(img_bgr, bg)
         keep = _in_linear_range(dist, flt.low, flt.high)
     elif flt.mode == "hue":
         # Hue is undefined at S=0 (OpenCV reports H=0 for white/gray).
         keep = _in_hue_range(_hue01(img_bgr), flt.low, flt.high) & (_sat01(img_bgr) > 0)
     elif flt.mode == "saturation":
         keep = _in_linear_range(_sat01(img_bgr), flt.low, flt.high)
+    elif flt.mode == "sample":
+        if not flt.sample_color:
+            keep = np.zeros(img_bgr.shape[:2], dtype=bool)
+        else:
+            sample = _hex_to_bgr(flt.sample_color)
+            keep = _bgr_dist01(img_bgr, sample) <= flt.high
     else:
         keep = _in_linear_range(_val01(img_bgr), flt.low, flt.high)
     return keep.astype(np.uint8) * 255
+
+
+def dominant_trace_colors(img_bgr: np.ndarray, limit: int = 8) -> list[str]:
+    bg = _modal_background_bgr(img_bgr)
+    sampled = img_bgr[::4, ::4]
+    pixels = sampled.reshape(-1, 3).astype(np.float32)
+    if pixels.size == 0:
+        return []
+
+    dist = _bgr_dist01(pixels, bg)
+    sat = _sat01(sampled).reshape(-1)
+    keep = dist > 0.08
+    if float(np.median(sat)) < 0.08:
+        lum = _luminance01(sampled).reshape(-1)
+        bg_lum = float(0.114 * bg[0] + 0.587 * bg[1] + 0.299 * bg[2]) / 255.0
+        keep &= np.abs(lum - bg_lum) > 0.08
+    else:
+        keep &= sat >= 0.08
+
+    remaining = pixels[keep]
+    if remaining.shape[0] == 0:
+        return []
+
+    rgb_u8 = np.clip(np.rint(remaining[:, ::-1]), 0, 255).astype(np.int32)
+    bins = rgb_u8 >> 3
+    keys = bins[:, 0] * 1024 + bins[:, 1] * 32 + bins[:, 2]
+    unique, counts = np.unique(keys, return_counts=True)
+    order = np.argsort(-counts)[: max(limit, 0)]
+    out: list[str] = []
+    for i in order:
+        mean_bgr = remaining[keys == unique[i]].mean(axis=0)
+        out.append(_bgr_to_hex(mean_bgr))
+    return out
 
 
 def suggest_filter_from_pixel(img_bgr: np.ndarray, pixel: tuple[float, float]) -> ColorFilter:

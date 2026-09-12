@@ -10,7 +10,7 @@ Scale = Literal["linear", "log", "date"]
 Origin = Literal["ai", "user"]
 CurveStyle = Literal["solid", "dashed", "dotted", "unknown"]
 CalibrationSource = Literal["manual"]
-FilterMode = Literal["intensity", "foreground", "hue", "saturation", "value"]
+FilterMode = Literal["intensity", "foreground", "hue", "saturation", "value", "sample"]
 ConnectAs = Literal["line", "scatter"]
 
 

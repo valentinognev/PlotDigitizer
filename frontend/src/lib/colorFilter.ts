@@ -1,4 +1,4 @@
-export type FilterMode = 'intensity' | 'foreground' | 'hue' | 'saturation' | 'value'
+export type FilterMode = 'intensity' | 'foreground' | 'hue' | 'saturation' | 'value' | 'sample'
 
 export interface ColorFilter {
   mode: FilterMode
@@ -10,6 +10,10 @@ export interface ColorFilter {
 
 export function displayMax(mode: FilterMode): number {
   return mode === 'hue' ? 360 : 100
+}
+
+export function filterSliderLabel(mode: FilterMode): string {
+  return mode === 'sample' ? 'distance %' : ''
 }
 
 export function normToDisplay(mode: FilterMode, norm: number): number {

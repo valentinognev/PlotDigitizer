@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   displayMax,
   displayToNorm,
+  filterSliderLabel,
   maskPreviewUrl,
   normToDisplay,
   previewFilterFromHex,
@@ -33,5 +34,16 @@ describe('colorFilter helpers', () => {
     expect(previewFilterFromHex('#0000ff').mode).toBe('hue')
     expect(previewFilterFromHex('#0000ff').sample_color).toBe('#0000ff')
     expect(previewFilterFromHex('#777777').mode).toBe('intensity')
+  })
+
+  it('maps sample distance 0..1 to 0..100 percent', () => {
+    expect(displayMax('sample')).toBe(100)
+    expect(normToDisplay('sample', 0.12)).toBeCloseTo(12)
+    expect(displayToNorm('sample', 12)).toBeCloseTo(0.12)
+  })
+
+  it('labels the sample slider as distance percent', () => {
+    expect(filterSliderLabel('sample')).toBe('distance %')
+    expect(filterSliderLabel('intensity')).not.toBe('distance %')
   })
 })

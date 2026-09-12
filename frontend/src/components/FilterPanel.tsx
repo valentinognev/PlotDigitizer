@@ -1,9 +1,16 @@
 import type { ColorFilter, FilterMode, GridGeometrySettings } from '../types'
-import { displayMax, displayToNorm, normToDisplay } from '../lib/colorFilter'
+import { displayMax, displayToNorm, filterSliderLabel, normToDisplay } from '../lib/colorFilter'
 
 export type MaskView = 'none' | 'image' | 'mask'
 
-const MODES: FilterMode[] = ['intensity', 'foreground', 'hue', 'saturation', 'value']
+export const FILTER_MODES: FilterMode[] = [
+  'intensity',
+  'foreground',
+  'hue',
+  'saturation',
+  'value',
+  'sample',
+]
 
 interface Props {
   filter: ColorFilter | null
@@ -38,6 +45,8 @@ export function FilterPanel({
   const max = displayMax(flt.mode)
   const lowDisp = Math.round(normToDisplay(flt.mode, flt.low))
   const highDisp = Math.round(normToDisplay(flt.mode, flt.high))
+  const sample = flt.mode === 'sample'
+  const sliderLabel = filterSliderLabel(flt.mode)
   const gridSummary = grid
     ? `x ${grid.count_x}×${grid.step_x.toFixed(1)}px @ ${grid.start_x.toFixed(0)} · y ${grid.count_y}×${grid.step_y.toFixed(1)}px @ ${grid.start_y.toFixed(0)}`
     : 'no grid detected'
@@ -52,7 +61,7 @@ export function FilterPanel({
           onChange={(e) => onFilterChange({ ...flt, mode: e.target.value as FilterMode })}
           className="rounded border border-slate-600 bg-slate-900 px-1 py-0.5 text-slate-200"
         >
-          {MODES.map((m) => (
+          {FILTER_MODES.map((m) => (
             <option key={m} value={m}>
               {m}
             </option>
@@ -95,24 +104,27 @@ export function FilterPanel({
       </div>
       <div className="mb-1 flex flex-wrap items-center gap-2 text-slate-300">
         <span className="tabular-nums">
-          {lowDisp}–{highDisp} / {max}
+          {sample ? `${sliderLabel} ${highDisp} / ${max}` : `${lowDisp}–${highDisp} / ${max}`}
         </span>
-        <input
-          type="range"
-          min={0}
-          max={max}
-          value={lowDisp}
-          disabled={disabled}
-          onChange={(e) =>
-            onFilterChange({ ...flt, low: displayToNorm(flt.mode, Number(e.target.value)) })
-          }
-        />
+        {!sample && (
+          <input
+            type="range"
+            min={0}
+            max={max}
+            value={lowDisp}
+            disabled={disabled}
+            onChange={(e) =>
+              onFilterChange({ ...flt, low: displayToNorm(flt.mode, Number(e.target.value)) })
+            }
+          />
+        )}
         <input
           type="range"
           min={0}
           max={max}
           value={highDisp}
           disabled={disabled}
+          aria-label={sample ? sliderLabel : undefined}
           onChange={(e) =>
             onFilterChange({ ...flt, high: displayToNorm(flt.mode, Number(e.target.value)) })
           }
