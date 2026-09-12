@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest'
 import vectors from '../__fixtures__/transform-vectors.json'
 import {
   axesCheckerPolyline,
+  barPixelToValue,
   calibrationError,
   dataToPixel,
   isCalibrationValid,
   pixelToData,
+  validateCalibration,
   type Calibration,
 } from '../transform2d'
 
@@ -135,5 +137,95 @@ describe('axesCheckerPolyline log-polar inner ring', () => {
     const expected = dataToPixel(cal, [t1, rInner])
     expect(poly[n + 1][0]).toBeCloseTo(expected[0], 6)
     expect(poly[n + 1][1]).toBeCloseTo(expected[1], 6)
+  })
+})
+
+function barCal(overrides: Partial<Calibration> = {}): Calibration {
+  return {
+    source: 'manual',
+    coords_type: 'bar',
+    bar_horizontal: false,
+    x: { scale: 'linear', ref_points: [] },
+    y: {
+      scale: 'linear',
+      ref_points: [
+        { pixel: [50, 100], value: 0 },
+        { pixel: [50, 0], value: 10 },
+      ],
+    },
+    ...overrides,
+  }
+}
+
+describe('bar coordinate adapter', () => {
+  it('maps the linear midpoint pixel to value 5', () => {
+    expect(barPixelToValue(barCal(), [50, 50])).toBeCloseTo(5, 12)
+  })
+
+  it('maps the log midpoint pixel to 10', () => {
+    const cal = barCal({
+      y: {
+        scale: 'log',
+        ref_points: [
+          { pixel: [50, 100], value: 1 },
+          { pixel: [50, 0], value: 100 },
+        ],
+      },
+    })
+    expect(barPixelToValue(cal, [50, 50])).toBeCloseTo(10, 12)
+  })
+
+  it('pixelToData returns (value, 0.0) for vertical and horizontal bars', () => {
+    const vertical = pixelToData(barCal(), [50, 50])
+    expect(vertical[0]).toBeCloseTo(5, 12)
+    expect(vertical[1]).toBeCloseTo(0, 12)
+
+    const horizontal = pixelToData(
+      barCal({
+        bar_horizontal: true,
+        y: {
+          scale: 'linear',
+          ref_points: [
+            { pixel: [100, 50], value: 0 },
+            { pixel: [0, 50], value: 10 },
+          ],
+        },
+      }),
+      [50, 50],
+    )
+    expect(horizontal[0]).toBeCloseTo(5, 12)
+    expect(horizontal[1]).toBeCloseTo(0, 12)
+  })
+
+  it('projects an off-axis pixel onto the value line', () => {
+    expect(barPixelToValue(barCal(), [80, 50])).toBeCloseTo(5, 12)
+  })
+
+  it('round-trips dataToPixel along the value axis', () => {
+    const back = dataToPixel(barCal(), [5, 0])
+    expect(back[0]).toBeCloseTo(50, 6)
+    expect(back[1]).toBeCloseTo(50, 6)
+  })
+
+  it('validateCalibration rejects fewer than two y ref points', () => {
+    const cal = barCal({
+      y: { scale: 'linear', ref_points: [{ pixel: [50, 100], value: 0 }] },
+    })
+    expect(isCalibrationValid(cal)).toBe(false)
+    expect(() => validateCalibration(cal)).toThrow(/value-axis/)
+  })
+
+  it('validateCalibration rejects coincident value-axis pixels', () => {
+    const cal = barCal({
+      y: {
+        scale: 'linear',
+        ref_points: [
+          { pixel: [50, 50], value: 0 },
+          { pixel: [50, 50], value: 10 },
+        ],
+      },
+    })
+    expect(isCalibrationValid(cal)).toBe(false)
+    expect(() => validateCalibration(cal)).toThrow(/distinct/)
   })
 })

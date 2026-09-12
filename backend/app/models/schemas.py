@@ -32,7 +32,7 @@ class GridGeometrySettings(BaseModel):
     close_distance: int = 10
 
 
-CoordsType = Literal["cartesian", "polar", "map"]
+CoordsType = Literal["cartesian", "polar", "map", "bar"]
 ThetaUnits = Literal["degrees", "radians", "gradians", "turns"]
 TransformModel = Literal["auto", "orthogonal", "affine", "projective"]
 
@@ -76,12 +76,14 @@ class Calibration(BaseModel):
     theta_units: ThetaUnits = "degrees"
     origin_radius: float = 0.0
     scale_bar: ScaleBar | None = None
+    bar_horizontal: bool = False
 
 
 class Point(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     pixel: tuple[float, float]
     origin: Origin = "user"
+    label: str | None = None
 
 
 class RegionBox(BaseModel):

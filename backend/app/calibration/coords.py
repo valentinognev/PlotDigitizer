@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 
+from app.calibration.bar import bar_pixel_to_value, bar_value_to_pixel, validate_bar_calibration
 from app.calibration.transform import (
     CalibrationError,
     Transform2D,
@@ -161,6 +162,9 @@ def validate_calibration(cal: Calibration) -> None:
         bar = _require_scale_bar(cal)
         _map_scale(bar)
         return
+    if cal.coords_type == "bar":
+        validate_bar_calibration(cal)
+        return
     if cal.coords_type == "polar":
         if len(cal.axis_points) < 3:
             raise CalibrationError(
@@ -186,6 +190,8 @@ def validate_calibration(cal: Calibration) -> None:
 def pixel_to_data(cal: Calibration, pixel: tuple[float, float]) -> tuple[float, float]:
     if cal.coords_type == "map":
         return _map_pixel_to_data(cal, pixel)
+    if cal.coords_type == "bar":
+        return float(bar_pixel_to_value(cal, pixel)), 0.0
     t = _transform_of(cal)
     uv = t.to_linear(pixel)
     if cal.coords_type == "polar":
@@ -196,6 +202,8 @@ def pixel_to_data(cal: Calibration, pixel: tuple[float, float]) -> tuple[float, 
 def data_to_pixel(cal: Calibration, data: tuple[float, float]) -> tuple[float, float]:
     if cal.coords_type == "map":
         return _map_data_to_pixel(cal, data)
+    if cal.coords_type == "bar":
+        return bar_value_to_pixel(cal, data[0])
     t = _transform_of(cal)
     if cal.coords_type == "polar":
         return t.from_linear(_polar_to_linear(cal, data))

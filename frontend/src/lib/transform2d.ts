@@ -395,6 +395,88 @@ function requireBar(cal: Calibration): ScaleBar {
   return cal.scale_bar
 }
 
+const BAR_PIXEL_TOL = 1e-12
+
+function barValueRefs(cal: Calibration): [Calibration['y']['ref_points'][0], Calibration['y']['ref_points'][0]] {
+  const refs = cal.y.ref_points
+  if (refs.length < 2) {
+    throw new CalibrationError(
+      'Bar calibration needs at least 2 value-axis reference points',
+      'Place two distinct points on the value axis',
+    )
+  }
+  return [refs[0], refs[1]]
+}
+
+function barPixelSpan(p1: [number, number], p2: [number, number]): [number, number, number] {
+  const dx = p2[0] - p1[0]
+  const dy = p2[1] - p1[1]
+  const den = dx * dx + dy * dy
+  if (den < BAR_PIXEL_TOL) {
+    throw new CalibrationError(
+      'Bar value-axis pixels are not distinct',
+      'Place two distinct points on the value axis',
+    )
+  }
+  return [dx, dy, den]
+}
+
+function barProjectT(pixel: [number, number], p1: [number, number], p2: [number, number]): number {
+  const [dx, dy, den] = barPixelSpan(p1, p2)
+  return ((pixel[0] - p1[0]) * dx + (pixel[1] - p1[1]) * dy) / den
+}
+
+function barLogPair(v1: number, v2: number): [number, number] {
+  if (v1 <= 0 || v2 <= 0) {
+    throw new CalibrationError(
+      'y log scale requires all reference values > 0',
+      'Use linear scale or enter values greater than zero',
+    )
+  }
+  return [Math.log10(v1), Math.log10(v2)]
+}
+
+function barInterpValue(t: number, v1: number, v2: number, scale: Scale): number {
+  if (scale === 'log') {
+    const [a, b] = barLogPair(v1, v2)
+    return 10 ** (a + t * (b - a))
+  }
+  return v1 + t * (v2 - v1)
+}
+
+function barTFromValue(value: number, v1: number, v2: number, scale: Scale): number {
+  if (scale === 'log') {
+    const [a, b] = barLogPair(v1, v2)
+    if (value <= 0) {
+      throw new CalibrationError('Cannot map non-positive value on log axis', 'Log Y requires values > 0')
+    }
+    const span = b - a
+    if (Math.abs(span) < 1e-15) return 0
+    return (Math.log10(value) - a) / span
+  }
+  const span = v2 - v1
+  if (Math.abs(span) < 1e-15) return 0
+  return (value - v1) / span
+}
+
+export function barPixelToValue(cal: Calibration, pixel: [number, number]): number {
+  const [p1, p2] = barValueRefs(cal)
+  const t = barProjectT(pixel, p1.pixel, p2.pixel)
+  return barInterpValue(t, p1.value, p2.value, cal.y.scale)
+}
+
+function barValueToPixel(cal: Calibration, value: number): [number, number] {
+  const [p1, p2] = barValueRefs(cal)
+  const t = barTFromValue(value, p1.value, p2.value, cal.y.scale)
+  return [p1.pixel[0] + t * (p2.pixel[0] - p1.pixel[0]), p1.pixel[1] + t * (p2.pixel[1] - p1.pixel[1])]
+}
+
+function validateBarCalibration(cal: Calibration): void {
+  const [p1, p2] = barValueRefs(cal)
+  barPixelSpan(p1.pixel, p2.pixel)
+  if (cal.y.scale === 'log') barLogPair(p1.value, p2.value)
+}
+
 function transformOf(cal: Calibration): Transform2D {
   const constraints = buildConstraints(cal)
   let requested: TransformModel = cal.model ?? 'auto'
@@ -460,6 +542,10 @@ export function validateCalibration(cal: Calibration): void {
     mapScale(requireBar(cal))
     return
   }
+  if (kind === 'bar') {
+    validateBarCalibration(cal)
+    return
+  }
   if (kind === 'polar') {
     if (axisPoints(cal).length < 3) {
       throw new CalibrationError('Polar calibration needs at least 3 axis points', 'Place origin plus two more (θ, R) points')
@@ -480,6 +566,9 @@ export function pixelToData(cal: Calibration, pixel: [number, number]): [number,
     const s = mapScale(bar)
     return [(pixel[0] - bar.pixel_a[0]) * s, (bar.pixel_a[1] - pixel[1]) * s]
   }
+  if (coordsType(cal) === 'bar') {
+    return [barPixelToValue(cal, pixel), 0.0]
+  }
   const t = transformOf(cal)
   const uv = toLinear(t, pixel)
   if (coordsType(cal) === 'polar') return polarFromLinear(cal, uv)
@@ -491,6 +580,9 @@ export function dataToPixel(cal: Calibration, data: [number, number]): [number, 
     const bar = requireBar(cal)
     const s = mapScale(bar)
     return [bar.pixel_a[0] + data[0] / s, bar.pixel_a[1] - data[1] / s]
+  }
+  if (coordsType(cal) === 'bar') {
+    return barValueToPixel(cal, data[0])
   }
   const t = transformOf(cal)
   if (coordsType(cal) === 'polar') return fromLinear(t, polarToLinear(cal, data))

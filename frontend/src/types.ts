@@ -20,7 +20,7 @@ export interface GridGeometrySettings {
   count_y: number
   close_distance?: number
 }
-export type CoordsType = 'cartesian' | 'polar' | 'map'
+export type CoordsType = 'cartesian' | 'polar' | 'map' | 'bar'
 export type ThetaUnits = 'degrees' | 'radians' | 'gradians' | 'turns'
 export type TransformModel = 'auto' | 'orthogonal' | 'affine' | 'projective'
 export type CanvasMode =
@@ -69,12 +69,14 @@ export interface Calibration {
   theta_units?: ThetaUnits
   origin_radius?: number
   scale_bar?: ScaleBar | null
+  bar_horizontal?: boolean
 }
 
 export interface Point {
   id: string
   pixel: [number, number]
   origin: Origin
+  label?: string | null
 }
 
 export interface RegionBox {
