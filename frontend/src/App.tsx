@@ -33,6 +33,7 @@ import { EditorCanvas } from './components/EditorCanvas'
 import { MagnifierView } from './components/MagnifierView'
 import { ExportPanel } from './components/ExportPanel'
 import { PreviewChart } from './components/PreviewChart'
+import { DataTablePanel } from './components/DataTablePanel'
 import { firstVisibleCurve } from './lib/curves'
 import { DEFAULT_POINT_COUNT } from './lib/constants'
 import {
@@ -1410,8 +1411,15 @@ export default function App() {
               cursorReadout={cursorReadout}
             />
           </div>
-          <div className="min-h-0 overflow-hidden">
-            <PreviewChart curves={session?.curves ?? []} calibration={calibration} figure={figure} />
+          <div className="flex min-h-0 flex-col gap-2 overflow-hidden">
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <PreviewChart curves={session?.curves ?? []} calibration={calibration} figure={figure} />
+            </div>
+            <DataTablePanel
+              curves={session?.curves ?? []}
+              calibration={calibration}
+              onToast={toast}
+            />
           </div>
         </div>
 

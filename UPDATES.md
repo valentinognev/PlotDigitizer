@@ -40,6 +40,10 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [2.12.0] — 2026-09-12
+### Added
+- View data table under the preview chart: visible curves in data space (x/y or theta/R), sort, digits + Ignore/Fixed/Precision/Exponential, Copy TSV (`Copied N rows`). Empty when calibration is invalid or no visible points.
+
 ## [2.11.1] — 2026-09-12
 ### Fixed
 - File drop during a busy operation (Improve / Unskew / upload) no longer lets the browser navigate away: `preventDefault` still runs; only the upload is skipped.

@@ -40,8 +40,8 @@ current calibration, so re-calibrating instantly remaps all points.
 
 ```
 ┌──────────────────────────── Frontend (React + Tailwind) ────────────────────────────┐
-│  EditorCanvas (Konva)          PreviewChart (Plotly)                                   │
-│  image + draggable points  ──▶  live replot in data-space                              │
+│  EditorCanvas (Konva)          PreviewChart (Plotly) + DataTablePanel (View data / Copy) │
+│  image + draggable points  ──▶  live replot in data-space + numeric table                │
 │  UnskewPanel · CalibrationPanel · FilterPanel · AutoDigitizePanel · CurveList · ExportPanel                              │
 └───────────────────────────────────────┬───────────────────────────────────────────────┘
                                          │ typed REST (JSON)
@@ -133,7 +133,7 @@ cd frontend && npm test
 8. **Drag** points to correct positions; **arrow keys** nudge a selection 1 px (Shift: 10). The
    **magnifier** (right column, above Curves) zooms 5× around the cursor; the readout under the
    canvas shows pixel (and data when calibrated). Box-select, Delete, and curve reassignment as needed.
-9. Watch the **preview chart** update in data-space.
+9. Watch the **preview chart** update in data-space. **View data** (under the chart) lists the same points; **Copy** puts TSV on the clipboard.
 10. **CSV** writes `*.csv` plus a sidecar `*.png` of the working plot. **Save JSON** embeds the image with calibration, curves, and workspace.
 
 ---
