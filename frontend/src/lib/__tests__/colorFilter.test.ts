@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest'
 import {
   displayMax,
   displayToNorm,
+  extractThisColourDisabled,
   filterSliderLabel,
   maskPreviewUrl,
   normToDisplay,
   previewFilterFromHex,
+  proposeCurvesConfirmMessage,
+  sampleFilterFromHex,
 } from '../colorFilter'
 
 describe('colorFilter helpers', () => {
@@ -45,5 +48,56 @@ describe('colorFilter helpers', () => {
   it('labels the sample slider as distance percent', () => {
     expect(filterSliderLabel('sample')).toBe('distance %')
     expect(filterSliderLabel('intensity')).not.toBe('distance %')
+  })
+
+  it('builds a sample-mode filter from hex at 12% distance by default', () => {
+    expect(sampleFilterFromHex('#ff0000')).toEqual({
+      mode: 'sample',
+      sample_color: '#ff0000',
+      high: 0.12,
+      low: 0,
+    })
+  })
+
+  it('keeps distance 0 as an exact colour match', () => {
+    expect(sampleFilterFromHex('#00ff00', 0)).toEqual({
+      mode: 'sample',
+      sample_color: '#00ff00',
+      high: 0,
+      low: 0,
+    })
+  })
+
+  it('asks to create N curves from dominant colours and extract', () => {
+    expect(proposeCurvesConfirmMessage(3)).toBe(
+      'Create 3 curves from dominant colours and extract?',
+    )
+    expect(proposeCurvesConfirmMessage(1)).toBe(
+      'Create 1 curves from dominant colours and extract?',
+    )
+  })
+
+  it('enables Extract this colour only after a pick with an active curve', () => {
+    expect(
+      extractThisColourDisabled({
+        busy: false,
+        disabled: false,
+        lastPickPixel: [10, 20],
+      }),
+    ).toBe(false)
+    expect(
+      extractThisColourDisabled({
+        busy: false,
+        disabled: false,
+        lastPickPixel: null,
+      }),
+    ).toBe(true)
+    expect(
+      extractThisColourDisabled({
+        busy: false,
+        disabled: true,
+        lastPickPixel: [10, 20],
+      }),
+    ).toBe(true)
   })
 })

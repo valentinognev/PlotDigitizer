@@ -40,6 +40,12 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [2.17.0] — 2026-09-12
+### Added
+- After **Pick colour**, Auto digitize shows **Extract this colour** (active curve + session, last picked pixel). Calls `extract-color` (sample filter + averaging window). Mask overlay is reused; extract overwrites the pick's filter with sample mode.
+- **Propose curves from colours** confirms `Create N curves from dominant colours and extract?` then `propose-curves` with `extract: true`.
+- `sampleFilterFromHex(hex, distance=0.12)` builds the sample-mode filter (distance `0` stays exact match).
+
 ## [2.16.0] — 2026-09-12
 ### Added
 - Named axes list in Calibration: Add / Rename / Delete. `session.calibration` stays the set the panel edits; a second set appends to `calibrations`.

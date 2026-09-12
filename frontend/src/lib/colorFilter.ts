@@ -56,3 +56,19 @@ export function previewFilterFromHex(hex: string): Pick<ColorFilter, 'mode' | 's
   const sat = max === 0 ? 0 : (max - min) / max
   return { mode: sat >= 0.25 ? 'hue' : 'intensity', sample_color: hex }
 }
+
+export function sampleFilterFromHex(hex: string, distance = 0.12): ColorFilter {
+  return { mode: 'sample', sample_color: hex, high: distance, low: 0 }
+}
+
+export function proposeCurvesConfirmMessage(n: number): string {
+  return `Create ${n} curves from dominant colours and extract?`
+}
+
+export function extractThisColourDisabled(opts: {
+  busy: boolean
+  disabled: boolean
+  lastPickPixel: [number, number] | null
+}): boolean {
+  return opts.busy || opts.disabled || !opts.lastPickPixel
+}

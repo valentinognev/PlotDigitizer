@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { formatSeparation } from '../lib/segments'
+import { extractThisColourDisabled } from '../lib/colorFilter'
 import {
   defaultXStepFromCalibration,
   sampleDxDisabled,
@@ -29,6 +30,10 @@ interface Props {
   onClearRegion: () => void
   onAveragingWindow: (dx: number, dy: number) => void
   onSampleXStep: (xmin: number, xmax: number, delx: number) => void
+  lastPickPixel: [number, number] | null
+  onExtractColor: (dx: number, dy: number) => void
+  onProposeCurves: () => void
+  proposeDisabled: boolean
 }
 
 function modeButtonClass(on: boolean) {
@@ -59,6 +64,10 @@ export function AutoDigitizePanel({
   onClearRegion,
   onAveragingWindow,
   onSampleXStep,
+  lastPickPixel,
+  onExtractColor,
+  onProposeCurves,
+  proposeDisabled,
 }: Props) {
   const xStepDefaults = useMemo(() => defaultXStepFromCalibration(calibration), [calibration])
   const seedKey = xStepSeedKey(xStepDefaults)
@@ -212,6 +221,24 @@ export function AutoDigitizePanel({
               Sample Δx
             </button>
           </div>
+        </div>
+        <div className="flex flex-wrap gap-1">
+          <button
+            type="button"
+            disabled={extractThisColourDisabled({ busy, disabled, lastPickPixel })}
+            onClick={() => onExtractColor(dx, dy)}
+            className="rounded bg-slate-600 px-2 py-1 text-[11px] hover:bg-slate-500 disabled:opacity-50"
+          >
+            Extract this colour
+          </button>
+          <button
+            type="button"
+            disabled={proposeDisabled}
+            onClick={onProposeCurves}
+            className="rounded bg-slate-600 px-2 py-1 text-[11px] hover:bg-slate-500 disabled:opacity-50"
+          >
+            Propose curves from colours
+          </button>
         </div>
         <label className="flex items-center justify-between gap-2">
           Point separation

@@ -65,3 +65,25 @@ describe('review-round Sample Δx + region persist wiring', () => {
     expect(app).not.toMatch(/persistCurveRegion\(addBox\(activeCurve\.region/)
   })
 })
+
+describe('colour-pick extract UI', () => {
+  it('shows Extract this colour and Propose curves from colours', () => {
+    expect(panel).toContain('Extract this colour')
+    expect(panel).toContain('Propose curves from colours')
+  })
+
+  it('stores lastPickPixel and extracts at that pixel', () => {
+    expect(app).toContain('lastPickPixel')
+    expect(app).toContain('setLastPickPixel')
+    expect(app).toContain('extractColor')
+    expect(app).toMatch(/setLastPickPixel\(pixel\)/)
+    expect(app).toMatch(/extractColor\([\s\S]*lastPickPixel/)
+  })
+
+  it('confirms N dominant colours then propose-curves with extract true', () => {
+    expect(app).toContain('dominantColors')
+    expect(app).toContain('proposeCurves')
+    expect(app).toContain('proposeCurvesConfirmMessage')
+    expect(app).toMatch(/proposeCurves\([\s\S]*extract:\s*true/)
+  })
+})

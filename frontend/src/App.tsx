@@ -6,6 +6,8 @@ import {
   getLastSession,
   waitForBackend,
   cvImproveCurve,
+  dominantColors,
+  extractColor,
   pointMatch,
   pointMatchAccept,
   importCurves,
@@ -13,6 +15,7 @@ import {
   loadProject,
   patchCurveFilter,
   patchCurveRegion,
+  proposeCurves,
   removeCurveFromPlot,
   patchCurves,
   patchSessionPreferences,
@@ -81,7 +84,7 @@ import {
   type PlotQuad,
   type UnskewMode,
 } from './lib/meshWarp'
-import { maskPreviewUrl } from './lib/colorFilter'
+import { maskPreviewUrl, proposeCurvesConfirmMessage } from './lib/colorFilter'
 import { isUnskewReady, unskewFromCalibration } from './lib/unskew'
 import {
   emptyPointMatch,
@@ -138,6 +141,7 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [busyMessage, setBusyMessage] = useState<string | null>(null)
   const [hoverPixel, setHoverPixel] = useState<[number, number] | null>(null)
+  const [lastPickPixel, setLastPickPixel] = useState<[number, number] | null>(null)
   const [initializing, setInitializing] = useState(true)
   const [draftCalibration, setDraftCalibration] = useState<Calibration | null>(null)
   const [figure, setFigure] = useState<FigureMeta>(EMPTY_FIGURE)
@@ -280,6 +284,7 @@ export default function App() {
     setUnskewPreview(false)
     setMaskEpoch(0)
     setHoverPixel(null)
+    setLastPickPixel(null)
   }, [session?.id])
 
   useEffect(() => {
@@ -346,6 +351,7 @@ export default function App() {
 
   const handlePickedPixel = (pixel: [number, number]) => {
     if (!session || !activeCurveId) return
+    setLastPickPixel(pixel)
     run(async () => {
       const suggested = await suggestFilter(session.id, pixel, activeCurveId)
       const merged: ColorFilter = {
@@ -610,6 +616,41 @@ export default function App() {
       () => sampleXStep(session.id, activeCurveId, { xmin, xmax, delx }),
       'Sampling Δx…',
     )
+  }
+
+  const handleExtractColor = (dx: number, dy: number) => {
+    if (!session || !activeCurveId || !lastPickPixel) return
+    run(async () => {
+      const saved = await extractColor(session.id, activeCurveId, {
+        pixel: lastPickPixel,
+        dx,
+        dy,
+      })
+      setMaskEpoch((n) => n + 1)
+      return saved
+    }, 'Extracting colour…')
+  }
+
+  const handleProposeCurves = () => {
+    if (!session) return
+    const sessionId = session.id
+    void (async () => {
+      setBusy(true)
+      setBusyMessage('Finding colours…')
+      try {
+        const { colors } = await dominantColors(sessionId)
+        if (!window.confirm(proposeCurvesConfirmMessage(colors.length))) return
+        setBusyMessage('Proposing curves…')
+        const saved = await proposeCurves(sessionId, { extract: true })
+        syncSessionUi(saved)
+        toast('Done')
+      } catch (e) {
+        toast(e instanceof Error ? e.message : 'Error')
+      } finally {
+        setBusy(false)
+        setBusyMessage(null)
+      }
+    })()
   }
 
   const handleSegmentFillClick = (pixel: [number, number]) => {
@@ -1624,6 +1665,10 @@ export default function App() {
             onClearRegion={handleClearRegion}
             onAveragingWindow={handleAveragingWindow}
             onSampleXStep={handleSampleXStep}
+            lastPickPixel={lastPickPixel}
+            onExtractColor={handleExtractColor}
+            onProposeCurves={handleProposeCurves}
+            proposeDisabled={busy || !session}
           />
           <div className="mb-2 flex h-[160px] shrink-0 items-center justify-center">
             <MagnifierView

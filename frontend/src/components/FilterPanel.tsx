@@ -1,5 +1,11 @@
 import type { ColorFilter, FilterMode, GridGeometrySettings } from '../types'
-import { displayMax, displayToNorm, filterSliderLabel, normToDisplay } from '../lib/colorFilter'
+import {
+  displayMax,
+  displayToNorm,
+  filterSliderLabel,
+  normToDisplay,
+  sampleFilterFromHex,
+} from '../lib/colorFilter'
 
 export type MaskView = 'none' | 'image' | 'mask'
 
@@ -13,7 +19,9 @@ export const FILTER_MODES: FilterMode[] = [
 ]
 
 export function filterModePatch(flt: ColorFilter, mode: FilterMode): ColorFilter {
-  if (mode === 'sample') return { ...flt, mode, high: 0.12 }
+  if (mode === 'sample') {
+    return { ...flt, ...sampleFilterFromHex(flt.sample_color ?? '', 0.12) }
+  }
   return { ...flt, mode }
 }
 
