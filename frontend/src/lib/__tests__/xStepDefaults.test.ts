@@ -3,6 +3,7 @@ import type { Calibration } from '../../types'
 import {
   defaultXStepFromCalibration,
   sampleDxDisabled,
+  sampleXStepReady,
   xStepSeedKey,
 } from '../xStepDefaults'
 
@@ -38,6 +39,15 @@ describe('defaultXStepFromCalibration', () => {
         source: 'manual',
       }),
     ).toBeNull()
+  })
+})
+
+describe('sampleXStepReady', () => {
+  it('requires a strictly positive delx', () => {
+    expect(sampleXStepReady(0, 10, 1)).toBe(true)
+    expect(sampleXStepReady(0, 10, 0)).toBe(false)
+    expect(sampleXStepReady(0, 10, -1)).toBe(false)
+    expect(sampleXStepReady(Number.NaN, 10, 1)).toBe(false)
   })
 })
 

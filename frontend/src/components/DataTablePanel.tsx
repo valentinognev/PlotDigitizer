@@ -1,17 +1,17 @@
 import { useMemo, useState } from 'react'
 import type { Calibration, Curve } from '../types'
 import {
-  formatNumber,
+  formatTableCell,
   rowsFromCurves,
   sortRows,
   tableToClipboardText,
   type NumberStyle,
 } from '../lib/dataTable'
-import { isCalibrationValid } from '../lib/transform2d'
 
 interface Props {
   curves: Curve[]
   calibration: Calibration | null
+  calibrations?: Calibration[]
   onToast?: (message: string) => void
 }
 
@@ -31,16 +31,16 @@ export function formatDigits(digits: number, style: NumberStyle): number {
   return Math.min(21, Math.max(1, digits))
 }
 
-export function DataTablePanel({ curves, calibration, onToast }: Props) {
+export function DataTablePanel({ curves, calibration, calibrations, onToast }: Props) {
   const [sortKey, setSortKey] = useState<'a' | 'b'>('a')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const [digits, setDigits] = useState(6)
   const [style, setStyle] = useState<NumberStyle>('ignore')
 
   const rawRows = useMemo(() => {
-    if (!calibration || !isCalibrationValid(calibration)) return []
-    return rowsFromCurves(curves, calibration)
-  }, [curves, calibration])
+    const list = calibrations?.length ? calibrations : calibration ? [calibration] : []
+    return rowsFromCurves(curves, list, calibration)
+  }, [curves, calibrations, calibration])
 
   const rows = useMemo(
     () => sortRows(rawRows, sortKey, sortOrder),
@@ -144,8 +144,8 @@ export function DataTablePanel({ curves, calibration, onToast }: Props) {
               {rows.map((row) => (
                 <tr key={`${row.curveId}:${row.pointId}`} className="text-slate-200">
                   <td className="px-1 py-0.5">{row.curveLabel}</td>
-                  <td className="px-1 py-0.5">{formatNumber(row.a, shownDigits, style)}</td>
-                  <td className="px-1 py-0.5">{formatNumber(row.b, shownDigits, style)}</td>
+                  <td className="px-1 py-0.5">{formatTableCell(row.a, row.aScale, shownDigits, style, row.aText)}</td>
+                  <td className="px-1 py-0.5">{formatTableCell(row.b, row.bScale, shownDigits, style, row.bText)}</td>
                 </tr>
               ))}
             </tbody>

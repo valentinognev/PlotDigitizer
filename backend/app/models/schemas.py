@@ -358,5 +358,5 @@ class ProposeCurvesRequest(BaseModel):
 class XStepRequest(BaseModel):
     xmin: float
     xmax: float
-    delx: float
+    delx: float = Field(gt=0)
     replace: bool = True

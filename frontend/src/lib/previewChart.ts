@@ -22,10 +22,11 @@ export function calibrationForCurve(
 export function axisTrackForCurve(
   curve: Pick<Curve, 'calibration_id'>,
   calibrations: Calibration[],
+  fallback: Calibration | null = null,
 ): 'y' | 'y2' {
   const cartesian = calibrations.filter((cal) => coordsTypeOf(cal) === 'cartesian')
   if (cartesian.length <= 1) return 'y'
-  const resolved = calibrationForCurve(curve, calibrations)
+  const resolved = calibrationForCurve(curve, calibrations, fallback)
   if (!resolved || coordsTypeOf(resolved) !== 'cartesian') return 'y'
   const firstId = cartesian[0]?.id
   if (!resolved.id || resolved.id === firstId) return 'y'
@@ -131,6 +132,7 @@ function pushCartesianTrace(
   curve: Curve,
   cal: Calibration,
   list: Calibration[],
+  fallback: Calibration | null,
   y2Holder: { cal: Calibration | null },
 ): void {
   const xs: Array<number | string> = []
@@ -151,7 +153,7 @@ function pushCartesianTrace(
     line: { color: curve.color },
     marker: { size: 4, color: curve.color },
   }
-  if (coordsTypeOf(cal) === 'cartesian' && axisTrackForCurve(curve, list) === 'y2') {
+  if (coordsTypeOf(cal) === 'cartesian' && axisTrackForCurve(curve, list, fallback) === 'y2') {
     trace.yaxis = 'y2'
     if (!y2Holder.cal) y2Holder.cal = cal
   }
@@ -225,7 +227,7 @@ export function buildPreviewConfig(
         marker: { color: curve.color },
       })
     } else {
-      pushCartesianTrace(traces, curve, cal, list, y2Holder)
+      pushCartesianTrace(traces, curve, cal, list, fallback, y2Holder)
     }
   }
   const h = Math.max(height, 120)

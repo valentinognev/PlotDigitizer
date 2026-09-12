@@ -420,6 +420,11 @@ describe('axisTrackForCurve', () => {
     expect(axisTrackForCurve(bound(null), [left, right])).toBe('y')
   })
 
+  it('uses the same fallback as mapping when the curve has no calibration_id', () => {
+    expect(axisTrackForCurve(bound(null), [left, right], right)).toBe('y2')
+    expect(axisTrackForCurve(bound(null), [left, right], left)).toBe('y')
+  })
+
   it('ignores a leading polar calibration when choosing the first cartesian track', () => {
     expect(axisTrackForCurve(bound('cal-left'), [polar, left, right])).toBe('y')
     expect(axisTrackForCurve(bound('cal-right'), [polar, left, right])).toBe('y2')

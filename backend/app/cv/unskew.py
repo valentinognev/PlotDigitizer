@@ -6,7 +6,8 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
-from app.models.schemas import Calibration, RefPoint, Session
+from app.calibration.session_cal import upsert_session_calibration
+from app.models.schemas import Calibration, RefPoint, RegionMask, Session
 
 
 class UnskewError(ValueError):
@@ -221,11 +222,55 @@ def bounds_pixels_from_calibration(
     return xmin, xmax, ymin, ymax
 
 
-def remap_session_pixels(session: Session, matrix: np.ndarray) -> None:
-    if session.calibration:
-        for axis in (session.calibration.x, session.calibration.y):
-            for ref in axis.ref_points:
-                ref.pixel = apply_homography_to_point(matrix, ref.pixel)
+def remap_calibration_pixels(cal: Calibration, map_point) -> None:
+    for axis in (cal.x, cal.y):
+        for ref in axis.ref_points:
+            ref.pixel = map_point(ref.pixel)
+    for ap in cal.axis_points:
+        ap.pixel = map_point(ap.pixel)
+    if cal.scale_bar is not None:
+        cal.scale_bar.pixel_a = map_point(cal.scale_bar.pixel_a)
+        cal.scale_bar.pixel_b = map_point(cal.scale_bar.pixel_b)
+
+
+def remap_region_pixels(region: RegionMask, map_point) -> None:
+    for box in region.boxes:
+        corners = [
+            (box.x, box.y),
+            (box.x + box.w, box.y),
+            (box.x + box.w, box.y + box.h),
+            (box.x, box.y + box.h),
+        ]
+        mapped = [map_point(c) for c in corners]
+        xs = [p[0] for p in mapped]
+        ys = [p[1] for p in mapped]
+        box.x = min(xs)
+        box.y = min(ys)
+        box.w = max(xs) - min(xs)
+        box.h = max(ys) - min(ys)
+    region.strokes = [[map_point(pt) for pt in stroke] for stroke in region.strokes]
+    region.erase_strokes = [[map_point(pt) for pt in stroke] for stroke in region.erase_strokes]
+
+
+def remap_session_geometry(session: Session, map_point) -> None:
+    seen: set[int] = set()
+    for cal in list(session.calibrations):
+        if id(cal) in seen:
+            continue
+        remap_calibration_pixels(cal, map_point)
+        seen.add(id(cal))
+    if session.calibration is not None and id(session.calibration) not in seen:
+        remap_calibration_pixels(session.calibration, map_point)
+    if session.calibration is not None:
+        upsert_session_calibration(session, session.calibration)
     for curve in session.curves:
         for pt in curve.points:
-            pt.pixel = apply_homography_to_point(matrix, pt.pixel)
+            pt.pixel = map_point(pt.pixel)
+        if curve.region is not None:
+            remap_region_pixels(curve.region, map_point)
+
+
+def remap_session_pixels(session: Session, matrix: np.ndarray) -> None:
+    remap_session_geometry(
+        session, lambda p: apply_homography_to_point(matrix, p)
+    )

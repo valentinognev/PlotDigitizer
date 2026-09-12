@@ -40,6 +40,14 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [2.17.1] — 2026-09-12
+### Fixed
+- Unskew/mesh Apply remaps every named calibration (ref-points, axis_points, scale_bar) and each curve region, then upserts so the panel singleton is the same object as the list entry.
+- Sample Δx uses `calibration_for_curve` (400 if none/invalid); `delx` must be > 0 (schema + Sample button).
+- View data / Copy map each curve through its own cal (`rowsFromCurves(curves, calibrations, fallback)`); date cells format as `YYYY/MM/DD`; bar rows are label + value.
+- Preview `axisTrackForCurve` uses the same fallback as mapping, so an unbound curve follows the active axes onto y2 when those are the second cartesian set.
+- CSV headers follow the visible curves' calibrations; mixed `coords_type` that cannot share one header is rejected.
+
 ## [2.17.0] — 2026-09-12
 ### Added
 - After **Pick colour**, Auto digitize shows **Extract this colour** (active curve + session, last picked pixel). Calls `extract-color` (sample filter + averaging window). Mask overlay is reused; extract overwrites the pick's filter with sample mode.

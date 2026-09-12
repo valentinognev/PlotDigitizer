@@ -14,6 +14,11 @@ export function defaultXStepFromCalibration(cal: Calibration | null): XStepDefau
   return { xmin, xmax, delx }
 }
 
+/** Sample Δx is ready from typed finite xmin/xmax and strictly positive delx. */
+export function sampleXStepReady(xmin: number, xmax: number, delx: number): boolean {
+  return Number.isFinite(xmin) && Number.isFinite(xmax) && Number.isFinite(delx) && delx > 0
+}
+
 /** Sample Δx is ready from typed finite xmin/xmax/delx; bounds are auto-fill only. */
 export function sampleDxDisabled(opts: {
   busy: boolean

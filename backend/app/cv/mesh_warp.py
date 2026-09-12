@@ -11,6 +11,7 @@ from app.cv.unskew import (
     apply_homography_to_point,
     bounds_pixels_from_calibration,
     compute_unskew_homography,
+    remap_session_geometry,
     warp_image,
 )
 from app.models.schemas import Calibration, MeshVertexPayload, Session
@@ -491,13 +492,9 @@ def warp_image_mesh(image: np.ndarray, params: MeshWarpResult, grid: list[list[P
 
 
 def remap_session_pixels_mesh(session: Session, params: MeshWarpResult, grid: list[list[Point]]) -> None:
-    if session.calibration:
-        for axis in (session.calibration.x, session.calibration.y):
-            for ref in axis.ref_points:
-                ref.pixel = map_source_to_dest(ref.pixel, params, grid)
-    for curve in session.curves:
-        for pt in curve.points:
-            pt.pixel = map_source_to_dest(pt.pixel, params, grid)
+    remap_session_geometry(
+        session, lambda p: map_source_to_dest(p, params, grid)
+    )
 
 
 def run_mesh_warp_apply(

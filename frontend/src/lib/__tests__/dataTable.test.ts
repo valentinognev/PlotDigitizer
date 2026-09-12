@@ -14,7 +14,7 @@ describe('rowsFromCurves', () => {
       { id: 'c1', label: 'A', color: '#f00', style: 'solid', visible: true, points: [{ id: 'p1', pixel: [300, 250], origin: 'user' }] },
       { id: 'c2', label: 'B', color: '#0f0', style: 'solid', visible: false, points: [{ id: 'p2', pixel: [300, 250], origin: 'user' }] },
     ]
-    const rows = rowsFromCurves(curves, cal)
+    const rows = rowsFromCurves(curves, [cal], cal)
     expect(rows).toHaveLength(1)
     expect(rows[0].curveLabel).toBe('A')
     expect(rows[0].a).toBeCloseTo(5, 12)
@@ -38,7 +38,7 @@ describe('rowsFromCurves', () => {
     const curves: Curve[] = [
       { id: 'c1', label: 'A', color: '#f00', style: 'solid', visible: true, points: [{ id: 'p1', pixel: [180, 100], origin: 'user' }] },
     ]
-    const rows = rowsFromCurves(curves, polar)
+    const rows = rowsFromCurves(curves, [polar], polar)
     expect(rows).toHaveLength(1)
     expect(rows[0].aLabel).toBe('theta')
     expect(rows[0].bLabel).toBe('R')
@@ -53,7 +53,103 @@ describe('rowsFromCurves', () => {
     const curves: Curve[] = [
       { id: 'c1', label: 'A', color: '#f00', style: 'solid', visible: true, points: [{ id: 'p1', pixel: [300, 250], origin: 'user' }] },
     ]
-    expect(rowsFromCurves(curves, invalid)).toEqual([])
+    expect(rowsFromCurves(curves, [invalid], invalid)).toEqual([])
+  })
+
+  it('maps each curve through calibrationForCurve, not the panel singleton', () => {
+    const left: Calibration = {
+      ...cal,
+      id: 'cal-left',
+      y: {
+        scale: 'linear',
+        ref_points: [
+          { pixel: [100, 400], value: 0 },
+          { pixel: [100, 100], value: 10 },
+        ],
+      },
+    }
+    const right: Calibration = {
+      ...cal,
+      id: 'cal-right',
+      y: {
+        scale: 'linear',
+        ref_points: [
+          { pixel: [100, 400], value: 0 },
+          { pixel: [100, 100], value: 100 },
+        ],
+      },
+    }
+    const curves: Curve[] = [
+      {
+        id: 'c1',
+        label: 'A',
+        color: '#f00',
+        style: 'solid',
+        visible: true,
+        calibration_id: 'cal-right',
+        points: [{ id: 'p1', pixel: [100, 100], origin: 'user' }],
+      },
+    ]
+    const rows = rowsFromCurves(curves, [left, right], left)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].b).toBeCloseTo(100, 12)
+  })
+
+  it('formats date cells as YYYY/MM/DD', () => {
+    const dateCal: Calibration = {
+      ...cal,
+      x: {
+        scale: 'date',
+        ref_points: [
+          { pixel: [100, 400], value: 18262 },
+          { pixel: [500, 400], value: 18290 },
+        ],
+      },
+    }
+    const curves: Curve[] = [
+      {
+        id: 'c1',
+        label: 'A',
+        color: '#f00',
+        style: 'solid',
+        visible: true,
+        points: [{ id: 'p1', pixel: [300, 250], origin: 'user' }],
+      },
+    ]
+    const rows = rowsFromCurves(curves, [dateCal], dateCal)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].aText).toBe('2020/01/15')
+  })
+
+  it('uses label and value for bar rows', () => {
+    const bar: Calibration = {
+      source: 'manual',
+      coords_type: 'bar',
+      x: { scale: 'linear', ref_points: [] },
+      y: {
+        scale: 'linear',
+        ref_points: [
+          { pixel: [50, 100], value: 0 },
+          { pixel: [50, 0], value: 10 },
+        ],
+      },
+    }
+    const curves: Curve[] = [
+      {
+        id: 'c1',
+        label: 'A',
+        color: '#f00',
+        style: 'solid',
+        visible: true,
+        points: [{ id: 'p1', pixel: [50, 50], origin: 'user', label: 'Bar 1' }],
+      },
+    ]
+    const rows = rowsFromCurves(curves, [bar], bar)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].aLabel).toBe('label')
+    expect(rows[0].bLabel).toBe('value')
+    expect(rows[0].a).toBe('Bar 1')
+    expect(rows[0].b).toBeCloseTo(5, 12)
   })
 })
 

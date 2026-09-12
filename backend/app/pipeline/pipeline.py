@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 
 from app.calibration.coords import validate_calibration
+from app.calibration.session_cal import calibration_for_curve
 from app.cv.averaging_window import averaging_window
 from app.cv.color_filter import (
     _bgr_to_hex,
@@ -392,12 +393,13 @@ def run_x_step(
     curve = _require_curve(session, curve_id)
     if not curve.points:
         raise ValueError("no_points")
-    if session.calibration is None:
+    cal = calibration_for_curve(session, curve)
+    if cal is None:
         raise ValueError("no_calibration")
-    validate_calibration(session.calibration)
+    validate_calibration(cal)
     sampled = sample_by_x_step(
         [p.pixel for p in curve.points],
-        session.calibration,
+        cal,
         xmin,
         xmax,
         delx,

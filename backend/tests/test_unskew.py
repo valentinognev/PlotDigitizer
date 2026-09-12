@@ -202,3 +202,135 @@ def test_unskew_apply_uses_request_calibration_not_stale_session():
 
     assert with_stale["image_meta"]["width"] != with_shifted["image_meta"]["width"]
     assert with_shifted["image_meta"]["width"] == 777
+
+
+def _named_cal(cal_id: str, name: str, y_max: float, *, extra: dict | None = None) -> Calibration:
+    p = _axis_points()
+    return Calibration(
+        id=cal_id,
+        name=name,
+        x=CalibrationAxis(
+            scale="linear",
+            ref_points=[
+                RefPoint(pixel=tuple(p["xmin"]), value=0.0),
+                RefPoint(pixel=tuple(p["xmax"]), value=10.0),
+            ],
+        ),
+        y=CalibrationAxis(
+            scale="linear",
+            ref_points=[
+                RefPoint(pixel=tuple(p["ymax"]), value=y_max),
+                RefPoint(pixel=tuple(p["ymin"]), value=0.0),
+            ],
+        ),
+        source="manual",
+        **(extra or {}),
+    )
+
+
+def test_unskew_apply_remaps_named_calibrations_regions_and_upserts():
+    from app.calibration.coords import pixel_to_data
+    from app.calibration.session_cal import calibration_for_curve
+    from app.models.schemas import (
+        AxisPoint,
+        Curve,
+        Point,
+        RegionBox,
+        RegionMask,
+        ScaleBar,
+        Session,
+    )
+    from app.pipeline.pipeline import run_unskew_apply
+
+    p = _axis_points()
+    left = _named_cal(
+        "cal-left",
+        "Left",
+        10.0,
+        extra={"axis_points": [AxisPoint(pixel=tuple(p["xmin"]), x_value=0.0, y_value=0.0)]},
+    )
+    right = _named_cal(
+        "cal-right",
+        "Right",
+        100.0,
+        extra={
+            "scale_bar": ScaleBar(
+                pixel_a=tuple(p["xmin"]),
+                pixel_b=tuple(p["xmax"]),
+                length=10.0,
+                units="mm",
+            )
+        },
+    )
+    seed = (300.0, 250.0)
+    orig_stroke = (15.0, 15.0)
+    right_xmax = tuple(right.x.ref_points[1].pixel)
+    right_ymax = tuple(right.y.ref_points[0].pixel)
+    axis_px = tuple(left.axis_points[0].pixel)
+    bar_b = tuple(right.scale_bar.pixel_b)  # type: ignore[union-attr]
+
+    from app.cv.unskew import (
+        apply_homography_to_point,
+        bounds_pixels_from_calibration,
+        compute_unskew_homography,
+    )
+
+    xmin, xmax, ymin, ymax = bounds_pixels_from_calibration(left)
+    warp = compute_unskew_homography(
+        xmin, xmax, ymin, ymax, image_width=IMAGE_W, image_height=IMAGE_H
+    )
+    expect_seed = apply_homography_to_point(warp.matrix, seed)
+    expect_xmax = apply_homography_to_point(warp.matrix, right_xmax)
+    expect_ymax = apply_homography_to_point(warp.matrix, right_ymax)
+    expect_axis = apply_homography_to_point(warp.matrix, axis_px)
+    expect_bar_b = apply_homography_to_point(warp.matrix, bar_b)
+
+    # Distinct singleton object so upsert must re-bind list + panel after remap.
+    session = Session(
+        image_meta={"width": IMAGE_W, "height": IMAGE_H, "scale_factor": 1.0},
+        calibration=left.model_copy(deep=True),
+        calibrations=[left, right],
+        curves=[
+            Curve(
+                id="c-right",
+                label="B",
+                calibration_id="cal-right",
+                points=[Point(pixel=seed, origin="user")],
+                region=RegionMask(
+                    boxes=[RegionBox(x=10.0, y=10.0, w=20.0, h=20.0)],
+                    strokes=[[(15.0, 15.0), (25.0, 25.0)]],
+                    erase_strokes=[[(30.0, 30.0), (40.0, 40.0)]],
+                ),
+            )
+        ],
+    )
+
+    session, _img = run_unskew_apply(session, _png_bytes())
+    bound = calibration_for_curve(session, session.curves[0])
+    assert bound is not None
+    assert bound.id == "cal-right"
+    got_pt = session.curves[0].points[0].pixel
+    assert got_pt == pytest.approx(expect_seed, abs=1e-6)
+    assert tuple(bound.x.ref_points[1].pixel) == pytest.approx(expect_xmax, abs=1e-6)
+    assert tuple(bound.y.ref_points[0].pixel) == pytest.approx(expect_ymax, abs=1e-6)
+    assert pixel_to_data(bound, got_pt) == pytest.approx(pixel_to_data(bound, expect_seed), abs=1e-9)
+    left_after = next(c for c in session.calibrations if c.id == "cal-left")
+    assert tuple(left_after.axis_points[0].pixel) == pytest.approx(expect_axis, abs=1e-6)
+    assert session.calibration is not None
+    assert session.calibration is next(c for c in session.calibrations if c.id == session.calibration.id)
+    assert tuple(bound.scale_bar.pixel_b) == pytest.approx(expect_bar_b, abs=1e-6)  # type: ignore[union-attr]
+    region = session.curves[0].region
+    assert region is not None
+    box = region.boxes[0]
+    mapped_corners = [
+        apply_homography_to_point(warp.matrix, c)
+        for c in ((10.0, 10.0), (30.0, 10.0), (30.0, 30.0), (10.0, 30.0))
+    ]
+    assert box.x == pytest.approx(min(p[0] for p in mapped_corners), abs=1e-6)
+    assert box.y == pytest.approx(min(p[1] for p in mapped_corners), abs=1e-6)
+    assert region.strokes[0][0] == pytest.approx(
+        apply_homography_to_point(warp.matrix, orig_stroke), abs=1e-6
+    )
+    assert region.erase_strokes[0][0] == pytest.approx(
+        apply_homography_to_point(warp.matrix, (30.0, 30.0)), abs=1e-6
+    )

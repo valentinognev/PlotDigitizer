@@ -1626,6 +1626,7 @@ export default function App() {
             <DataTablePanel
               curves={session?.curves ?? []}
               calibration={calibration}
+              calibrations={calibrationsList}
               onToast={toast}
             />
           </div>

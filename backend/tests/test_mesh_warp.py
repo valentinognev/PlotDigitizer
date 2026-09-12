@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
@@ -217,6 +218,86 @@ def test_mesh_axis_bounds_track_warp_with_adjusted_mesh():
     body = apply_res.json()
     assert body["image_meta"]["width"] >= 380
     assert body["image_meta"]["revision"] >= 1
+
+
+def test_mesh_apply_remaps_named_calibrations_and_regions():
+    from app.calibration.coords import pixel_to_data
+    from app.calibration.session_cal import calibration_for_curve
+    from app.cv.mesh_warp import run_mesh_warp_apply
+    from app.models.schemas import Curve, Point, RegionBox, RegionMask, Session
+
+    p = _axis_points()
+    left = _calibration().model_copy(update={"id": "cal-left", "name": "Left"})
+    right = Calibration(
+        id="cal-right",
+        name="Right",
+        x=CalibrationAxis(
+            scale="linear",
+            ref_points=[
+                RefPoint(pixel=tuple(p["xmin"]), value=0.0),
+                RefPoint(pixel=tuple(p["xmax"]), value=20.0),
+            ],
+        ),
+        y=CalibrationAxis(
+            scale="linear",
+            ref_points=[
+                RefPoint(pixel=tuple(p["ymax"]), value=100.0),
+                RefPoint(pixel=tuple(p["ymin"]), value=0.0),
+            ],
+        ),
+        source="manual",
+    )
+    seed = (300.0, 250.0)
+    orig_right_xmax = tuple(right.x.ref_points[1].pixel)
+    orig_right_ymax = tuple(right.y.ref_points[0].pixel)
+    mesh = init_mesh_from_calibration(left)
+    vertices = [
+        MeshVertexPayload(
+            row=i,
+            col=j,
+            position=v.position,
+            tangent_h=v.tangent_h,
+            tangent_v=v.tangent_v,
+        )
+        for i in range(4)
+        for j in range(4)
+        if i == 0 or i == 3 or j == 0 or j == 3
+        for v in [mesh[i][j]]
+    ]
+    params, grid = compute_mesh_warp_params(mesh, left, IMAGE_W, IMAGE_H)
+    expect_seed = map_source_to_dest(seed, params, grid)
+    expect_xmax = map_source_to_dest(orig_right_xmax, params, grid)
+    expect_ymax = map_source_to_dest(orig_right_ymax, params, grid)
+    mapped_box = [
+        map_source_to_dest(c, params, grid)
+        for c in ((10.0, 10.0), (30.0, 10.0), (30.0, 30.0), (10.0, 30.0))
+    ]
+    session = Session(
+        image_meta={"width": IMAGE_W, "height": IMAGE_H, "scale_factor": 1.0},
+        calibration=left,
+        calibrations=[left, right],
+        curves=[
+            Curve(
+                id="c-right",
+                label="B",
+                calibration_id="cal-right",
+                points=[Point(pixel=seed, origin="user")],
+                region=RegionMask(boxes=[RegionBox(x=10.0, y=10.0, w=20.0, h=20.0)]),
+            )
+        ],
+    )
+    session, _img = run_mesh_warp_apply(session, _png_bytes(), vertices, 3, calibration=left)
+    bound = calibration_for_curve(session, session.curves[0])
+    assert bound is not None
+    got_pt = session.curves[0].points[0].pixel
+    assert got_pt == pytest.approx(expect_seed, abs=0.5)
+    assert tuple(bound.x.ref_points[1].pixel) == pytest.approx(expect_xmax, abs=0.5)
+    assert tuple(bound.y.ref_points[0].pixel) == pytest.approx(expect_ymax, abs=0.5)
+    assert pixel_to_data(bound, got_pt) == pytest.approx(pixel_to_data(bound, expect_seed), abs=1e-6)
+    assert session.calibration is next(c for c in session.calibrations if c.id == session.calibration.id)
+    box = session.curves[0].region.boxes[0]
+    assert box.x == pytest.approx(min(p[0] for p in mapped_box), abs=0.5)
+    assert box.y == pytest.approx(min(p[1] for p in mapped_box), abs=0.5)
 
 
 def test_mesh_apply_requires_payload():

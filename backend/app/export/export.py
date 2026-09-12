@@ -8,7 +8,7 @@ from app.calibration.coords import pixel_to_data
 from app.calibration.dates import format_unix_days
 from app.calibration.session_cal import calibration_for_curve
 from app.export.project_io import export_project_json
-from app.models.schemas import Calibration, Session
+from app.models.schemas import Calibration, Curve, Session
 
 __all__ = ["export_csv", "export_json", "export_project_json", "csv_coordinate_columns", "csv_units_line"]
 
@@ -63,25 +63,41 @@ def export_csv(session: Session) -> str:
     if not session.calibration:
         raise CalibrationError("Calibration required for export")
     validate_calibration(session.calibration)
-    buf = io.StringIO()
-    for line in _csv_figure_comment_lines(session):
-        buf.write(line + "\n")
-    units = csv_units_line(session.calibration)
-    if units:
-        buf.write(units + "\n")
-    writer = csv.writer(buf)
-    xname, yname = csv_coordinate_columns(session.calibration)
-    writer.writerow(["curve_id", "curve_label", xname, yname])
-    bar = session.calibration.coords_type == "bar"
+    used: list[tuple[Curve, Calibration]] = []
     for curve in session.curves:
         if not curve.visible:
             continue
         cal = calibration_for_curve(session, curve)
         if cal is None:
             continue
+        validate_calibration(cal)
+        used.append((curve, cal))
+    col_set = {csv_coordinate_columns(cal) for _, cal in used}
+    if len(col_set) > 1:
+        raise CalibrationError(
+            "Mixed coordinate types cannot share one CSV header",
+            hint="Hide or export curves that share the same coordinate system",
+        )
+    header_cal = used[0][1] if used else session.calibration
+    buf = io.StringIO()
+    for line in _csv_figure_comment_lines(session):
+        buf.write(line + "\n")
+    units = None
+    for _, cal in used:
+        units = csv_units_line(cal)
+        if units:
+            break
+    if not units:
+        units = csv_units_line(session.calibration)
+    if units:
+        buf.write(units + "\n")
+    writer = csv.writer(buf)
+    xname, yname = csv_coordinate_columns(header_cal)
+    writer.writerow(["curve_id", "curve_label", xname, yname])
+    for curve, cal in used:
         for p in curve.points:
             x, y = pixel_to_data(cal, p.pixel)
-            if bar:
+            if cal.coords_type == "bar":
                 writer.writerow(
                     [
                         curve.id,

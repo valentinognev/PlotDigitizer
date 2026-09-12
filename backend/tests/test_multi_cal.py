@@ -5,6 +5,7 @@ import csv
 import io
 import json
 
+import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
@@ -142,6 +143,87 @@ def test_export_csv_uses_each_curve_cal():
     assert abs(float(by_id["c-right"][3]) - 50.0) < 1e-9
     assert abs(float(by_id["c-left"][2]) - 5.0) < 1e-9
     assert abs(float(by_id["c-right"][2]) - 5.0) < 1e-9
+
+
+def test_export_csv_rejects_mixed_coords_type_headers():
+    from app.calibration.calibration import CalibrationError
+
+    cartesian = _linear_cal(y_max=10.0, cal_id="cal-xy", name="Left")
+    bar = Calibration(
+        id="cal-bar",
+        name="Bar",
+        x=CalibrationAxis(scale="linear", ref_points=[]),
+        y=CalibrationAxis(
+            scale="linear",
+            ref_points=[
+                RefPoint(pixel=(50.0, 100.0), value=0.0),
+                RefPoint(pixel=(50.0, 0.0), value=10.0),
+            ],
+        ),
+        coords_type="bar",
+    )
+    session = _session(
+        calibration=cartesian,
+        calibrations=[cartesian, bar],
+        curves=[
+            Curve(
+                id="c-xy",
+                label="xy",
+                calibration_id="cal-xy",
+                points=[Point(pixel=(50.0, 50.0), origin="user")],
+            ),
+            Curve(
+                id="c-bar",
+                label="bars",
+                calibration_id="cal-bar",
+                points=[Point(pixel=(50.0, 50.0), origin="user", label="Bar 1")],
+            ),
+        ],
+    )
+    with pytest.raises(CalibrationError, match="[Mm]ixed"):
+        export_csv(session)
+
+
+def test_export_csv_bar_bound_curve_uses_label_value_even_if_singleton_cartesian():
+    cartesian = _linear_cal(y_max=10.0, cal_id="cal-xy", name="Left")
+    bar = Calibration(
+        id="cal-bar",
+        name="Bar",
+        x=CalibrationAxis(scale="linear", ref_points=[]),
+        y=CalibrationAxis(
+            scale="linear",
+            ref_points=[
+                RefPoint(pixel=(50.0, 100.0), value=0.0),
+                RefPoint(pixel=(50.0, 0.0), value=10.0),
+            ],
+        ),
+        coords_type="bar",
+    )
+    session = _session(
+        calibration=cartesian,
+        calibrations=[cartesian, bar],
+        curves=[
+            Curve(
+                id="c-bar",
+                label="bars",
+                calibration_id="cal-bar",
+                visible=True,
+                points=[Point(pixel=(50.0, 50.0), origin="user", label="Bar 1")],
+            ),
+            Curve(
+                id="c-hidden",
+                label="xy",
+                calibration_id="cal-xy",
+                visible=False,
+                points=[Point(pixel=(50.0, 50.0), origin="user")],
+            ),
+        ],
+    )
+    lines = [ln for ln in export_csv(session).splitlines() if ln and not ln.startswith("#")]
+    assert lines[0] == "curve_id,curve_label,label,value"
+    parts = lines[1].split(",")
+    assert parts[2] == "Bar 1"
+    assert abs(float(parts[3]) - 5.0) < 1e-9
 
 
 def test_load_legacy_project_fills_calibrations_and_assigns_id():

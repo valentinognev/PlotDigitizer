@@ -4,6 +4,7 @@ import { extractThisColourDisabled } from '../lib/colorFilter'
 import {
   defaultXStepFromCalibration,
   sampleDxDisabled,
+  sampleXStepReady,
   xStepSeedKey,
 } from '../lib/xStepDefaults'
 import type { Calibration, CanvasMode } from '../types'
@@ -93,8 +94,7 @@ export function AutoDigitizePanel({
     onCanvasModeChange(canvasMode === mode ? 'select' : mode)
   }
 
-  const sampleReady =
-    Number.isFinite(xmin) && Number.isFinite(xmax) && Number.isFinite(delx) && delx !== 0
+  const sampleReady = sampleXStepReady(xmin, xmax, delx)
 
   return (
     <section className="rounded-lg border border-slate-700 bg-slate-800/50 p-3">
