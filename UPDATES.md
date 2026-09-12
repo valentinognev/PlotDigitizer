@@ -40,6 +40,10 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [2.10.0] — 2026-09-12
+### Added
+- Curves panel: Up/Down buttons reorder curves in the list (preview, canvas overlay, and export follow that order).
+
 ## [2.9.1] — 2026-09-12
 ### Changed
 - README documents clipboard paste, CSV sidecar PNG, and JSON embedded image; status is v2.9.

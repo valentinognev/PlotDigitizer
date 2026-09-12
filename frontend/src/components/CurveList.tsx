@@ -1,5 +1,6 @@
 import { DEFAULT_POINT_COUNT } from '../lib/constants'
 import { paletteColor } from '../lib/colors'
+import { moveCurve } from '../lib/curves'
 import type { CanvasMode, Curve } from '../types'
 
 interface Props {
@@ -167,6 +168,24 @@ export function CurveList({
                 onClick={() => onActiveChange(curve.id)}
               >
                 {curve.label} ({curve.points.length} pts)
+              </button>
+              <button
+                type="button"
+                disabled={busy || moveCurve(curves, curve.id, 'up') === curves}
+                title="Move curve up"
+                onClick={() => onCurveChange(moveCurve(curves, curve.id, 'up'))}
+                className="shrink-0 rounded px-1.5 py-0.5 text-slate-400 hover:bg-slate-700 hover:text-slate-200 disabled:opacity-50"
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                disabled={busy || moveCurve(curves, curve.id, 'down') === curves}
+                title="Move curve down"
+                onClick={() => onCurveChange(moveCurve(curves, curve.id, 'down'))}
+                className="shrink-0 rounded px-1.5 py-0.5 text-slate-400 hover:bg-slate-700 hover:text-slate-200 disabled:opacity-50"
+              >
+                ↓
               </button>
               <button
                 type="button"
