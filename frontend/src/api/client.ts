@@ -134,6 +134,7 @@ export async function patchSessionPreferences(
   id: string,
   body: {
     calibration?: Calibration
+    calibrations?: Calibration[]
     manual_calibration?: boolean
     workspace?: WorkspaceState | null
     figure?: FigureMeta

@@ -4,9 +4,25 @@ const EMPTY_FIGURE: FigureMeta = { title: '', xlabel: '', ylabel: '' }
 
 export interface PreferencesPatch {
   calibration?: Calibration
+  calibrations?: Calibration[]
   manual_calibration?: boolean
   workspace?: Session['workspace']
   figure?: FigureMeta
+}
+
+function upsertCalibrationList(list: Calibration[] | undefined, cal: Calibration): Calibration[] {
+  const current = list ?? []
+  if (!cal.id) {
+    if (!current.length) return [cal]
+    return current.map((item, i) => (i === 0 ? cal : item))
+  }
+  const idx = current.findIndex((item) => item.id === cal.id)
+  if (idx >= 0) {
+    const next = current.slice()
+    next[idx] = cal
+    return next
+  }
+  return [...current, cal]
 }
 
 /**
@@ -16,11 +32,21 @@ export interface PreferencesPatch {
  * unrelated field (e.g. `figure`) must not imply a calibration change.
  */
 export function applyPreferencesPatchLocal(current: Session, patch: PreferencesPatch): Session {
+  const calibrations =
+    patch.calibration !== undefined
+      ? upsertCalibrationList(
+          patch.calibrations !== undefined ? patch.calibrations : current.calibrations,
+          patch.calibration,
+        )
+      : patch.calibrations !== undefined
+        ? patch.calibrations
+        : current.calibrations
   return {
     ...current,
     ...(patch.calibration !== undefined
       ? { calibration: patch.calibration, manual_calibration: true }
       : {}),
+    ...(patch.calibration !== undefined || patch.calibrations !== undefined ? { calibrations } : {}),
     ...(patch.figure !== undefined ? { figure: patch.figure } : {}),
   }
 }
@@ -30,6 +56,7 @@ export function mergeSessionUpdate(prev: Session | null, saved: Session): Sessio
   return {
     ...saved,
     calibration: saved.calibration ?? prev?.calibration ?? null,
+    calibrations: saved.calibrations ?? prev?.calibrations,
     manual_calibration:
       saved.manual_calibration !== undefined
         ? saved.manual_calibration
@@ -46,6 +73,7 @@ export function mergePreferencesUpdate(prev: Session | null, saved: Session): Se
   return {
     ...prev,
     calibration: saved.calibration ?? prev.calibration,
+    calibrations: saved.calibrations ?? prev.calibrations,
     manual_calibration:
       saved.manual_calibration !== undefined
         ? saved.manual_calibration

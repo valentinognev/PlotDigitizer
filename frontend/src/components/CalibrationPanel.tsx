@@ -24,6 +24,7 @@ import { formatModelLabel, formatResolution } from '../lib/axesChecker'
 
 interface Props {
   calibration: Calibration | null
+  calibrations: Calibration[]
   axisPlaceStep: AxisBoundKey | null
   preciseMode: boolean
   scaleBarStep: 'a' | 'b' | null
@@ -33,6 +34,9 @@ interface Props {
   onStartPrecisePlacement: () => void
   onStartScaleBarPlacement: () => void
   onChange: (cal: Calibration) => void
+  onSelect: (cal: Calibration) => void
+  onAdd: () => void
+  onDelete: () => void
   onSave: () => void
 }
 
@@ -99,6 +103,7 @@ function BoundInput({
 
 export function CalibrationPanel({
   calibration,
+  calibrations,
   axisPlaceStep,
   preciseMode,
   scaleBarStep,
@@ -108,6 +113,9 @@ export function CalibrationPanel({
   onStartPrecisePlacement,
   onStartScaleBarPlacement,
   onChange,
+  onSelect,
+  onAdd,
+  onDelete,
   onSave,
 }: Props) {
   const coords: CoordsType = calibration?.coords_type ?? 'cartesian'
@@ -178,6 +186,49 @@ export function CalibrationPanel({
     <section className="min-w-0 max-w-full flex-1 basis-72 overflow-hidden rounded-lg border border-slate-700 bg-slate-800/50 px-2 py-1 text-[11px]">
       <div className="mb-1 flex flex-wrap items-center gap-2">
         <h3 className="shrink-0 font-semibold text-slate-200">Calibration</h3>
+        {calibrations.length > 0 && (
+          <select
+            className="max-w-[8rem] rounded border border-slate-600 bg-slate-900 px-1 py-0.5"
+            value={calibration?.id ?? calibrations[0]?.id ?? ''}
+            onChange={(e) => {
+              const next = calibrations.find((cal) => cal.id === e.target.value)
+              if (next) onSelect(next)
+            }}
+            title="Named axes"
+          >
+            {calibrations.map((cal, i) => (
+              <option key={cal.id ?? `cal-${i}`} value={cal.id ?? ''}>
+                {cal.name?.trim() || 'Axes'}
+              </option>
+            ))}
+          </select>
+        )}
+        <button
+          type="button"
+          onClick={onAdd}
+          className="shrink-0 rounded bg-slate-600 px-2 py-0.5 font-medium hover:bg-slate-500"
+        >
+          Add
+        </button>
+        <button
+          type="button"
+          disabled={calibrations.length <= 1}
+          title={calibrations.length <= 1 ? 'Keep at least one axes set' : 'Delete this axes set'}
+          onClick={onDelete}
+          className="shrink-0 rounded bg-slate-600 px-2 py-0.5 font-medium hover:bg-slate-500 disabled:opacity-50"
+        >
+          Delete
+        </button>
+        {calibration && (
+          <label className="inline-flex items-center gap-1 text-slate-300">
+            Name
+            <input
+              className="w-[6.5rem] rounded border border-slate-600 bg-slate-900 px-1 py-0.5"
+              value={calibration.name ?? 'Axes'}
+              onChange={(e) => onChange({ ...calibration, name: e.target.value })}
+            />
+          </label>
+        )}
         <select
           className="rounded border border-slate-600 bg-slate-900 px-1 py-0.5"
           value={coords}

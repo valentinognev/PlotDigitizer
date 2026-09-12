@@ -23,12 +23,12 @@ data-space preview, and project save/load — without relying on external AI ser
 PlotDigitizer uses a **manual-first pipeline**:
 
 1. **Upload or paste** a plot image (Ctrl+V / Cmd+V; including photos taken at an angle).
-2. **Calibrate** in Cartesian (four bounds or 3+ precise axis points, linear, log, or date), **Polar** (θ units, radius scale, origin radius), **Map** (two-point scale bar), or **Bar** (two-point value axis, optional rotated/horizontal). Affine/projective models map rotated or perspective photos without resampling ink.
+2. **Calibrate** in Cartesian (four bounds or 3+ precise axis points, linear, log, or date), **Polar** (θ units, radius scale, origin radius), **Map** (two-point scale bar), or **Bar** (two-point value axis, optional rotated/horizontal). Affine/projective models map rotated or perspective photos without resampling ink. Add extra named axes and bind each curve via **Axes** in the curve list.
 3. **Unskew** *(optional)*: preview and apply perspective or mesh correction when you still want a straightened image.
 4. **Condition** the curve: per-curve colour filter and optional grid removal; toggle the binary mask overlay.
 5. **Place** points on each curve, or **auto-digitize**: draw a **region mask** (box / pen / erase), run **Averaging window** (ΔX/ΔY px), **Sample Δx** in data space, segment-fill along ink, or **point-match** for scatter markers (sample one marker, accept/reject ranked candidates).
 6. **Refine** line curves with **Improve** (mask corridor) and **Densify**. Scatter curves (`connect_as: scatter`) stay markers-only.
-7. Watch the **preview chart** in data space (cartesian, polar θ/R, map units, or bar labels vs values).
+7. Watch the **preview chart** in data space (cartesian, polar θ/R, map units, or bar labels vs values). Two cartesian axes overlay a second Y (`yaxis2`).
 8. **Export** CSV (numbers plus a sidecar PNG of the working plot, same stem) or **Save JSON** project (`.pdproj.json`, image embedded). CSV columns follow the coordinate system (`x,y` / `theta,R` / `x,y` plus units / `label,value` for bar).
 
 **Pixel coordinates are the source of truth.** Data-space values are always derived through the
@@ -120,7 +120,8 @@ cd frontend && npm test
 1. **Upload** a plot image, **paste** one (Ctrl+V / Cmd+V; ignored while typing in a text field), or **drop** an image file onto the window.
 2. Click **Place bounds** in the Calibration panel, then click the plot four times: X min, X max,
    Y min, Y max. Optional: **Precise (3+ points)** for affine/projective, **Polar**, **Map**
-   (scale bar), or **Bar** (P1/P2 on the value axis, v1/v2, Rotated/horizontal).
+   (scale bar), or **Bar** (P1/P2 on the value axis, v1/v2, Rotated/horizontal). **Add** extra named
+   axes when a figure needs a second Y; bind each curve in the Curves list.
 3. Enter the **axis values** (linear, log, or date per axis). Date axes store Unix days from 1970-01-01 UTC; type tokens like `YYYY/MM/DD`.
 4. *(Optional, skewed/rotated photos)* In the **Unskew** panel, choose **Perspective** or
    **Mesh**, adjust the mesh boundary if needed, click **Preview corrected** to review the

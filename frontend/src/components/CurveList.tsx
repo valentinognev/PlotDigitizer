@@ -1,10 +1,11 @@
 import { DEFAULT_POINT_COUNT } from '../lib/constants'
 import { paletteColor } from '../lib/colors'
 import { moveCurve } from '../lib/curves'
-import type { CanvasMode, Curve } from '../types'
+import type { Calibration, CanvasMode, Curve } from '../types'
 
 interface Props {
   curves: Curve[]
+  calibrations: Calibration[]
   activeCurveId: string | null
   placementCurveId: string | null
   selectedPointIds: string[]
@@ -23,6 +24,7 @@ interface Props {
 
 export function CurveList({
   curves,
+  calibrations,
   activeCurveId,
   placementCurveId,
   selectedPointIds,
@@ -252,6 +254,28 @@ export function CurveList({
                   <option value="scatter">Scatter</option>
                 </select>
               </label>
+              {calibrations.length > 0 && (
+                <label className="flex items-center gap-1 text-slate-300">
+                  Axes
+                  <select
+                    value={curve.calibration_id ?? ''}
+                    onChange={(e) =>
+                      updateCurve(curve.id, {
+                        calibration_id: e.target.value || null,
+                      })
+                    }
+                    className="max-w-[7.5rem] rounded border border-slate-600 bg-slate-900 px-1 py-0.5"
+                    title="Axes used to map this curve"
+                  >
+                    <option value="">Active</option>
+                    {calibrations.map((cal, i) => (
+                      <option key={cal.id ?? `cal-${i}`} value={cal.id ?? ''}>
+                        {cal.name?.trim() || 'Axes'}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <button
                 type="button"
                 disabled={busy || curve.points.length < 2 || curve.connect_as === 'scatter'}

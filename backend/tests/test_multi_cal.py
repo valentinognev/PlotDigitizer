@@ -185,3 +185,46 @@ def test_patch_preferences_upserts_calibration_by_id():
     ids = [c["id"] for c in body["calibrations"]]
     assert ids == ["cal-1", "cal-2"]
     assert body["calibrations"][0]["name"] == "First"
+
+
+def test_patch_preferences_replaces_calibrations_list():
+    res = client.post("/sessions", files={"file": ("plot.png", TINY_PNG_BYTES, "image/png")})
+    session_id = res.json()["id"]
+    first = _linear_cal(y_max=10.0, cal_id="cal-1", name="First").model_dump()
+    second = _linear_cal(y_max=100.0, cal_id="cal-2", name="Second").model_dump()
+    client.patch(f"/sessions/{session_id}/preferences", json={"calibration": first})
+    client.patch(f"/sessions/{session_id}/preferences", json={"calibration": second})
+
+    patch = client.patch(
+        f"/sessions/{session_id}/preferences",
+        json={"calibration": first, "calibrations": [first]},
+    )
+    assert patch.status_code == 200, patch.text
+    body = patch.json()
+    assert body["calibration"]["id"] == "cal-1"
+    assert [c["id"] for c in body["calibrations"]] == ["cal-1"]
+
+
+def test_undo_restores_calibrations_list():
+    res = client.post("/sessions", files={"file": ("plot.png", TINY_PNG_BYTES, "image/png")})
+    session_id = res.json()["id"]
+    first = _linear_cal(y_max=10.0, cal_id="cal-1", name="First").model_dump()
+    second = _linear_cal(y_max=100.0, cal_id="cal-2", name="Second").model_dump()
+    client.patch(f"/sessions/{session_id}/preferences", json={"calibration": first})
+    client.patch(f"/sessions/{session_id}/preferences", json={"calibration": second})
+    saved = client.post(
+        f"/sessions/{session_id}/calibration",
+        json={"calibration": second, "manual_calibration": True},
+    )
+    assert saved.status_code == 200, saved.text
+    assert [c["id"] for c in saved.json()["calibrations"]] == ["cal-1", "cal-2"]
+
+    client.patch(
+        f"/sessions/{session_id}/preferences",
+        json={"calibration": first, "calibrations": [first]},
+    )
+    undone = client.post(f"/sessions/{session_id}/undo")
+    assert undone.status_code == 200, undone.text
+    body = undone.json()
+    assert [c["id"] for c in body["calibrations"]] == ["cal-1", "cal-2"]
+    assert body["calibration"]["id"] == "cal-2"

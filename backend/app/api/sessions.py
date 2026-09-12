@@ -194,6 +194,13 @@ def set_calibration(session_id: str, body: CalibrationUpdate) -> SessionPublic:
 @router.patch("/{session_id}/preferences", response_model=SessionPublic)
 def patch_preferences(session_id: str, body: SessionPreferencesPatch) -> SessionPublic:
     stored = _require(session_id)
+    if body.calibrations is not None:
+        stored.session.calibrations = list(body.calibrations)
+        ids = {cal.id for cal in stored.session.calibrations}
+        if stored.session.calibration is None or stored.session.calibration.id not in ids:
+            stored.session.calibration = (
+                stored.session.calibrations[0] if stored.session.calibrations else None
+            )
     if body.calibration is not None:
         upsert_session_calibration(stored.session, body.calibration)
         stored.session.manual_calibration = True

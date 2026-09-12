@@ -11,9 +11,9 @@ for setup and workflow.
 | `EditorCanvas.tsx`   | Konva image canvas — points, calibration marks, unskew/mesh preview warp |
 | `UnskewPanel.tsx`    | Perspective / Mesh mode; preview corrected / Apply / Cancel / Reset mesh |
 | `MeshGridOverlay.tsx`| 4×4 boundary grid editor (mesh mode, hidden during preview)          |
-| `CalibrationPanel.tsx` | Manual axis bounds: place on plot, enter min/max values            |
-| `CurveList.tsx`      | Curves, place-points mode, Improve / Densify per curve               |
-| `PreviewChart.tsx`   | Plotly live preview in data-space                                    |
+| `CalibrationPanel.tsx` | Named axes list (Add / Rename / Delete); place bounds; the selected set is `session.calibration` |
+| `CurveList.tsx`      | Curves, place-points mode, Improve / Densify, per-curve Axes select               |
+| `PreviewChart.tsx`   | Plotly live preview in data-space (dual-Y overlay when two cartesian cals)         |
 | `ExportPanel.tsx`    | Open/save project, CSV (+ sidecar PNG) / JSON export, curve import     |
 
 Top toolbar order: **Unskew** → **Calibration** → **Export**.

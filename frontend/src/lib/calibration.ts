@@ -18,6 +18,8 @@ export function createEmptyCalibration(width: number, height: number): Calibrati
   const yTop = my
   const yBottom = height - my
   return {
+    id: crypto.randomUUID(),
+    name: 'Axes',
     source: 'manual',
     coords_type: 'cartesian',
     model: 'auto',
@@ -40,6 +42,14 @@ export function createEmptyCalibration(width: number, height: number): Calibrati
       ],
     },
   }
+}
+
+export function nextCalibrationName(existing: Calibration[]): string {
+  const names = new Set(existing.map((cal) => (cal.name ?? 'Axes').trim() || 'Axes'))
+  if (!names.has('Axes')) return 'Axes'
+  let n = 2
+  while (names.has(`Axes ${n}`)) n += 1
+  return `Axes ${n}`
 }
 
 export function showFourBoundMarks(cal: Calibration | null | undefined): boolean {

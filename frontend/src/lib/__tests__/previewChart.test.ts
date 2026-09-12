@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { buildPreviewConfig, connectAsToPlotlyMode, previewEmptyReason } from '../previewChart'
+import {
+  axisTrackForCurve,
+  buildPreviewConfig,
+  connectAsToPlotlyMode,
+  previewEmptyReason,
+} from '../previewChart'
 import type { Calibration, Curve } from '../../types'
 
 describe('connectAsToPlotlyMode', () => {
@@ -228,6 +233,61 @@ describe('buildPreviewConfig', () => {
     expect(layout.xaxis?.title).toBe('Distance')
     expect(String(layout.yaxis?.title)).toContain('km')
   })
+
+  it('maps each curve through its own cartesian cal and overlays y2 for the second', () => {
+    const left: Calibration = {
+      ...cartesianCal(),
+      id: 'cal-left',
+      name: 'Left',
+      y: {
+        scale: 'linear',
+        ref_points: [
+          { pixel: [0, 100], value: 0 },
+          { pixel: [0, 0], value: 10 },
+        ],
+      },
+    }
+    const right: Calibration = {
+      ...cartesianCal(),
+      id: 'cal-right',
+      name: 'Right',
+      y: {
+        scale: 'linear',
+        ref_points: [
+          { pixel: [0, 100], value: 0 },
+          { pixel: [0, 0], value: 100 },
+        ],
+      },
+    }
+    const leftCurve: Curve = {
+      ...curve,
+      calibration_id: 'cal-left',
+      points: [{ id: 'p1', pixel: [0, 0], origin: 'user' }],
+    }
+    const rightCurve: Curve = {
+      ...curve,
+      id: 'c2',
+      label: 'B',
+      color: '#0f0',
+      calibration_id: 'cal-right',
+      points: [{ id: 'p2', pixel: [0, 0], origin: 'user' }],
+    }
+    const cfg = buildPreviewConfig(
+      [leftCurve, rightCurve],
+      { calibration: left, calibrations: [left, right] },
+      200,
+    )
+    expect(cfg.traces).toHaveLength(2)
+    expect(cfg.traces[0].yaxis).toBeUndefined()
+    expect(cfg.traces[1].yaxis).toBe('y2')
+    expect((cfg.traces[0].y as number[])[0]).toBeCloseTo(10, 12)
+    expect((cfg.traces[1].y as number[])[0]).toBeCloseTo(100, 12)
+    const layout = cfg.layout as PreviewLayout & {
+      yaxis2?: { overlaying?: string; side?: string }
+    }
+    expect(layout.yaxis2?.overlaying).toBe('y')
+    expect(layout.yaxis2?.side).toBe('right')
+  })
 })
 
 describe('previewEmptyReason', () => {
@@ -263,5 +323,37 @@ describe('previewEmptyReason', () => {
       },
     }
     expect(previewEmptyReason(cal, true)).toBeNull()
+  })
+})
+
+describe('axisTrackForCurve', () => {
+  const left: Calibration = { ...cartesianCal(), id: 'cal-left', name: 'Left' }
+  const right: Calibration = { ...cartesianCal(), id: 'cal-right', name: 'Right' }
+  const extra: Calibration = { ...cartesianCal(), id: 'cal-extra', name: 'Extra' }
+  const polar: Calibration = { ...polarCal(), id: 'cal-polar', name: 'Polar' }
+
+  function bound(id: string | null): Curve {
+    return { ...curve, calibration_id: id }
+  }
+
+  it('assigns y to the first cartesian calibration', () => {
+    expect(axisTrackForCurve(bound('cal-left'), [left, right])).toBe('y')
+  })
+
+  it('assigns y2 to the second distinct cartesian calibration', () => {
+    expect(axisTrackForCurve(bound('cal-right'), [left, right])).toBe('y2')
+  })
+
+  it('still plots a third cartesian calibration on y2 (first vs rest)', () => {
+    expect(axisTrackForCurve(bound('cal-extra'), [left, right, extra])).toBe('y2')
+  })
+
+  it('assigns y when the curve has no calibration_id (falls back to first)', () => {
+    expect(axisTrackForCurve(bound(null), [left, right])).toBe('y')
+  })
+
+  it('ignores a leading polar calibration when choosing the first cartesian track', () => {
+    expect(axisTrackForCurve(bound('cal-left'), [polar, left, right])).toBe('y')
+    expect(axisTrackForCurve(bound('cal-right'), [polar, left, right])).toBe('y2')
   })
 })

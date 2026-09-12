@@ -23,6 +23,7 @@ const PLOT_CONFIG = {
 interface Props {
   curves: Curve[]
   calibration: Calibration | null
+  calibrations?: Calibration[]
   figure?: FigureMeta
 }
 
@@ -35,6 +36,7 @@ function hashStr(s: string): number {
 function plotRevision(
   curves: Curve[],
   calibration: Calibration | null,
+  calibrations: Calibration[] | undefined,
   figure?: FigureMeta,
 ): number {
   let revision = 0
@@ -43,26 +45,29 @@ function plotRevision(
     revision += hashStr(figure.xlabel) * 5
     revision += hashStr(figure.ylabel) * 7
   }
-  if (calibration) {
-    revision += calibration.x.ref_points.length * 17
-    revision += calibration.y.ref_points.length * 31
-    revision += calibration.x.scale === 'log' ? 1 : 0
-    revision += calibration.y.scale === 'log' ? 2 : 0
-    revision += hashStr(calibration.coords_type ?? 'cartesian') * 41
-    revision += hashStr(calibration.theta_units ?? 'degrees') * 43
-    revision += Math.round((calibration.origin_radius ?? 0) * 1000)
-    for (const ref of calibration.x.ref_points) {
+  const cals = calibrations?.length ? calibrations : calibration ? [calibration] : []
+  for (const cal of cals) {
+    revision += hashStr(cal.id ?? '') * 19
+    revision += hashStr(cal.name ?? '') * 23
+    revision += cal.x.ref_points.length * 17
+    revision += cal.y.ref_points.length * 31
+    revision += cal.x.scale === 'log' ? 1 : 0
+    revision += cal.y.scale === 'log' ? 2 : 0
+    revision += hashStr(cal.coords_type ?? 'cartesian') * 41
+    revision += hashStr(cal.theta_units ?? 'degrees') * 43
+    revision += Math.round((cal.origin_radius ?? 0) * 1000)
+    for (const ref of cal.x.ref_points) {
       revision += Math.round(ref.value * 10) + Math.round(ref.pixel[0])
     }
-    for (const ref of calibration.y.ref_points) {
+    for (const ref of cal.y.ref_points) {
       revision += Math.round(ref.value * 10) + Math.round(ref.pixel[1])
     }
-    for (const pt of calibration.axis_points ?? []) {
+    for (const pt of cal.axis_points ?? []) {
       revision += Math.round(pt.pixel[0]) + Math.round(pt.pixel[1])
       if (pt.x_value != null) revision += Math.round(pt.x_value * 10)
       if (pt.y_value != null) revision += Math.round(pt.y_value * 10)
     }
-    const bar = calibration.scale_bar
+    const bar = cal.scale_bar
     if (bar) {
       revision += Math.round(bar.pixel_a[0]) + Math.round(bar.pixel_a[1])
       revision += Math.round(bar.pixel_b[0]) + Math.round(bar.pixel_b[1])
@@ -73,6 +78,7 @@ function plotRevision(
   for (const curve of curves) {
     revision += curve.points.length * 13
     revision += curve.visible ? 1 : 0
+    revision += hashStr(curve.calibration_id ?? '') * 29
   }
   return revision
 }
@@ -81,10 +87,16 @@ function hasVisiblePoints(curves: Curve[]): boolean {
   return curves.some((c) => c.visible && c.points.length > 0)
 }
 
-export const PreviewChart = memo(function PreviewChart({ curves, calibration, figure }: Props) {
+export const PreviewChart = memo(function PreviewChart({
+  curves,
+  calibration,
+  calibrations,
+  figure,
+}: Props) {
   const plotHostRef = useRef<HTMLDivElement>(null)
   const [plotHeight, setPlotHeight] = useState(280)
-  const valid = isCalibrationValid(calibration)
+  const valid =
+    isCalibrationValid(calibration) || (calibrations ?? []).some((cal) => isCalibrationValid(cal))
 
   useEffect(() => {
     const el = plotHostRef.current
@@ -99,21 +111,21 @@ export const PreviewChart = memo(function PreviewChart({ curves, calibration, fi
 
   const traces = useMemo(
     () =>
-      valid && calibration
-        ? buildPreviewConfig(curves, calibration, plotHeight, figure).traces
+      valid
+        ? buildPreviewConfig(curves, { calibration, calibrations }, plotHeight, figure).traces
         : [],
-    [curves, calibration, valid, plotHeight, figure],
+    [curves, calibration, calibrations, valid, plotHeight, figure],
   )
   const layout = useMemo(
     () =>
-      valid && calibration
-        ? buildPreviewConfig(curves, calibration, plotHeight, figure).layout
+      valid
+        ? buildPreviewConfig(curves, { calibration, calibrations }, plotHeight, figure).layout
         : null,
-    [curves, calibration, valid, plotHeight, figure],
+    [curves, calibration, calibrations, valid, plotHeight, figure],
   )
   const revision = useMemo(
-    () => plotRevision(curves, valid ? calibration : null, figure),
-    [curves, calibration, valid, figure],
+    () => plotRevision(curves, valid ? calibration : null, calibrations, figure),
+    [curves, calibration, calibrations, valid, figure],
   )
 
   const issueCopy = formatCalibrationIssue(calibration)
@@ -145,9 +157,17 @@ export const PreviewChart = memo(function PreviewChart({ curves, calibration, fi
             </div>
           ) : (
             <Plot
-              key={calibration!.coords_type ?? 'cartesian'}
+              key={calibration?.coords_type ?? 'cartesian'}
               data={traces}
-              layout={layout ?? buildPreviewConfig(curves, calibration!, plotHeight, figure).layout}
+              layout={
+                layout ??
+                buildPreviewConfig(
+                  curves,
+                  { calibration, calibrations },
+                  plotHeight,
+                  figure,
+                ).layout
+              }
               revision={revision}
               useResizeHandler
               style={{ width: '100%', height: '100%' }}

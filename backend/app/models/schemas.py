@@ -227,6 +227,7 @@ class CalibrationUpdate(BaseModel):
 
 class SessionPreferencesPatch(BaseModel):
     calibration: Calibration | None = None
+    calibrations: list[Calibration] | None = None
     manual_calibration: bool | None = None
     workspace: WorkspaceState | None = None
     figure: FigureMeta | None = None

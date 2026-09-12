@@ -40,6 +40,14 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [2.16.0] — 2026-09-12
+### Added
+- Named axes list in Calibration: Add / Rename / Delete. `session.calibration` stays the set the panel edits; a second set appends to `calibrations`.
+- Per-curve **Axes** select binds `curve.calibration_id`. Preview maps each curve through its own cal; two cartesian sets overlay `yaxis` + `yaxis2` (`axisTrackForCurve`; third+ stay on y2).
+- Undo snapshots include `calibrations`. Preferences PATCH can replace the list (delete).
+### Changed
+- Pixel → data still uses `calibration_for_curve` (Task 16). Unskew/mesh still write the singleton without list upsert.
+
 ## [2.15.0] — 2026-09-12
 ### Added
 - Bar calibration: coords type Bar, click P1/P2 on the value axis, v1/v2, Rotated/horizontal checkbox. Placed points default to `Bar N`; canvas shows the label.

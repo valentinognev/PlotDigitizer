@@ -42,6 +42,7 @@ import { DEFAULT_POINT_COUNT } from './lib/constants'
 import {
   AXIS_PLACE_ORDER,
   createEmptyCalibration,
+  nextCalibrationName,
   setAxisBoundPixel,
 } from './lib/calibration'
 import { curvesNeedDistinctColors, rainbowColors } from './lib/colors'
@@ -939,6 +940,14 @@ export default function App() {
   const imageUrl = session ? session.image_url : null
   const imageLabel = imageSourceLabel(session?.image_source)
   const calibration = draftCalibration ?? session?.calibration ?? null
+  const calibrationsList =
+    session?.calibrations?.length
+      ? session.calibrations.map((cal) =>
+          cal.id && calibration?.id && cal.id === calibration.id ? calibration : cal,
+        )
+      : calibration
+        ? [calibration]
+        : []
   const imageWidth = session?.image_meta.width ?? 0
   const imageHeight = session?.image_meta.height ?? 0
   const hoverData =
@@ -1161,6 +1170,50 @@ export default function App() {
 
   const handleCalibrationChange = (cal: Calibration) => {
     savePreferencesQuiet({ calibration: { ...cal, source: 'manual' } }, { debounceMs: 300 })
+    bumpChecker()
+  }
+
+  const handleSelectCalibration = (cal: Calibration) => {
+    setDraftCalibration(cal)
+    savePreferencesQuiet({ calibration: cal, manual_calibration: true })
+    bumpChecker()
+  }
+
+  const handleAddCalibration = () => {
+    if (!session) return
+    const w = session.image_meta.width
+    const h = session.image_meta.height
+    const base = draftCalibration ?? createEmptyCalibration(w, h)
+    const next: Calibration = {
+      ...base,
+      id: crypto.randomUUID(),
+      name: nextCalibrationName(calibrationsList),
+      source: 'manual',
+    }
+    setDraftCalibration(next)
+    savePreferencesQuiet({ calibration: next, manual_calibration: true })
+    bumpChecker()
+  }
+
+  const handleDeleteCalibration = () => {
+    const id = draftCalibration?.id ?? calibration?.id
+    if (!id || calibrationsList.length <= 1) return
+    const remaining = calibrationsList.filter((cal) => cal.id !== id)
+    const nextActive = remaining[0]
+    if (!nextActive) return
+    setDraftCalibration(nextActive)
+    savePreferencesQuiet({
+      calibration: nextActive,
+      calibrations: remaining,
+      manual_calibration: true,
+    })
+    if (session?.curves.some((c) => c.calibration_id === id)) {
+      syncCurves(
+        session.curves.map((c) =>
+          c.calibration_id === id ? { ...c, calibration_id: null } : c,
+        ),
+      )
+    }
     bumpChecker()
   }
 
@@ -1406,6 +1459,7 @@ export default function App() {
         />
         <CalibrationPanel
           calibration={calibration}
+          calibrations={calibrationsList}
           axisPlaceStep={axisPlaceStep}
           preciseMode={preciseMode}
           scaleBarStep={scaleBarStep}
@@ -1415,6 +1469,9 @@ export default function App() {
           onStartPrecisePlacement={startPrecisePlacement}
           onStartScaleBarPlacement={startScaleBarPlacement}
           onChange={handleCalibrationChange}
+          onSelect={handleSelectCalibration}
+          onAdd={handleAddCalibration}
+          onDelete={handleDeleteCalibration}
           onSave={() =>
             session &&
             draftCalibration &&
@@ -1518,7 +1575,12 @@ export default function App() {
           </div>
           <div className="flex min-h-0 flex-col gap-2 overflow-hidden">
             <div className="min-h-0 flex-1 overflow-hidden">
-              <PreviewChart curves={session?.curves ?? []} calibration={calibration} figure={figure} />
+              <PreviewChart
+                curves={session?.curves ?? []}
+                calibration={calibration}
+                calibrations={calibrationsList}
+                figure={figure}
+              />
             </div>
             <DataTablePanel
               curves={session?.curves ?? []}
@@ -1573,6 +1635,7 @@ export default function App() {
           </div>
           <CurveList
             curves={session?.curves ?? []}
+            calibrations={calibrationsList}
             activeCurveId={activeCurveId}
             placementCurveId={placementCurveId}
             selectedPointIds={selectedPointIds}

@@ -86,6 +86,62 @@ describe('applyPreferencesPatchLocal', () => {
     expect(next.manual_calibration).toBe(true)
     expect(next.calibration).toEqual(calibration)
   })
+
+  it('upserts a named calibration into the list by id without dropping others', () => {
+    const first: NonNullable<Session['calibration']> = {
+      id: 'cal-1',
+      name: 'Axes',
+      x: { scale: 'linear', ref_points: [] },
+      y: { scale: 'linear', ref_points: [] },
+      source: 'manual',
+    }
+    const second: NonNullable<Session['calibration']> = {
+      id: 'cal-2',
+      name: 'Axes 2',
+      x: { scale: 'linear', ref_points: [] },
+      y: { scale: 'linear', ref_points: [] },
+      source: 'manual',
+    }
+    const current = baseSession({ calibration: first, calibrations: [first] })
+
+    const added = applyPreferencesPatchLocal(current, { calibration: second })
+    expect(added.calibration?.id).toBe('cal-2')
+    expect(added.calibrations?.map((c) => c.id)).toEqual(['cal-1', 'cal-2'])
+
+    const renamed = applyPreferencesPatchLocal(added, {
+      calibration: { ...second, name: 'Right' },
+    })
+    expect(renamed.calibrations?.map((c) => c.name)).toEqual(['Axes', 'Right'])
+    expect(renamed.calibration?.name).toBe('Right')
+  })
+
+  it('replaces the calibrations list when the patch includes it', () => {
+    const first: NonNullable<Session['calibration']> = {
+      id: 'cal-1',
+      name: 'Axes',
+      x: { scale: 'linear', ref_points: [] },
+      y: { scale: 'linear', ref_points: [] },
+      source: 'manual',
+    }
+    const second: NonNullable<Session['calibration']> = {
+      id: 'cal-2',
+      name: 'Axes 2',
+      x: { scale: 'linear', ref_points: [] },
+      y: { scale: 'linear', ref_points: [] },
+      source: 'manual',
+    }
+    const current = baseSession({
+      calibration: second,
+      calibrations: [first, second],
+    })
+
+    const next = applyPreferencesPatchLocal(current, {
+      calibration: first,
+      calibrations: [first],
+    })
+    expect(next.calibration?.id).toBe('cal-1')
+    expect(next.calibrations?.map((c) => c.id)).toEqual(['cal-1'])
+  })
 })
 
 describe('mergeSessionUpdate', () => {
