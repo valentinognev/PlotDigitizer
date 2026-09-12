@@ -222,3 +222,14 @@ def test_patch_preferences_round_trips_incomplete_polar_and_map_drafts():
     _assert_calibration_rejected(
         client.post(f"/sessions/{session_id}/calibration", json={"calibration": mapped})
     )
+
+
+def test_workspace_accepts_mask_canvas_modes():
+    session_id = _session_id()
+    for mode in ("mask-box", "mask-pen", "mask-erase"):
+        patch = client.patch(
+            f"/sessions/{session_id}/preferences",
+            json={"workspace": {"canvas_mode": mode}},
+        )
+        assert patch.status_code == 200, patch.text
+        assert patch.json()["workspace"]["canvas_mode"] == mode

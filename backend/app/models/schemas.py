@@ -153,7 +153,15 @@ class WorkspaceState(BaseModel):
     unskew_mode: Literal["perspective", "mesh"] | None = None
     mesh: MeshGridPayload | None = None
     canvas_mode: Literal[
-        "select", "place", "axis", "pick-color", "segment-fill", "point-match"
+        "select",
+        "place",
+        "axis",
+        "pick-color",
+        "segment-fill",
+        "point-match",
+        "mask-box",
+        "mask-pen",
+        "mask-erase",
     ] = "select"
     show_axes_checker: bool = True
     show_mask: bool = False

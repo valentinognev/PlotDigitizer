@@ -12,10 +12,13 @@ import {
   listCurveSegments,
   loadProject,
   patchCurveFilter,
+  patchCurveRegion,
   removeCurveFromPlot,
   patchCurves,
   patchSessionPreferences,
   resampleSession,
+  runAveragingWindow,
+  sampleXStep,
   setCalibration,
   shouldRevertSessionOnPrefsError,
   suggestFilter,
@@ -89,9 +92,16 @@ import { handleClipboardPaste } from './lib/clipboardPaste'
 import { formatCursorReadout } from './lib/cursorReadout'
 import { handleRootFileDragOver, handleRootFileDrop } from './lib/imageDrop'
 import { applyNudge, shouldHandleNudgeKey } from './lib/nudge'
+import {
+  addBox,
+  beginStroke,
+  clear as clearRegion,
+  isMaskCanvasMode,
+  pushPointToLastStroke,
+} from './lib/regionMask'
 import { pixelToData } from './lib/transform2d'
 import { getAxisBounds, isCalibrationValid, updateAxisBound, areCalibrationPixelsInImage, type AxisBoundKey } from './lib/transform'
-import type { Calibration, CanvasMode, ColorFilter, FigureMeta, SegmentPublic, Session } from './types'
+import type { Calibration, CanvasMode, ColorFilter, FigureMeta, RegionBox, RegionMask, SegmentPublic, Session } from './types'
 
 const EMPTY_FIGURE: FigureMeta = { title: '', xlabel: '', ylabel: '' }
 
@@ -177,6 +187,9 @@ export default function App() {
       'pick-color',
       'segment-fill',
       'point-match',
+      'mask-box',
+      'mask-pen',
+      'mask-erase',
     ]
     const restoredMode =
       ws?.canvas_mode && CANVAS_MODES.includes(ws.canvas_mode) ? ws.canvas_mode : undefined
@@ -522,6 +535,59 @@ export default function App() {
     if (canvasMode === 'segment-fill') void loadSegments()
   }, [canvasMode, minSegmentLength, activeCurveId, loadSegments])
 
+  const persistCurveRegion = (region: RegionMask, message = 'Saving region…') => {
+    if (!session || !activeCurveId) return
+    const sessionId = session.id
+    const curveId = activeCurveId
+    setSession((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        curves: prev.curves.map((c) => (c.id === curveId ? { ...c, region } : c)),
+      }
+    })
+    patchCurveRegion(sessionId, curveId, region)
+      .then((saved) => {
+        setSession((prev) => mergeSessionUpdate(prev, saved))
+        setMaskEpoch((n) => n + 1)
+      })
+      .catch((e) => {
+        toast(e instanceof Error ? e.message : message)
+      })
+  }
+
+  const handleAddRegionBox = (box: RegionBox) => {
+    if (!activeCurve) return
+    persistCurveRegion(addBox(activeCurve.region, box))
+  }
+
+  const handleAddRegionStroke = (mode: 'pen' | 'erase', points: [number, number][]) => {
+    if (!activeCurve || points.length === 0) return
+    let next = beginStroke(activeCurve.region, mode)
+    for (const pixel of points) next = pushPointToLastStroke(next, mode, pixel)
+    persistCurveRegion(next)
+  }
+
+  const handleClearRegion = () => {
+    persistCurveRegion(clearRegion(), 'Clearing region…')
+  }
+
+  const handleAveragingWindow = (dx: number, dy: number) => {
+    if (!session || !activeCurveId) return
+    run(
+      () => runAveragingWindow(session.id, activeCurveId, { dx, dy }),
+      'Averaging window…',
+    )
+  }
+
+  const handleSampleXStep = (xmin: number, xmax: number, delx: number) => {
+    if (!session || !activeCurveId) return
+    run(
+      () => sampleXStep(session.id, activeCurveId, { xmin, xmax, delx }),
+      'Sampling Δx…',
+    )
+  }
+
   const handleSegmentFillClick = (pixel: [number, number]) => {
     if (!session || !activeCurveId) return
     run(
@@ -697,7 +763,7 @@ export default function App() {
     }
     setCanvasMode(mode)
     if (mode !== 'segment-fill') setSegments([])
-    if (mode === 'place' || mode === 'point-match') {
+    if (mode === 'place' || mode === 'point-match' || isMaskCanvasMode(mode)) {
       setAxisPlaceStep(null)
       setPreciseMode(false)
       setScaleBarStep(null)
@@ -789,7 +855,7 @@ export default function App() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
-      if (canvasMode === 'segment-fill') {
+      if (canvasMode === 'segment-fill' || isMaskCanvasMode(canvasMode)) {
         setCanvasMode('select')
         setSegments([])
       }
@@ -1377,6 +1443,8 @@ export default function App() {
               }
               segments={segments}
               onSegmentFillClick={handleSegmentFillClick}
+              onAddRegionBox={handleAddRegionBox}
+              onAddRegionStroke={handleAddRegionStroke}
               onAxisPointClick={handleAxisPointClick}
               onMoveAxisPoint={handleMoveAxisPoint}
               onMoveScaleBar={handleMoveScaleBar}
@@ -1453,6 +1521,10 @@ export default function App() {
             acceptedCount={pointMatchState.accepted.length}
             onApplyAccepted={handlePointMatchApply}
             onClearCandidates={() => setPointMatchState(emptyPointMatch)}
+            calibration={calibration}
+            onClearRegion={handleClearRegion}
+            onAveragingWindow={handleAveragingWindow}
+            onSampleXStep={handleSampleXStep}
           />
           <div className="mb-2 flex h-[160px] shrink-0 items-center justify-center">
             <MagnifierView

@@ -40,6 +40,11 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [2.13.0] — 2026-09-12
+### Added
+- Auto digitize region mask: Box / Pen / Erase on the canvas, Clear region (empty mask = full image), AND'd with the colour-filter overlay (`GET /mask` refreshes after each region save).
+- Averaging window (ΔX/ΔY px, default 10) and Sample Δx (xmin/xmax/delx default from valid calibration bounds) on the Auto digitize panel.
+
 ## [2.12.1] — 2026-09-12
 ### Fixed
 - View data Precision style no longer crashes when Digits is 0: precision digits are clamped to 1–21 (0 stays valid for Fixed/Exponential/Ignore).

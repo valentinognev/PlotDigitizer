@@ -24,7 +24,8 @@ import { CandidateOverlay } from './CandidateOverlay'
 import type { MaskView } from './FilterPanel'
 import type { SegmentLite } from '../lib/segments'
 import { flattenPolyline, nearestSegment } from '../lib/segments'
-import type { Calibration, CanvasMode, Curve, MatchCandidate, Point } from '../types'
+import { boxFromDrag, isMaskCanvasMode } from '../lib/regionMask'
+import type { Calibration, CanvasMode, Curve, MatchCandidate, Point, RegionBox } from '../types'
 
 interface Props {
   imageUrl: string | null
@@ -64,6 +65,8 @@ interface Props {
   maskView?: MaskView
   segments: SegmentLite[]
   onSegmentFillClick: (pixel: [number, number]) => void
+  onAddRegionBox?: (box: RegionBox) => void
+  onAddRegionStroke?: (mode: 'pen' | 'erase', points: [number, number][]) => void
   onHoverPixel: (pixel: [number, number] | null) => void
   cursorReadout?: string
 }
@@ -159,6 +162,8 @@ export function EditorCanvas({
   maskView = 'none',
   segments,
   onSegmentFillClick,
+  onAddRegionBox,
+  onAddRegionStroke,
   onHoverPixel,
   cursorReadout,
 }: Props) {
@@ -190,11 +195,22 @@ export function EditorCanvas({
   stagePosRef.current = stagePos
   const [viewSize, setViewSize] = useState({ w: 800, h: 500 })
   const [hoverSegIndex, setHoverSegIndex] = useState<number | null>(null)
+  const [maskBox, setMaskBox] = useState<ImageBox | null>(null)
+  const [maskStroke, setMaskStroke] = useState<[number, number][] | null>(null)
+  const maskBoxStartRef = useRef<[number, number] | null>(null)
   const filling = canvasMode === 'segment-fill'
+  const masking = isMaskCanvasMode(canvasMode)
 
   useEffect(() => {
     if (!filling) setHoverSegIndex(null)
   }, [filling])
+
+  useEffect(() => {
+    if (masking) return
+    setMaskBox(null)
+    setMaskStroke(null)
+    maskBoxStartRef.current = null
+  }, [masking])
 
   const selectedSet = new Set(selectedPointIds)
   const multiSelected = selectedPointIds.length > 1
@@ -472,7 +488,7 @@ export function EditorCanvas({
   }
 
   const handleStageMouseDown = (e: KonvaEventObject<MouseEvent>) => {
-    if (!isBackgroundTarget(e.target)) return
+    if (!masking && !isBackgroundTarget(e.target)) return
     if (e.evt.button !== 0 && !(canvasMode === 'point-match' && e.evt.button === 2)) return
 
     const stage = e.target.getStage()
@@ -483,6 +499,17 @@ export function EditorCanvas({
     const panGesture = spaceDownRef.current
     if (panGesture) {
       setStageDraggable(true)
+      return
+    }
+    if (canvasMode === 'mask-box') {
+      maskBoxStartRef.current = [x, y]
+      setMaskBox({ x, y, w: 0, h: 0 })
+      setStageDraggable(false)
+      return
+    }
+    if (canvasMode === 'mask-pen' || canvasMode === 'mask-erase') {
+      setMaskStroke([[x, y]])
+      setStageDraggable(false)
       return
     }
     if (filling) {
@@ -564,6 +591,15 @@ export function EditorCanvas({
       return
     }
 
+    if (canvasMode === 'mask-box' && maskBoxStartRef.current) {
+      setMaskBox(boxFromDrag(maskBoxStartRef.current, [x, y]))
+      return
+    }
+    if (maskStroke) {
+      setMaskStroke((prev) => (prev ? [...prev, [x, y]] : prev))
+      return
+    }
+
     if (!marquee) return
     setMarqueeBox({
       x: Math.min(marquee.start[0], x),
@@ -574,6 +610,27 @@ export function EditorCanvas({
   }
 
   const handleMouseUp = () => {
+    if (canvasMode === 'mask-box' && maskBox && maskBoxStartRef.current) {
+      if (maskBox.w > MARQUEE_MIN && maskBox.h > MARQUEE_MIN) {
+        const a = toOriginalCoords([maskBox.x, maskBox.y])
+        const b = toOriginalCoords([maskBox.x + maskBox.w, maskBox.y + maskBox.h])
+        onAddRegionBox?.(boxFromDrag(a, b))
+        suppressNextClickRef.current = true
+      }
+      setMaskBox(null)
+      maskBoxStartRef.current = null
+    }
+    if (maskStroke && (canvasMode === 'mask-pen' || canvasMode === 'mask-erase')) {
+      const mode = canvasMode === 'mask-erase' ? 'erase' : 'pen'
+      if (maskStroke.length >= 1) {
+        onAddRegionStroke?.(
+          mode,
+          maskStroke.map((p) => toOriginalCoords(p)),
+        )
+        suppressNextClickRef.current = true
+      }
+      setMaskStroke(null)
+    }
     if (marqueeBox && marqueeBox.w > MARQUEE_MIN && marqueeBox.h > MARQUEE_MIN && marquee) {
       const ids = pointsInRect(curves, marqueeBox, (pt) => toDisplayCoords(pt.pixel))
       if (ids.length) onSelectPoints(ids, marquee.additive)
@@ -582,7 +639,9 @@ export function EditorCanvas({
     }
     setMarquee(null)
     setMarqueeBox(null)
-    setStageDraggable(!filling && canvasMode !== 'place' && !axisPlaceStep && spaceDownRef.current)
+    setStageDraggable(
+      !filling && !masking && canvasMode !== 'place' && !axisPlaceStep && spaceDownRef.current,
+    )
   }
 
   const prepareGroupDrag = (pt: Point) => {
@@ -670,7 +729,9 @@ export function EditorCanvas({
         onMouseMove={handleMouseMove}
         onMouseLeave={() => onHoverPixel(null)}
         onMouseUp={handleMouseUp}
-        draggable={stageDraggable && (canvasMode === 'select' || spacePan) && !axisPlaceStep && !filling}
+        draggable={
+          stageDraggable && (canvasMode === 'select' || spacePan) && !axisPlaceStep && !filling && !masking
+        }
         x={stagePos.x}
         y={stagePos.y}
         scaleX={totalScale}
@@ -703,7 +764,7 @@ export function EditorCanvas({
             const pts = curve.points.map((pt) => displayPixel(pt)).flat()
             const isScatter = curve.connect_as === 'scatter'
             return (
-              <Group key={curve.id}>
+              <Group key={curve.id} listening={!masking}>
                 {!isScatter && pts.length >= 4 && (
                   <Line
                     points={pts}
@@ -772,6 +833,28 @@ export function EditorCanvas({
               dash={[4, 4]}
               strokeWidth={2 / totalScale}
               fill="rgba(251, 191, 36, 0.12)"
+            />
+          )}
+          {maskBox && (
+            <Rect
+              x={maskBox.x}
+              y={maskBox.y}
+              width={maskBox.w}
+              height={maskBox.h}
+              stroke="#22d3ee"
+              strokeWidth={2 / totalScale}
+              fill="rgba(34, 211, 238, 0.18)"
+              listening={false}
+            />
+          )}
+          {maskStroke && maskStroke.length >= 1 && (
+            <Line
+              points={maskStroke.flat()}
+              stroke={canvasMode === 'mask-erase' ? '#fb7185' : '#22d3ee'}
+              strokeWidth={3 / totalScale}
+              lineCap="round"
+              lineJoin="round"
+              listening={false}
             />
           )}
           {showFourBoundMarks(calibration) &&
@@ -890,6 +973,12 @@ function PlotInteractionHint({
     text = `Left-click to place points on the first visible curve. Delete/Backspace: undo last point. ${panHint}`
   } else if (canvasMode === 'point-match') {
     text = `Click a sample marker, then Enter/click accept · Esc/right-click reject · Shift+Enter accept all at/above current score · ${panHint}`
+  } else if (canvasMode === 'mask-box') {
+    text = `Drag a box to keep that region of the curve mask. Esc: exit. ${panHint}`
+  } else if (canvasMode === 'mask-pen') {
+    text = `Draw to add ink to the curve region mask. Esc: exit. ${panHint}`
+  } else if (canvasMode === 'mask-erase') {
+    text = `Draw to erase from the curve region mask. Esc: exit. ${panHint}`
   } else if (segmentFill) {
     text = `Click a highlighted stroke to drop evenly spaced points. Esc: exit. ${panHint}`
   } else if (meshEditing) {

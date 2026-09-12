@@ -1,5 +1,7 @@
+import { useEffect, useMemo, useState } from 'react'
 import { formatSeparation } from '../lib/segments'
-import type { CanvasMode } from '../types'
+import { defaultXStepFromCalibration } from '../lib/xStepDefaults'
+import type { Calibration, CanvasMode } from '../types'
 
 interface Props {
   busy: boolean
@@ -19,6 +21,16 @@ interface Props {
   acceptedCount: number
   onApplyAccepted: () => void
   onClearCandidates: () => void
+  calibration: Calibration | null
+  onClearRegion: () => void
+  onAveragingWindow: (dx: number, dy: number) => void
+  onSampleXStep: (xmin: number, xmax: number, delx: number) => void
+}
+
+function modeButtonClass(on: boolean) {
+  return `rounded px-2 py-1 text-[11px] ${
+    on ? 'bg-sky-600 hover:bg-sky-500' : 'bg-slate-600 hover:bg-slate-500'
+  }`
 }
 
 export function AutoDigitizePanel({
@@ -39,11 +51,158 @@ export function AutoDigitizePanel({
   acceptedCount,
   onApplyAccepted,
   onClearCandidates,
+  calibration,
+  onClearRegion,
+  onAveragingWindow,
+  onSampleXStep,
 }: Props) {
+  const xStepDefaults = useMemo(() => defaultXStepFromCalibration(calibration), [calibration])
+  const [dx, setDx] = useState(10)
+  const [dy, setDy] = useState(10)
+  const [xmin, setXmin] = useState(0)
+  const [xmax, setXmax] = useState(1)
+  const [delx, setDelx] = useState(0.1)
+
+  useEffect(() => {
+    if (!xStepDefaults) return
+    setXmin(xStepDefaults.xmin)
+    setXmax(xStepDefaults.xmax)
+    setDelx(xStepDefaults.delx)
+  }, [xStepDefaults])
+
+  const toggleMask = (mode: 'mask-box' | 'mask-pen' | 'mask-erase') => {
+    onCanvasModeChange(canvasMode === mode ? 'select' : mode)
+  }
+
+  const sampleReady =
+    Number.isFinite(xmin) && Number.isFinite(xmax) && Number.isFinite(delx) && delx !== 0
+
   return (
     <section className="rounded-lg border border-slate-700 bg-slate-800/50 p-3">
       <h3 className="mb-2 text-sm font-semibold text-slate-200">Auto digitize</h3>
       <div className="flex flex-col gap-2 text-[11px] text-slate-300">
+        <div className="flex flex-wrap gap-1">
+          <button
+            type="button"
+            disabled={busy || disabled}
+            onClick={() => toggleMask('mask-box')}
+            className={modeButtonClass(canvasMode === 'mask-box')}
+          >Box</button>
+          <button
+            type="button"
+            disabled={busy || disabled}
+            onClick={() => toggleMask('mask-pen')}
+            className={modeButtonClass(canvasMode === 'mask-pen')}
+          >Pen</button>
+          <button
+            type="button"
+            disabled={busy || disabled}
+            onClick={() => toggleMask('mask-erase')}
+            className={modeButtonClass(canvasMode === 'mask-erase')}
+          >Erase</button>
+          <button
+            type="button"
+            disabled={busy || disabled}
+            onClick={onClearRegion}
+            className="rounded bg-slate-600 px-2 py-1 text-[11px] hover:bg-slate-500 disabled:opacity-50"
+          >
+            Clear region
+          </button>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-1">
+            ΔX
+            <input
+              type="number"
+              min={0.1}
+              step={0.1}
+              value={dx}
+              disabled={busy}
+              onChange={(e) => {
+                const n = Number(e.target.value)
+                if (Number.isFinite(n) && n > 0) setDx(n)
+              }}
+              className="w-14 rounded border border-slate-600 bg-slate-900 px-1 py-0.5"
+            />
+            px
+          </label>
+          <label className="flex items-center gap-1">
+            ΔY
+            <input
+              type="number"
+              min={0.1}
+              step={0.1}
+              value={dy}
+              disabled={busy}
+              onChange={(e) => {
+                const n = Number(e.target.value)
+                if (Number.isFinite(n) && n > 0) setDy(n)
+              }}
+              className="w-14 rounded border border-slate-600 bg-slate-900 px-1 py-0.5"
+            />
+            px
+          </label>
+          <button
+            type="button"
+            disabled={busy || disabled}
+            onClick={() => onAveragingWindow(dx, dy)}
+            className="rounded bg-slate-600 px-2 py-1 text-[11px] hover:bg-slate-500 disabled:opacity-50"
+          >
+            Averaging window
+          </button>
+        </div>
+        <div className="flex flex-col gap-1">
+          <span>Δx (data)</span>
+          <div className="flex flex-wrap items-center gap-1">
+            <label className="flex items-center gap-1">
+              xmin
+              <input
+                type="number"
+                value={xmin}
+                disabled={busy}
+                onChange={(e) => {
+                  const n = Number(e.target.value)
+                  if (Number.isFinite(n)) setXmin(n)
+                }}
+                className="w-14 rounded border border-slate-600 bg-slate-900 px-1 py-0.5"
+              />
+            </label>
+            <label className="flex items-center gap-1">
+              xmax
+              <input
+                type="number"
+                value={xmax}
+                disabled={busy}
+                onChange={(e) => {
+                  const n = Number(e.target.value)
+                  if (Number.isFinite(n)) setXmax(n)
+                }}
+                className="w-14 rounded border border-slate-600 bg-slate-900 px-1 py-0.5"
+              />
+            </label>
+            <label className="flex items-center gap-1">
+              delx
+              <input
+                type="number"
+                value={delx}
+                disabled={busy}
+                onChange={(e) => {
+                  const n = Number(e.target.value)
+                  if (Number.isFinite(n) && n !== 0) setDelx(n)
+                }}
+                className="w-14 rounded border border-slate-600 bg-slate-900 px-1 py-0.5"
+              />
+            </label>
+            <button
+              type="button"
+              disabled={busy || disabled || !sampleReady || !xStepDefaults}
+              onClick={() => onSampleXStep(xmin, xmax, delx)}
+              className="rounded bg-slate-600 px-2 py-1 text-[11px] hover:bg-slate-500 disabled:opacity-50"
+            >
+              Sample Δx
+            </button>
+          </div>
+        </div>
         <label className="flex items-center justify-between gap-2">
           Point separation
           <span className="flex items-center gap-1">
@@ -112,9 +271,7 @@ export function AutoDigitizePanel({
             onClick={() =>
               onCanvasModeChange(canvasMode === 'point-match' ? 'select' : 'point-match')
             }
-            className={`rounded px-2 py-1 text-[11px] ${
-              canvasMode === 'point-match' ? 'bg-sky-600 hover:bg-sky-500' : 'bg-slate-600 hover:bg-slate-500'
-            }`}
+            className={modeButtonClass(canvasMode === 'point-match')}
           >
             Point match
           </button>

@@ -23,7 +23,16 @@ export interface GridGeometrySettings {
 export type CoordsType = 'cartesian' | 'polar' | 'map'
 export type ThetaUnits = 'degrees' | 'radians' | 'gradians' | 'turns'
 export type TransformModel = 'auto' | 'orthogonal' | 'affine' | 'projective'
-export type CanvasMode = 'select' | 'place' | 'axis' | 'pick-color' | 'segment-fill' | 'point-match'
+export type CanvasMode =
+  | 'select'
+  | 'place'
+  | 'axis'
+  | 'pick-color'
+  | 'segment-fill'
+  | 'point-match'
+  | 'mask-box'
+  | 'mask-pen'
+  | 'mask-erase'
 export type ConnectAs = 'line' | 'scatter'
 
 export interface RefPoint {

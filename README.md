@@ -26,7 +26,7 @@ PlotDigitizer uses a **manual-first pipeline**:
 2. **Calibrate** in Cartesian (four bounds or 3+ precise axis points, linear or log), **Polar** (θ units, radius scale, origin radius), or **Map** (two-point scale bar). Affine/projective models map rotated or perspective photos without resampling ink.
 3. **Unskew** *(optional)*: preview and apply perspective or mesh correction when you still want a straightened image.
 4. **Condition** the curve: per-curve colour filter and optional grid removal; toggle the binary mask overlay.
-5. **Place** points on each curve, or **auto-digitize**: segment-fill along ink, or **point-match** for scatter markers (sample one marker, accept/reject ranked candidates).
+5. **Place** points on each curve, or **auto-digitize**: draw a **region mask** (box / pen / erase), run **Averaging window** (ΔX/ΔY px), **Sample Δx** in data space, segment-fill along ink, or **point-match** for scatter markers (sample one marker, accept/reject ranked candidates).
 6. **Refine** line curves with **Improve** (mask corridor) and **Densify**. Scatter curves (`connect_as: scatter`) stay markers-only.
 7. Watch the **preview chart** in data space (cartesian, polar θ/R, or map units).
 8. **Export** CSV (numbers plus a sidecar PNG of the working plot, same stem) or **Save JSON** project (`.pdproj.json`, image embedded). CSV columns follow the coordinate system (`x,y` / `theta,R` / `x,y` plus units).
@@ -127,7 +127,7 @@ cd frontend && npm test
    straightened image, then **Apply** to commit (or **Cancel preview** to revert the view).
    Axis bounds must cross; invalid geometry shows a toast.
 5. **Add curves** and turn on **Place points** to click seed points on each curve.
-6. Use **Improve** (OpenCV trace), **Densify**, or **Segment fill** (click a stroke) to refine a curve.
+6. Use **Improve** (OpenCV trace), **Densify**, **Averaging window**, **Sample Δx**, or **Segment fill** (click a stroke) to refine a curve. Optional region mask (Box / Pen / Erase) ANDs with the colour filter; **Clear region** restores the full image.
 7. *(Optional)* **Remove from plot** erases the active curve from the working image (Undo restores
    it) so overlapping strokes can be traced next.
 8. **Drag** points to correct positions; **arrow keys** nudge a selection 1 px (Shift: 10). The
