@@ -87,6 +87,20 @@ export function formatBoundValue(value: number | null, scale: Scale): string {
   return String(value)
 }
 
+export function shouldDeferBoundCommit(raw: string): boolean {
+  if (raw === '' || raw === '-' || raw === '.' || raw === '-.') return true
+  if (raw.endsWith('.')) return true
+  if (/^-0$/.test(raw)) return true
+  return false
+}
+
+/** Live-commit on keystroke? Date scale is blur-only so YYYY/MM/DD prefixes stay in draft. */
+export function shouldLiveCommitBound(raw: string, scale: Scale): boolean {
+  if (scale === 'date') return false
+  if (shouldDeferBoundCommit(raw)) return false
+  return true
+}
+
 export function parseBoundValue(raw: string, scale: Scale): number {
   const [value, kind] = parseAxisToken(raw)
   if (scale === 'log' && kind === 'date') {

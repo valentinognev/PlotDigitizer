@@ -13,7 +13,12 @@ import {
   type AxisBoundKey,
 } from '../lib/transform'
 import { AXIS_PLACE_LABELS } from '../lib/calibration'
-import { formatBoundValue, parseBoundValue } from '../lib/dates'
+import {
+  formatBoundValue,
+  parseBoundValue,
+  shouldDeferBoundCommit,
+  shouldLiveCommitBound,
+} from '../lib/dates'
 import { resolutionAt, resolvedModel } from '../lib/transform2d'
 import { formatModelLabel, formatResolution } from '../lib/axesChecker'
 
@@ -29,13 +34,6 @@ interface Props {
   onStartScaleBarPlacement: () => void
   onChange: (cal: Calibration) => void
   onSave: () => void
-}
-
-function shouldDeferBoundCommit(raw: string): boolean {
-  if (raw === '' || raw === '-' || raw === '.' || raw === '-.') return true
-  if (raw.endsWith('.')) return true
-  if (/^-0$/.test(raw)) return true
-  return false
 }
 
 function BoundInput({
@@ -59,14 +57,6 @@ function BoundInput({
     setDraft(formatBoundValue(value, scale))
   }, [value, scale])
   const invalidLog = logScale && value != null && value <= 0
-  const tryCommit = (raw: string) => {
-    if (!dateScale && shouldDeferBoundCommit(raw)) return
-    try {
-      onCommit(parseBoundValue(raw, scale))
-    } catch {
-      // keep draft until blur
-    }
-  }
   return (
     <input
       type="text"
@@ -79,7 +69,12 @@ function BoundInput({
       onChange={(e) => {
         const raw = e.target.value
         setDraft(raw)
-        tryCommit(raw)
+        if (!shouldLiveCommitBound(raw, scale)) return
+        try {
+          onCommit(parseBoundValue(raw, scale))
+        } catch {
+          // keep draft until blur
+        }
       }}
       onBlur={() => {
         if (allowEmpty && draft.trim() === '') {

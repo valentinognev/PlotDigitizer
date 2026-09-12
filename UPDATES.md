@@ -47,6 +47,8 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 - Calibration panel: Date scale uses free-text BoundInput (`parseAxisToken` / `formatUnixDays`).
 - CSV date columns write `YYYY/MM/DD` (with time if the fractional day is > 1e-6), not a raw Unix-days float.
 - Preview: Plotly `xaxis.type = 'date'` when X scale is date (`new Date(unix_days * 86400e3).toISOString()`).
+### Fixed
+- Date BoundInput commits on blur only, so typing `YYYY/MM/DD` is not rewritten (`"2"` → `1970/01/03`, `"2020/01/1"` → `2020/01/01`).
 
 ## [2.13.0] — 2026-09-12
 ### Added

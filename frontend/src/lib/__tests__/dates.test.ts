@@ -3,7 +3,13 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { formatBoundValue, formatUnixDays, parseAxisToken, parseBoundValue } from '../dates'
+import {
+  formatBoundValue,
+  formatUnixDays,
+  parseAxisToken,
+  parseBoundValue,
+  shouldLiveCommitBound,
+} from '../dates'
 import { CalibrationError } from '../transform2d'
 
 const fixturePath = join(
@@ -100,5 +106,33 @@ describe('BoundInput date scale', () => {
   it('rejects a date token on a log axis', () => {
     expect(() => parseBoundValue('2020/01/15', 'log')).toThrow(CalibrationError)
     expect(() => parseBoundValue('2020/01/15', 'log')).toThrow(/Log and date/)
+  })
+})
+
+describe('date BoundInput live-commit policy', () => {
+  it('does not live-commit date-scale keystrokes, including number prefixes', () => {
+    for (const raw of ['2', '20', '2020', '2020/', '2020/01', '2020/01/1', '2020/01/15']) {
+      expect(shouldLiveCommitBound(raw, 'date'), raw).toBe(false)
+    }
+  })
+
+  it('keeps YYYY/MM/DD keystrokes in draft instead of rewriting to unix-days dates', () => {
+    // Old live-commit policy treats "2" as unix-days 2 → "1970/01/03"
+    // and "2020/01/1" as a complete date → "2020/01/01", blocking "2020/01/15".
+    expect(formatBoundValue(parseBoundValue('2', 'date'), 'date')).toBe('1970/01/03')
+    expect(formatBoundValue(parseBoundValue('2020/01/1', 'date'), 'date')).toBe('2020/01/01')
+    for (const raw of ['2', '20', '202', '2020', '2020/', '2020/0', '2020/01', '2020/01/', '2020/01/1']) {
+      const live = shouldLiveCommitBound(raw, 'date')
+      const draft = live ? formatBoundValue(parseBoundValue(raw, 'date'), 'date') : raw
+      expect(draft, raw).toBe(raw)
+      expect(live, raw).toBe(false)
+    }
+  })
+
+  it('still live-commits finished numbers on linear and log', () => {
+    expect(shouldLiveCommitBound('12.5', 'linear')).toBe(true)
+    expect(shouldLiveCommitBound('10', 'log')).toBe(true)
+    expect(shouldLiveCommitBound('12.', 'linear')).toBe(false)
+    expect(shouldLiveCommitBound('-', 'linear')).toBe(false)
   })
 })
