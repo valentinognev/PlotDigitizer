@@ -45,3 +45,23 @@ describe('mask canvas wiring', () => {
     expect(schemas).toContain('"mask-erase"')
   })
 })
+
+describe('review-round Sample Δx + region persist wiring', () => {
+  it('does not keep Sample Δx disabled when getAxisBounds cannot infer defaults', () => {
+    const idx = panel.indexOf('Sample Δx')
+    expect(idx).toBeGreaterThan(0)
+    const sampleBlock = panel.slice(Math.max(0, idx - 500), idx)
+    expect(sampleBlock).toContain('sampleDxDisabled')
+    expect(sampleBlock).not.toContain('!xStepDefaults')
+  })
+
+  it('seeds Δx fields from numeric bound values, not calibration object identity', () => {
+    expect(panel).not.toMatch(/\}, \[xStepDefaults\]\)/)
+  })
+
+  it('computes region updates from the latest session and ignores a stale PATCH', () => {
+    expect(app).toContain('regionSeq')
+    expect(app).toContain('shouldApplySavedRegion')
+    expect(app).not.toMatch(/persistCurveRegion\(addBox\(activeCurve\.region/)
+  })
+})

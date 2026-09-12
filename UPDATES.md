@@ -44,6 +44,10 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 ### Added
 - Auto digitize region mask: Box / Pen / Erase on the canvas, Clear region (empty mask = full image), AND'd with the colour-filter overlay (`GET /mask` refreshes after each region save).
 - Averaging window (ΔX/ΔY px, default 10) and Sample Δx (xmin/xmax/delx default from valid calibration bounds) on the Auto digitize panel.
+### Fixed
+- Sample Δx stays enabled when the user types finite xmin/xmax/delx even if calibration bounds cannot be inferred.
+- Overlapping region pen/box saves keep both strokes; a stale PATCH cannot wipe a newer mask, and a failed save reverts the optimistic region.
+- Δx (data) fields re-seed only when numeric bounds change, not when the calibration object is replaced.
 
 ## [2.12.1] — 2026-09-12
 ### Fixed

@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { formatSeparation } from '../lib/segments'
-import { defaultXStepFromCalibration } from '../lib/xStepDefaults'
+import {
+  defaultXStepFromCalibration,
+  sampleDxDisabled,
+  xStepSeedKey,
+} from '../lib/xStepDefaults'
 import type { Calibration, CanvasMode } from '../types'
 
 interface Props {
@@ -57,18 +61,24 @@ export function AutoDigitizePanel({
   onSampleXStep,
 }: Props) {
   const xStepDefaults = useMemo(() => defaultXStepFromCalibration(calibration), [calibration])
+  const seedKey = xStepSeedKey(xStepDefaults)
   const [dx, setDx] = useState(10)
   const [dy, setDy] = useState(10)
   const [xmin, setXmin] = useState(0)
   const [xmax, setXmax] = useState(1)
   const [delx, setDelx] = useState(0.1)
 
+  const xminDefault = xStepDefaults?.xmin
+  const xmaxDefault = xStepDefaults?.xmax
+  const delxDefault = xStepDefaults?.delx
   useEffect(() => {
-    if (!xStepDefaults) return
-    setXmin(xStepDefaults.xmin)
-    setXmax(xStepDefaults.xmax)
-    setDelx(xStepDefaults.delx)
-  }, [xStepDefaults])
+    if (seedKey === null || xminDefault === undefined || xmaxDefault === undefined || delxDefault === undefined) {
+      return
+    }
+    setXmin(xminDefault)
+    setXmax(xmaxDefault)
+    setDelx(delxDefault)
+  }, [seedKey, xminDefault, xmaxDefault, delxDefault])
 
   const toggleMask = (mode: 'mask-box' | 'mask-pen' | 'mask-erase') => {
     onCanvasModeChange(canvasMode === mode ? 'select' : mode)
@@ -195,7 +205,7 @@ export function AutoDigitizePanel({
             </label>
             <button
               type="button"
-              disabled={busy || disabled || !sampleReady || !xStepDefaults}
+              disabled={sampleDxDisabled({ busy, disabled, sampleReady })}
               onClick={() => onSampleXStep(xmin, xmax, delx)}
               className="rounded bg-slate-600 px-2 py-1 text-[11px] hover:bg-slate-500 disabled:opacity-50"
             >

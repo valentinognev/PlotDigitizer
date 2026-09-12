@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { Calibration } from '../../types'
-import { defaultXStepFromCalibration } from '../xStepDefaults'
+import {
+  defaultXStepFromCalibration,
+  sampleDxDisabled,
+  xStepSeedKey,
+} from '../xStepDefaults'
 
 const linearCal: Calibration = {
   x: {
@@ -34,5 +38,27 @@ describe('defaultXStepFromCalibration', () => {
         source: 'manual',
       }),
     ).toBeNull()
+  })
+})
+
+describe('sampleDxDisabled', () => {
+  it('stays enabled when sampleReady even if axis bounds cannot be inferred', () => {
+    expect(sampleDxDisabled({ busy: false, disabled: false, sampleReady: true })).toBe(false)
+  })
+
+  it('disables while busy, the panel is disabled, or xmin/xmax/delx are not ready', () => {
+    expect(sampleDxDisabled({ busy: true, disabled: false, sampleReady: true })).toBe(true)
+    expect(sampleDxDisabled({ busy: false, disabled: true, sampleReady: true })).toBe(true)
+    expect(sampleDxDisabled({ busy: false, disabled: false, sampleReady: false })).toBe(true)
+  })
+})
+
+describe('xStepSeedKey', () => {
+  it('is stable for equal numeric bounds even when the object identity changes', () => {
+    const a = { xmin: 0, xmax: 10, delx: 1 }
+    const b = { xmin: 0, xmax: 10, delx: 1 }
+    expect(xStepSeedKey(a)).toBe(xStepSeedKey(b))
+    expect(xStepSeedKey(a)).not.toBe(xStepSeedKey({ xmin: 1, xmax: 10, delx: 1 }))
+    expect(xStepSeedKey(null)).toBeNull()
   })
 })

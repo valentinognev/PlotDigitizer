@@ -99,6 +99,7 @@ import {
   isMaskCanvasMode,
   pushPointToLastStroke,
 } from './lib/regionMask'
+import { applyCurveRegion, nextCurveRegion, shouldApplySavedRegion } from './lib/regionPersist'
 import { pixelToData } from './lib/transform2d'
 import { getAxisBounds, isCalibrationValid, updateAxisBound, areCalibrationPixelsInImage, type AxisBoundKey } from './lib/transform'
 import type { Calibration, CanvasMode, ColorFilter, FigureMeta, RegionBox, RegionMask, SegmentPublic, Session } from './types'
@@ -112,6 +113,8 @@ function toast(message: string) {
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
+  const sessionRef = useRef(session)
+  sessionRef.current = session
   const [activeCurveId, setActiveCurveId] = useState<string | null>(null)
   const [selectedPointIds, setSelectedPointIds] = useState<string[]>([])
   const [preciseMode, setPreciseMode] = useState(false)
@@ -145,6 +148,7 @@ export default function App() {
   const patchSeq = useRef(0)
   const prefsSeq = useRef(0)
   const filterSeq = useRef(0)
+  const regionSeq = useRef(0)
   const prefsDebounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const filterDebounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const pendingPrefsPatch = useRef<PreferencesPatch>({})
@@ -535,41 +539,59 @@ export default function App() {
     if (canvasMode === 'segment-fill') void loadSegments()
   }, [canvasMode, minSegmentLength, activeCurveId, loadSegments])
 
-  const persistCurveRegion = (region: RegionMask, message = 'Saving region…') => {
-    if (!session || !activeCurveId) return
-    const sessionId = session.id
+  const persistCurveRegion = (
+    compute: (prev: RegionMask | undefined) => RegionMask,
+    message = 'Saving region…',
+  ) => {
+    const current = sessionRef.current
+    if (!current || !activeCurveId) return
+    const sessionId = current.id
     const curveId = activeCurveId
+    const computed = nextCurveRegion(current, curveId, compute)
+    if (!computed) return
+    const { previous, region: sent } = computed
+    const seq = ++regionSeq.current
+    sessionRef.current = applyCurveRegion(current, curveId, sent)
     setSession((prev) => {
       if (!prev) return prev
-      return {
-        ...prev,
-        curves: prev.curves.map((c) => (c.id === curveId ? { ...c, region } : c)),
-      }
+      const chained = nextCurveRegion(prev, curveId, compute)
+      if (!chained) return prev
+      return applyCurveRegion(prev, curveId, chained.region)
     })
-    patchCurveRegion(sessionId, curveId, region)
+    patchCurveRegion(sessionId, curveId, sent)
       .then((saved) => {
+        if (!shouldApplySavedRegion({ savedSeq: seq, localSeq: regionSeq.current })) return
         setSession((prev) => mergeSessionUpdate(prev, saved))
         setMaskEpoch((n) => n + 1)
       })
       .catch((e) => {
+        if (!shouldApplySavedRegion({ savedSeq: seq, localSeq: regionSeq.current })) return
+        const reverted = previous ?? clearRegion()
+        setSession((prev) => {
+          if (!prev) return prev
+          const next = applyCurveRegion(prev, curveId, reverted)
+          sessionRef.current = next
+          return next
+        })
         toast(e instanceof Error ? e.message : message)
       })
   }
 
   const handleAddRegionBox = (box: RegionBox) => {
-    if (!activeCurve) return
-    persistCurveRegion(addBox(activeCurve.region, box))
+    persistCurveRegion((prev) => addBox(prev, box))
   }
 
   const handleAddRegionStroke = (mode: 'pen' | 'erase', points: [number, number][]) => {
-    if (!activeCurve || points.length === 0) return
-    let next = beginStroke(activeCurve.region, mode)
-    for (const pixel of points) next = pushPointToLastStroke(next, mode, pixel)
-    persistCurveRegion(next)
+    if (points.length === 0) return
+    persistCurveRegion((prev) => {
+      let next = beginStroke(prev, mode)
+      for (const pixel of points) next = pushPointToLastStroke(next, mode, pixel)
+      return next
+    })
   }
 
   const handleClearRegion = () => {
-    persistCurveRegion(clearRegion(), 'Clearing region…')
+    persistCurveRegion(() => clearRegion(), 'Clearing region…')
   }
 
   const handleAveragingWindow = (dx: number, dy: number) => {
