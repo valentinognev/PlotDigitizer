@@ -12,6 +12,11 @@ export const FILTER_MODES: FilterMode[] = [
   'sample',
 ]
 
+export function filterModePatch(flt: ColorFilter, mode: FilterMode): ColorFilter {
+  if (mode === 'sample') return { ...flt, mode, high: 0.12 }
+  return { ...flt, mode }
+}
+
 interface Props {
   filter: ColorFilter | null
   disabled: boolean
@@ -58,7 +63,7 @@ export function FilterPanel({
         <select
           disabled={disabled || busy}
           value={flt.mode}
-          onChange={(e) => onFilterChange({ ...flt, mode: e.target.value as FilterMode })}
+          onChange={(e) => onFilterChange(filterModePatch(flt, e.target.value as FilterMode))}
           className="rounded border border-slate-600 bg-slate-900 px-1 py-0.5 text-slate-200"
         >
           {FILTER_MODES.map((m) => (

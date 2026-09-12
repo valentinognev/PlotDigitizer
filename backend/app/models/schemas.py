@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 Scale = Literal["linear", "log", "date"]
@@ -20,6 +20,13 @@ class ColorFilter(BaseModel):
     high: float = Field(default=0.4, ge=0.0, le=1.0)
     sample_color: str | None = None
     remove_grid: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def _sample_omitted_high_is_012(cls, data: Any) -> Any:
+        if isinstance(data, dict) and data.get("mode") == "sample" and "high" not in data:
+            return {**data, "high": 0.12}
+        return data
 
 
 class GridGeometrySettings(BaseModel):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from app.models.schemas import ColorFilter
 
@@ -38,6 +39,27 @@ def test_sample_keeps_red_line_rejects_white():
     assert mask.shape == (40, 60)
     assert mask[20, 30] == 255
     assert mask[2, 2] == 0
+
+
+def test_sample_omitted_high_defaults_to_012_keeps_red_rejects_white():
+    from app.cv.color_filter import build_filter_mask
+
+    flt = ColorFilter(mode="sample", sample_color="#ff0000")
+    assert flt.high == pytest.approx(0.12)
+
+    img = _bgr(40, 60, (255, 255, 255))
+    _paint(img, slice(10, 30), slice(20, 40), (0, 0, 255))  # BGR red
+    # dist to #ff0000 ≈ 0.25 — kept at the intensity default 0.4, rejected at 0.12
+    _paint(img, slice(0, 5), slice(50, 55), (110, 0, 255))
+    mask = build_filter_mask(img, flt)
+    assert mask[20, 30] == 255
+    assert mask[2, 2] == 0
+    assert mask[2, 52] == 0
+
+
+def test_intensity_high_field_default_remains_0_4():
+    assert ColorFilter().high == pytest.approx(0.4)
+    assert ColorFilter(mode="intensity").high == pytest.approx(0.4)
 
 
 def test_dominant_trace_colors_finds_red_and_blue_rects():
