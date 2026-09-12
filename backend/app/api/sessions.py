@@ -20,6 +20,7 @@ from app.export.project_io import ProjectError, load_project_from_bytes, project
 from app.models.schemas import (
     ApiError,
     ApiErrorDetail,
+    AveragingWindowRequest,
     CalibrationUpdate,
     ColorFilter,
     CurvesEditRequest,
@@ -31,6 +32,7 @@ from app.models.schemas import (
     PointMatchAcceptRequest,
     PointMatchRequest,
     PointMatchResponse,
+    RegionMask,
     ResampleRequest,
     SegmentFillRequest,
     SegmentsResponse,
@@ -41,10 +43,12 @@ from app.models.schemas import (
     SnapResponse,
     UnskewApplyRequest,
     WorkspaceState,
+    XStepRequest,
 )
 from app.pipeline.pipeline import (
     build_curve_mask,
     list_curve_segments,
+    run_averaging_window,
     run_cv_improve,
     run_point_match,
     run_point_match_accept,
@@ -52,6 +56,7 @@ from app.pipeline.pipeline import (
     run_resample,
     run_segment_fill,
     run_unskew_apply,
+    run_x_step,
 )
 from app.store.session_store import session_store
 
@@ -269,6 +274,70 @@ def segment_fill_curve(
         session_store.update(session_id, stored.session)
     except ValueError as exc:
         raise _error(exc, "segment_fill", str(exc)) from exc
+    return _to_public(stored)
+
+
+@router.post(
+    "/{session_id}/curves/{curve_id}/averaging-window",
+    response_model=SessionPublic,
+)
+def averaging_window_curve(
+    session_id: str, curve_id: str, body: AveragingWindowRequest | None = None
+) -> SessionPublic:
+    stored = _require(session_id)
+    _require_curve_http(stored.session, curve_id)
+    req = body or AveragingWindowRequest()
+    try:
+        session_store.push_history(stored, "averaging_window")
+        stored.session = run_averaging_window(
+            stored.session,
+            stored.image_bytes,
+            curve_id,
+            dx=req.dx,
+            dy=req.dy,
+            replace=req.replace,
+        )
+        session_store.update(session_id, stored.session)
+    except ValueError as exc:
+        raise _extract_error(exc, "averaging_window") from exc
+    return _to_public(stored)
+
+
+@router.post(
+    "/{session_id}/curves/{curve_id}/x-step",
+    response_model=SessionPublic,
+)
+def x_step_curve(session_id: str, curve_id: str, body: XStepRequest) -> SessionPublic:
+    stored = _require(session_id)
+    _require_curve_http(stored.session, curve_id)
+    try:
+        session_store.push_history(stored, "x_step")
+        stored.session = run_x_step(
+            stored.session,
+            curve_id,
+            xmin=body.xmin,
+            xmax=body.xmax,
+            delx=body.delx,
+            replace=body.replace,
+        )
+        session_store.update(session_id, stored.session)
+    except CalibrationError as exc:
+        raise _error(exc, "calibration_invalid", exc.hint or "Fix reference points") from exc
+    except ValueError as exc:
+        raise _extract_error(exc, "x_step") from exc
+    return _to_public(stored)
+
+
+@router.patch(
+    "/{session_id}/curves/{curve_id}/region",
+    response_model=SessionPublic,
+)
+def patch_curve_region(session_id: str, curve_id: str, body: RegionMask) -> SessionPublic:
+    stored = _require(session_id)
+    curve = _require_curve_http(stored.session, curve_id)
+    session_store.push_history(stored, "curve_region")
+    curve.region = body
+    session_store.update(session_id, stored.session)
     return _to_public(stored)
 
 
@@ -567,3 +636,17 @@ def _require(session_id: str):
         return session_store.require(session_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Session not found") from exc
+
+
+def _require_curve_http(session: Session, curve_id: str):
+    curve = next((c for c in session.curves if c.id == curve_id), None)
+    if curve is None:
+        raise HTTPException(status_code=404, detail="Curve not found")
+    return curve
+
+
+def _extract_error(exc: ValueError, default_code: str) -> HTTPException:
+    code = str(exc)
+    if code in {"no_points", "no_calibration"}:
+        return _error(exc, code)
+    return _error(exc, default_code)

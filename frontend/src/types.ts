@@ -68,6 +68,20 @@ export interface Point {
   origin: Origin
 }
 
+export interface RegionBox {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+export interface RegionMask {
+  boxes?: RegionBox[]
+  strokes?: [number, number][][]
+  erase_strokes?: [number, number][][]
+  stroke_width?: number
+}
+
 export interface Curve {
   id: string
   label: string
@@ -79,6 +93,7 @@ export interface Curve {
   points: Point[]
   filter?: ColorFilter | null
   connect_as?: ConnectAs
+  region?: RegionMask | null
 }
 
 export interface ImageMeta {

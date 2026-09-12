@@ -3,12 +3,15 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
+from app.calibration.coords import validate_calibration
+from app.cv.averaging_window import averaging_window
 from app.cv.color_filter import build_filter_mask
 from app.cv.erase import remove_curve_from_image
 from app.cv.grid_removal import GridGeometry, detect_grid, remove_grid
 from app.cv.improve import improve_curve_from_hints
 from app.cv.order import order_points_along_curve
 from app.cv.point_match import MatchCandidate, match_points
+from app.cv.region import rasterize_region
 from app.cv.resample import resample_curve
 from app.cv.segments import build_segments, fill_segment, segment_at
 from app.cv.unskew import (
@@ -17,6 +20,7 @@ from app.cv.unskew import (
     remap_session_pixels,
     warp_image,
 )
+from app.cv.x_step import sample_by_x_step
 from app.models.schemas import ColorFilter, Curve, GridGeometrySettings, Point, Session, UnskewApplyRequest
 from app.store.temp_images import save_removal_snapshot
 
@@ -37,6 +41,16 @@ def _replace_curve_points(
         else curve
         for curve in curves
     ]
+
+
+def _extracted_points(
+    curve: Curve,
+    pixels: list[tuple[float, float]],
+    replace: bool,
+) -> list[Point]:
+    combined = list(pixels) if replace else [p.pixel for p in curve.points] + list(pixels)
+    ordered = order_points_along_curve(combined)
+    return [Point(pixel=pt, origin="user") for pt in ordered]
 
 
 def run_cv_improve(
@@ -178,6 +192,9 @@ def build_curve_mask(session: Session, image_bytes: bytes, curve_id: str) -> np.
     img = _decode_bgr(image_bytes)
     flt = curve.filter or ColorFilter()
     mask = build_filter_mask(img, flt)
+    if curve.region is not None:
+        height, width = mask.shape[:2]
+        mask = cv2.bitwise_and(mask, rasterize_region(width, height, curve.region))
     if not flt.remove_grid:
         return mask
     geom = None
@@ -284,4 +301,48 @@ def run_point_match_accept(
         new_points.append(Point(pixel=(float(xy[0]), float(xy[1])), origin="ai"))
         seen.add(key)
     session.curves = _replace_curve_points(session.curves, curve_id, new_points)
+    return session
+
+
+def run_averaging_window(
+    session: Session,
+    image_bytes: bytes,
+    curve_id: str,
+    dx: float = 10.0,
+    dy: float = 10.0,
+    replace: bool = True,
+) -> Session:
+    curve = _require_curve(session, curve_id)
+    mask = build_curve_mask(session, image_bytes, curve_id)
+    pts = averaging_window(mask, dx, dy)
+    session.curves = _replace_curve_points(
+        session.curves, curve_id, _extracted_points(curve, pts, replace)
+    )
+    return session
+
+
+def run_x_step(
+    session: Session,
+    curve_id: str,
+    xmin: float,
+    xmax: float,
+    delx: float,
+    replace: bool = True,
+) -> Session:
+    curve = _require_curve(session, curve_id)
+    if not curve.points:
+        raise ValueError("no_points")
+    if session.calibration is None:
+        raise ValueError("no_calibration")
+    validate_calibration(session.calibration)
+    sampled = sample_by_x_step(
+        [p.pixel for p in curve.points],
+        session.calibration,
+        xmin,
+        xmax,
+        delx,
+    )
+    session.curves = _replace_curve_points(
+        session.curves, curve_id, _extracted_points(curve, sampled, replace)
+    )
     return session

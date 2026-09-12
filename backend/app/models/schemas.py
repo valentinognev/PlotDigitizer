@@ -307,3 +307,16 @@ class PointMatchResponse(BaseModel):
 
 class PointMatchAcceptRequest(BaseModel):
     pixels: list[tuple[float, float]]
+
+
+class AveragingWindowRequest(BaseModel):
+    dx: float = Field(default=10.0, gt=0)
+    dy: float = Field(default=10.0, gt=0)
+    replace: bool = True
+
+
+class XStepRequest(BaseModel):
+    xmin: float
+    xmax: float
+    delx: float
+    replace: bool = True

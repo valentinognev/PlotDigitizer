@@ -5,6 +5,7 @@ import type {
   FigureMeta,
   GridGeometrySettings,
   MatchCandidate,
+  RegionMask,
   SegmentPublic,
   Session,
   WorkspaceState,
@@ -451,6 +452,42 @@ export async function fillCurveSegment(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+  })
+}
+
+export async function runAveragingWindow(
+  id: string,
+  curveId: string,
+  body: { dx?: number; dy?: number; replace?: boolean } = {},
+): Promise<Session> {
+  return request<Session>(`/sessions/${id}/curves/${curveId}/averaging-window`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export async function sampleXStep(
+  id: string,
+  curveId: string,
+  body: { xmin: number; xmax: number; delx: number; replace?: boolean },
+): Promise<Session> {
+  return request<Session>(`/sessions/${id}/curves/${curveId}/x-step`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export async function patchCurveRegion(
+  id: string,
+  curveId: string,
+  region: RegionMask,
+): Promise<Session> {
+  return request<Session>(`/sessions/${id}/curves/${curveId}/region`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(region),
   })
 }
 
