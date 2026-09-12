@@ -84,6 +84,20 @@ class Point(BaseModel):
     origin: Origin = "user"
 
 
+class RegionBox(BaseModel):
+    x: float
+    y: float
+    w: float
+    h: float
+
+
+class RegionMask(BaseModel):
+    boxes: list[RegionBox] = Field(default_factory=list)
+    strokes: list[list[tuple[float, float]]] = Field(default_factory=list)
+    erase_strokes: list[list[tuple[float, float]]] = Field(default_factory=list)
+    stroke_width: float = Field(default=20.0, ge=1.0, le=150.0)
+
+
 class Curve(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     label: str
@@ -95,6 +109,7 @@ class Curve(BaseModel):
     points: list[Point] = Field(default_factory=list)
     filter: ColorFilter | None = None
     connect_as: ConnectAs = "line"
+    region: RegionMask | None = None
 
     @property
     def cv_color(self) -> str:
