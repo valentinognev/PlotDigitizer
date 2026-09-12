@@ -7,13 +7,13 @@ import type {
   TransformModel,
 } from '../types'
 import {
-  formatAxisValue,
   formatCalibrationIssue,
   getAxisBounds,
   updateAxisBound,
   type AxisBoundKey,
 } from '../lib/transform'
 import { AXIS_PLACE_LABELS } from '../lib/calibration'
+import { formatBoundValue, parseBoundValue } from '../lib/dates'
 import { resolutionAt, resolvedModel } from '../lib/transform2d'
 import { formatModelLabel, formatResolution } from '../lib/axesChecker'
 
@@ -40,36 +40,39 @@ function shouldDeferBoundCommit(raw: string): boolean {
 
 function BoundInput({
   value,
-  logScale,
+  scale,
   title,
   allowEmpty = false,
   onCommit,
 }: {
   value: number | null
-  logScale: boolean
+  scale: Scale
   title?: string
   allowEmpty?: boolean
   onCommit: (value: number | null) => void
 }) {
-  const shown = value == null ? '' : String(value)
+  const dateScale = scale === 'date'
+  const logScale = scale === 'log'
+  const shown = formatBoundValue(value, scale)
   const [draft, setDraft] = useState(shown)
   useEffect(() => {
-    setDraft(value == null ? '' : String(value))
-  }, [value])
+    setDraft(formatBoundValue(value, scale))
+  }, [value, scale])
   const invalidLog = logScale && value != null && value <= 0
   const tryCommit = (raw: string) => {
-    if (shouldDeferBoundCommit(raw)) return
-    const n = Number(raw)
-    if (!Number.isFinite(n)) return
-    if (logScale && n <= 0) return
-    onCommit(n)
+    if (!dateScale && shouldDeferBoundCommit(raw)) return
+    try {
+      onCommit(parseBoundValue(raw, scale))
+    } catch {
+      // keep draft until blur
+    }
   }
   return (
     <input
       type="text"
-      inputMode="decimal"
+      inputMode={dateScale ? 'text' : 'decimal'}
       title={invalidLog ? 'Enter a value greater than 0 — log scale cannot use 0' : title}
-      className={`input-no-spinner w-[4.5rem] rounded border bg-slate-900 px-1 py-0.5 ${
+      className={`input-no-spinner ${dateScale ? 'w-[9.5rem]' : 'w-[4.5rem]'} rounded border bg-slate-900 px-1 py-0.5 ${
         invalidLog ? 'border-amber-500 text-amber-200' : 'border-slate-600'
       }`}
       value={draft}
@@ -83,17 +86,17 @@ function BoundInput({
           onCommit(null)
           return
         }
-        if (shouldDeferBoundCommit(draft)) {
-          setDraft(value == null ? '' : String(value))
+        if (!dateScale && shouldDeferBoundCommit(draft)) {
+          setDraft(formatBoundValue(value, scale))
           return
         }
-        const n = Number(draft)
-        if (!Number.isFinite(n) || (logScale && n <= 0)) {
-          setDraft(value == null ? '' : String(value))
-          return
+        try {
+          const n = parseBoundValue(draft, scale)
+          setDraft(formatBoundValue(n, scale))
+          onCommit(n)
+        } catch {
+          setDraft(formatBoundValue(value, scale))
         }
-        setDraft(String(n))
-        onCommit(n)
       }}
     />
   )
@@ -247,7 +250,7 @@ export function CalibrationPanel({
         <div className="flex flex-col gap-0.5">
           {(['x', 'y'] as const).map((axis) => (
             <div key={axis} className="flex flex-wrap items-center gap-2">
-              <label className="inline-flex w-14 shrink-0 items-center gap-1 text-slate-300">
+              <label className="inline-flex w-[4.75rem] shrink-0 items-center gap-1 text-slate-300">
                 {axis.toUpperCase()}
                 <select
                   className="min-w-0 flex-1 rounded border border-slate-600 bg-slate-900 px-1 py-0.5"
@@ -256,14 +259,15 @@ export function CalibrationPanel({
                 >
                   <option value="linear">lin</option>
                   <option value="log">log</option>
+                  <option value="date">date</option>
                 </select>
               </label>
               <label className="inline-flex items-center gap-1 text-slate-300">
                 {axis === 'x' ? 'Xmin' : 'Ymin'}
                 <BoundInput
                   value={bounds[axis === 'x' ? 'xmin' : 'ymin'].value}
-                  logScale={calibration[axis].scale === 'log'}
-                  title={formatAxisValue(bounds[axis === 'x' ? 'xmin' : 'ymin'].value)}
+                  scale={calibration[axis].scale}
+                  title={formatBoundValue(bounds[axis === 'x' ? 'xmin' : 'ymin'].value, calibration[axis].scale)}
                   onCommit={(value) => {
                     if (value == null) return
                     commitBoundValue(axis === 'x' ? 'xmin' : 'ymin', value)
@@ -274,8 +278,8 @@ export function CalibrationPanel({
                 {axis === 'x' ? 'Xmax' : 'Ymax'}
                 <BoundInput
                   value={bounds[axis === 'x' ? 'xmax' : 'ymax'].value}
-                  logScale={calibration[axis].scale === 'log'}
-                  title={formatAxisValue(bounds[axis === 'x' ? 'xmax' : 'ymax'].value)}
+                  scale={calibration[axis].scale}
+                  title={formatBoundValue(bounds[axis === 'x' ? 'xmax' : 'ymax'].value, calibration[axis].scale)}
                   onCommit={(value) => {
                     if (value == null) return
                     commitBoundValue(axis === 'x' ? 'xmax' : 'ymax', value)
@@ -310,7 +314,7 @@ export function CalibrationPanel({
                 X
                 <BoundInput
                   value={pt.x_value ?? null}
-                  logScale={calibration.x.scale === 'log'}
+                  scale={calibration.x.scale}
                   title="X"
                   allowEmpty
                   onCommit={(value) => {
@@ -325,7 +329,7 @@ export function CalibrationPanel({
                 Y
                 <BoundInput
                   value={pt.y_value ?? null}
-                  logScale={calibration.y.scale === 'log'}
+                  scale={calibration.y.scale}
                   title="Y"
                   allowEmpty
                   onCommit={(value) => {
@@ -386,7 +390,7 @@ export function CalibrationPanel({
             Origin R
             <BoundInput
               value={calibration.origin_radius ?? 0}
-              logScale={false}
+              scale="linear"
               onCommit={(value) => {
                 if (value == null) return
                 onChange({ ...calibration, source: 'manual', origin_radius: value })
@@ -401,7 +405,7 @@ export function CalibrationPanel({
                 θ
                 <BoundInput
                   value={pt.x_value ?? null}
-                  logScale={false}
+                  scale="linear"
                   title="θ"
                   allowEmpty
                   onCommit={(value) => {
@@ -416,7 +420,7 @@ export function CalibrationPanel({
                 R
                 <BoundInput
                   value={pt.y_value ?? null}
-                  logScale={calibration.y.scale === 'log'}
+                  scale={calibration.y.scale}
                   title="R"
                   allowEmpty
                   onCommit={(value) => {
@@ -451,7 +455,7 @@ export function CalibrationPanel({
             Length
             <BoundInput
               value={calibration.scale_bar?.length ?? 1}
-              logScale={false}
+              scale="linear"
               onCommit={(value) => {
                 if (value == null) return
                 onChange({

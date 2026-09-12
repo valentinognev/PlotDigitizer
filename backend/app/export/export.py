@@ -5,6 +5,7 @@ import io
 
 from app.calibration.calibration import CalibrationError, validate_calibration
 from app.calibration.coords import pixel_to_data
+from app.calibration.dates import format_unix_days
 from app.export.project_io import export_project_json
 from app.models.schemas import Calibration, Session
 
@@ -27,6 +28,14 @@ def csv_units_line(cal: Calibration) -> str | None:
     if not units:
         return None
     return f"# units: {units}"
+
+
+def _csv_cell(value: float, scale: str) -> float | str:
+    if scale != "date":
+        return value
+    if abs(value - round(value)) > 1e-6:
+        return format_unix_days(value, "YYYY/MM/DD hh:mm:ss")
+    return format_unix_days(value, "YYYY/MM/DD")
 
 
 def export_json(session: Session, *, image_bytes: bytes) -> str:
@@ -65,5 +74,12 @@ def export_csv(session: Session) -> str:
             continue
         for p in curve.points:
             x, y = pixel_to_data(session.calibration, p.pixel)
-            writer.writerow([curve.id, curve.label, x, y])
+            writer.writerow(
+                [
+                    curve.id,
+                    curve.label,
+                    _csv_cell(x, session.calibration.x.scale),
+                    _csv_cell(y, session.calibration.y.scale),
+                ]
+            )
     return buf.getvalue()

@@ -1,4 +1,4 @@
-export type Scale = 'linear' | 'log'
+export type Scale = 'linear' | 'log' | 'date'
 export type Origin = 'ai' | 'user'
 export type CurveStyle = 'solid' | 'dashed' | 'dotted' | 'unknown'
 export type FilterMode = 'intensity' | 'foreground' | 'hue' | 'saturation' | 'value'

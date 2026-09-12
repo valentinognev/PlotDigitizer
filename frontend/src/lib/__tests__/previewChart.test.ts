@@ -70,6 +70,27 @@ describe('buildPreviewConfig', () => {
     expect(layout.xaxis?.type).toBe('linear')
   })
 
+  it('uses Plotly date x-axis and ISO timestamps for date scale', () => {
+    const cal: Calibration = {
+      ...cartesianCal(),
+      x: {
+        scale: 'date',
+        ref_points: [
+          { pixel: [0, 0], value: 18262 },
+          { pixel: [100, 0], value: 18290 },
+        ],
+      },
+    }
+    const cfg = buildPreviewConfig(
+      [{ ...curve, points: [{ id: 'p1', pixel: [50, 50], origin: 'user' }] }],
+      cal,
+      200,
+    )
+    const layout = cfg.layout as PreviewLayout
+    expect(layout.xaxis?.type).toBe('date')
+    expect(cfg.traces[0].x).toEqual([new Date(18276 * 86400e3).toISOString()])
+  })
+
   it('uses scatterpolar for polar sessions and respects origin_radius and log radius', () => {
     const cfg = buildPreviewConfig(
       [{ ...curve, connect_as: 'scatter' }],

@@ -2,6 +2,7 @@ import type {
   AxisPoint,
   Calibration,
   CoordsType,
+  Scale,
   ScaleBar,
   ThetaUnits,
   TransformModel,
@@ -50,7 +51,7 @@ function axisPoints(cal: Calibration): AxisPoint[] {
   return cal.axis_points ?? []
 }
 
-function logValue(value: number, scale: 'linear' | 'log', axisName: string): number {
+function logValue(value: number, scale: Scale, axisName: string): number {
   if (scale === 'log') {
     if (value <= 0) {
       throw new CalibrationError(
@@ -77,7 +78,7 @@ function radiansToTheta(rad: number, units: ThetaUnits): number {
   return rad / (2 * Math.PI)
 }
 
-function rhoOf(radius: number, scale: 'linear' | 'log', origin: number): number {
+function rhoOf(radius: number, scale: Scale, origin: number): number {
   if (scale === 'log') {
     if (radius <= 0) {
       throw new CalibrationError('polar log radius requires all R values > 0', 'Enter a positive radius')
@@ -402,7 +403,17 @@ function transformOf(cal: Calibration): Transform2D {
   return solveTransform(constraints, requested)
 }
 
+function validateAxisScale(scale: string, axisName: string): void {
+  if (scale === 'linear' || scale === 'log' || scale === 'date') return
+  const mixed = scale.includes('log') && scale.includes('date')
+  throw new CalibrationError(
+    mixed ? 'Log and date cannot be used on the same axis' : `Unknown ${axisName} scale: ${scale}`,
+    'Choose linear, log, or date',
+  )
+}
+
 function fromLinearAxes(cal: Calibration, uv: [number, number]): [number, number] {
+  // linear and date: unix-days are already linear
   const x = cal.x.scale === 'log' ? 10 ** uv[0] : uv[0]
   const y = cal.y.scale === 'log' ? 10 ** uv[1] : uv[1]
   return [x, y]
@@ -442,6 +453,8 @@ function polarToLinear(cal: Calibration, data: [number, number]): [number, numbe
 }
 
 export function validateCalibration(cal: Calibration): void {
+  validateAxisScale(cal.x.scale, 'x')
+  validateAxisScale(cal.y.scale, 'y')
   const kind = coordsType(cal)
   if (kind === 'map') {
     mapScale(requireBar(cal))

@@ -23,7 +23,7 @@ data-space preview, and project save/load — without relying on external AI ser
 PlotDigitizer uses a **manual-first pipeline**:
 
 1. **Upload or paste** a plot image (Ctrl+V / Cmd+V; including photos taken at an angle).
-2. **Calibrate** in Cartesian (four bounds or 3+ precise axis points, linear or log), **Polar** (θ units, radius scale, origin radius), or **Map** (two-point scale bar). Affine/projective models map rotated or perspective photos without resampling ink.
+2. **Calibrate** in Cartesian (four bounds or 3+ precise axis points, linear, log, or date), **Polar** (θ units, radius scale, origin radius), or **Map** (two-point scale bar). Affine/projective models map rotated or perspective photos without resampling ink.
 3. **Unskew** *(optional)*: preview and apply perspective or mesh correction when you still want a straightened image.
 4. **Condition** the curve: per-curve colour filter and optional grid removal; toggle the binary mask overlay.
 5. **Place** points on each curve, or **auto-digitize**: draw a **region mask** (box / pen / erase), run **Averaging window** (ΔX/ΔY px), **Sample Δx** in data space, segment-fill along ink, or **point-match** for scatter markers (sample one marker, accept/reject ranked candidates).
@@ -49,7 +49,7 @@ current calibration, so re-calibrating instantly remaps all points.
 │  api/         sessions router (upload, curves, calibration, unskew, CV, export, …)   │
 │  pipeline/    orchestrates CV improve, resample, remove-from-plot, unskew apply    │
 │  cv/          trace · improve · resample · erase · unskew · color_filter · grid_removal · snap · segments · point_match │
-│  calibration/ 2D transform + cartesian / polar / map adapters (linear / log)                                              │
+│  calibration/ 2D transform + cartesian / polar / map adapters (linear / log / date)                                              │
 │  export/      CSV, JSON, project save/load, curve import                             │
 │  store/       in-memory SessionStore + last-session persistence                       │
 └──────────────────────────────────────────────────────────────────────────────────────┘
@@ -121,7 +121,7 @@ cd frontend && npm test
 2. Click **Place bounds** in the Calibration panel, then click the plot four times: X min, X max,
    Y min, Y max. Optional: **Precise (3+ points)** for affine/projective, **Polar**, or **Map**
    (scale bar) calibration.
-3. Enter the **numeric axis values** (and choose linear/log per axis).
+3. Enter the **axis values** (linear, log, or date per axis). Date axes store Unix days from 1970-01-01 UTC; type tokens like `YYYY/MM/DD`.
 4. *(Optional, skewed/rotated photos)* In the **Unskew** panel, choose **Perspective** or
    **Mesh**, adjust the mesh boundary if needed, click **Preview corrected** to review the
    straightened image, then **Apply** to commit (or **Cancel preview** to revert the view).

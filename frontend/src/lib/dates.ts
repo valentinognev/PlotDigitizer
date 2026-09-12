@@ -1,3 +1,4 @@
+import type { Scale } from '../types'
 import { CalibrationError } from './transform2d'
 
 const MS_PER_DAY = 86400 * 1000
@@ -75,4 +76,30 @@ export function formatUnixDays(value: number, pattern: string): string {
     out = out.split(token).join(repl)
   }
   return out
+}
+
+export function formatBoundValue(value: number | null, scale: Scale): string {
+  if (value == null) return ''
+  if (scale === 'date') {
+    const pattern = Math.abs(value - Math.round(value)) > 1e-6 ? 'YYYY/MM/DD hh:mm:ss' : 'YYYY/MM/DD'
+    return formatUnixDays(value, pattern)
+  }
+  return String(value)
+}
+
+export function parseBoundValue(raw: string, scale: Scale): number {
+  const [value, kind] = parseAxisToken(raw)
+  if (scale === 'log' && kind === 'date') {
+    throw new CalibrationError(
+      'Log and date cannot be used on the same axis',
+      'Choose either log or date',
+    )
+  }
+  if (scale === 'log' && value <= 0) {
+    throw new CalibrationError(
+      'Log scale requires values > 0',
+      'Enter a value greater than zero',
+    )
+  }
+  return value
 }

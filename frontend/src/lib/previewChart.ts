@@ -1,4 +1,4 @@
-import type { Calibration, ConnectAs, Curve, FigureMeta, ThetaUnits } from '../types'
+import type { Calibration, ConnectAs, Curve, FigureMeta, Scale, ThetaUnits } from '../types'
 import { formatCalibrationIssue } from './transform'
 import { pixelToData } from './transform2d'
 
@@ -59,6 +59,16 @@ function isPlottable(calibration: Calibration, a: number, b: number): boolean {
   return true
 }
 
+function plotlyAxisType(scale: Scale): 'linear' | 'log' | 'date' {
+  if (scale === 'log') return 'log'
+  if (scale === 'date') return 'date'
+  return 'linear'
+}
+
+function unixDaysToIso(unixDays: number): string {
+  return new Date(unixDays * 86400e3).toISOString()
+}
+
 export function buildPreviewConfig(
   curves: Curve[],
   calibration: Calibration,
@@ -100,13 +110,13 @@ export function buildPreviewConfig(
         marker: { size: 4, color: curve.color },
       })
     } else {
-      const xs: number[] = []
-      const ys: number[] = []
+      const xs: Array<number | string> = []
+      const ys: Array<number | string> = []
       for (const p of curve.points) {
         const [x, y] = pixelToData(calibration, p.pixel)
         if (!isPlottable(calibration, x, y)) continue
-        xs.push(x)
-        ys.push(y)
+        xs.push(calibration.x.scale === 'date' ? unixDaysToIso(x) : x)
+        ys.push(calibration.y.scale === 'date' ? unixDaysToIso(y) : y)
       }
       if (!xs.length) continue
       traces.push({
@@ -158,14 +168,14 @@ export function buildPreviewConfig(
         gridcolor: '#334155',
         automargin: true,
         autorange: true,
-        type: calibration.x.scale === 'log' ? 'log' : 'linear',
+        type: plotlyAxisType(calibration.x.scale),
       },
       yaxis: {
         title: ylabelText ?? (coords === 'map' ? `y${units}` : 'Y'),
         gridcolor: '#334155',
         automargin: true,
         autorange: true,
-        type: calibration.y.scale === 'log' ? 'log' : 'linear',
+        type: plotlyAxisType(calibration.y.scale),
       },
     },
   }

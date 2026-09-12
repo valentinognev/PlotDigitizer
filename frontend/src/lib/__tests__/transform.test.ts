@@ -59,6 +59,23 @@ describe('pixelToData (orthogonal, existing mapping)', () => {
     expect(pixelToData(cal, [300, 250])[1]).toBeCloseTo(2.5, 12)
   })
 
+  it('maps a date X midpoint pixel to the midpoint unix-days value', () => {
+    const cal: Calibration = {
+      x: {
+        scale: 'date',
+        ref_points: [
+          { pixel: [100, 400], value: 18262 },
+          { pixel: [500, 400], value: 18292 },
+        ],
+      },
+      y: linearCal.y,
+      source: 'manual',
+    }
+    const data = pixelToData(cal, [300, 250])
+    expect(data[0]).toBeCloseTo(18277, 12)
+    expect(data[1]).toBeCloseTo(2.5, 12)
+  })
+
   it('maps log X the same way as 10 ** (slope * px + intercept)', () => {
     const cal: Calibration = {
       x: {

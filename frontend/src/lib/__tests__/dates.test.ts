@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { formatUnixDays, parseAxisToken } from '../dates'
+import { formatBoundValue, formatUnixDays, parseAxisToken, parseBoundValue } from '../dates'
 import { CalibrationError } from '../transform2d'
 
 const fixturePath = join(
@@ -83,5 +83,22 @@ describe('date_parity.json', () => {
       expect(value, cse.text).toBeCloseTo(cse.unix_days, 9)
       expect(formatUnixDays(cse.unix_days, cse.pattern)).toBe(cse.text)
     }
+  })
+})
+
+describe('BoundInput date scale', () => {
+  it('displays unix days as YYYY/MM/DD', () => {
+    expect(formatBoundValue(18276.0, 'date')).toBe('2020/01/15')
+    expect(formatBoundValue(18276.5, 'date')).toBe('2020/01/15 12:00:00')
+    expect(formatBoundValue(12.5, 'linear')).toBe('12.5')
+  })
+
+  it('commits a date token to unix days', () => {
+    expect(parseBoundValue('2020/01/15', 'date')).toBeCloseTo(18276.0, 9)
+  })
+
+  it('rejects a date token on a log axis', () => {
+    expect(() => parseBoundValue('2020/01/15', 'log')).toThrow(CalibrationError)
+    expect(() => parseBoundValue('2020/01/15', 'log')).toThrow(/Log and date/)
   })
 })

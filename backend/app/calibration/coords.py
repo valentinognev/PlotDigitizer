@@ -90,34 +90,41 @@ def _transform_of(cal: Calibration) -> Transform2D:
     return solve_transform(constraints, model=requested)
 
 
+def _validate_axis_scale(scale: str, axis_name: str) -> None:
+    if scale in ("linear", "log", "date"):
+        return
+    mixed = "log" in scale and "date" in scale
+    raise CalibrationError(
+        "Log and date cannot be used on the same axis" if mixed else f"Unknown {axis_name} scale: {scale}",
+        hint="Choose linear, log, or date",
+    )
+
+
+def _axis_from_linear(scale: str, t: float) -> float:
+    if scale == "log":
+        return 10**t
+    return t  # linear and date (unix-days already linear)
+
+
+def _axis_to_linear(scale: str, value: float, axis_name: str) -> float:
+    if scale == "log":
+        if value <= 0:
+            raise CalibrationError(
+                "Cannot map non-positive value on log axis",
+                hint=f"Log {axis_name.upper()} requires values > 0",
+            )
+        return math.log10(value)
+    return value  # linear and date
+
+
 def _from_linear_axes(cal: Calibration, uv: tuple[float, float]) -> tuple[float, float]:
     u, v = uv
-    x = 10**u if cal.x.scale == "log" else u
-    y = 10**v if cal.y.scale == "log" else v
-    return float(x), float(y)
+    return float(_axis_from_linear(cal.x.scale, u)), float(_axis_from_linear(cal.y.scale, v))
 
 
 def _to_linear_axes(cal: Calibration, data: tuple[float, float]) -> tuple[float, float]:
     x, y = data
-    if cal.x.scale == "log":
-        if x <= 0:
-            raise CalibrationError(
-                "Cannot map non-positive value on log axis",
-                hint="Log X requires values > 0",
-            )
-        u = math.log10(x)
-    else:
-        u = x
-    if cal.y.scale == "log":
-        if y <= 0:
-            raise CalibrationError(
-                "Cannot map non-positive value on log axis",
-                hint="Log Y requires values > 0",
-            )
-        v = math.log10(y)
-    else:
-        v = y
-    return float(u), float(v)
+    return float(_axis_to_linear(cal.x.scale, x, "x")), float(_axis_to_linear(cal.y.scale, y, "y"))
 
 
 def _polar_from_linear(cal: Calibration, uv: tuple[float, float]) -> tuple[float, float]:
@@ -148,6 +155,8 @@ def _polar_to_linear(cal: Calibration, data: tuple[float, float]) -> tuple[float
 
 
 def validate_calibration(cal: Calibration) -> None:
+    _validate_axis_scale(cal.x.scale, "x")
+    _validate_axis_scale(cal.y.scale, "y")
     if cal.coords_type == "map":
         bar = _require_scale_bar(cal)
         _map_scale(bar)

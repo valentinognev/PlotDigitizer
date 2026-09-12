@@ -12,6 +12,7 @@ from app.calibration.coords import (
     resolution_at,
     validate_calibration,
 )
+from app.calibration.dates import parse_axis_token
 from app.calibration.transform import CalibrationError
 from app.models.schemas import AxisPoint, Calibration, CalibrationAxis, RefPoint
 from tests.metrics import max_abs_error
@@ -293,3 +294,48 @@ def test_axes_checker_polyline_is_closed_quad():
     poly = axes_checker_polyline(cal, (800, 600))
     assert len(poly) >= 4
     assert poly[0] == pytest.approx(poly[-1], abs=1e-6)
+
+
+def test_date_xmin_xmax_map_midpoint_pixel_to_midpoint_date():
+    xmin, xmin_kind = parse_axis_token("2020/01/01")
+    xmax, xmax_kind = parse_axis_token("2020/01/31")
+    assert xmin_kind == "date"
+    assert xmax_kind == "date"
+    cal = _cal(
+        "date",
+        "linear",
+        ((100.0, 400.0), (500.0, 400.0)),
+        (xmin, xmax),
+        ((100.0, 400.0), (100.0, 100.0)),
+        (0.0, 5.0),
+    )
+    validate_calibration(cal)
+    x, y = pixel_to_data(cal, (300.0, 250.0))
+    assert x == pytest.approx((xmin + xmax) / 2.0, abs=1e-12)
+    assert y == pytest.approx(2.5, abs=1e-12)
+    assert x == pytest.approx(18277.0, abs=1e-12)
+    back = data_to_pixel(cal, (x, y))
+    assert back[0] == pytest.approx(300.0, abs=1e-8)
+    assert back[1] == pytest.approx(250.0, abs=1e-8)
+
+
+def test_log_and_date_same_axis_rejected():
+    cal = Calibration.model_construct(
+        x=CalibrationAxis.model_construct(
+            scale="log+date",
+            ref_points=[
+                RefPoint(pixel=(100.0, 400.0), value=1.0),
+                RefPoint(pixel=(500.0, 400.0), value=10.0),
+            ],
+        ),
+        y=CalibrationAxis(
+            scale="linear",
+            ref_points=[
+                RefPoint(pixel=(100.0, 400.0), value=0.0),
+                RefPoint(pixel=(100.0, 100.0), value=5.0),
+            ],
+        ),
+        source="manual",
+    )
+    with pytest.raises(CalibrationError, match="Log and date"):
+        validate_calibration(cal)

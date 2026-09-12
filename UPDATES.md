@@ -42,7 +42,11 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## [2.14.0] — 2026-09-12
 ### Added
-- Date axis tokens parse and format as Unix days from 1970-01-01 UTC (`parse_axis_token` / `format_unix_days`, TS mirrors). Shared `date_parity.json` fixture; not wired into Scale=date yet.
+- Date axis tokens parse and format as Unix days from 1970-01-01 UTC (`parse_axis_token` / `format_unix_days`, TS mirrors). Shared `date_parity.json` fixture.
+- `Scale` includes `date` (linear Unix-days mapping). Log+date on the same axis is rejected. Four-bound linear/log mapping unchanged (1e-12).
+- Calibration panel: Date scale uses free-text BoundInput (`parseAxisToken` / `formatUnixDays`).
+- CSV date columns write `YYYY/MM/DD` (with time if the fractional day is > 1e-6), not a raw Unix-days float.
+- Preview: Plotly `xaxis.type = 'date'` when X scale is date (`new Date(unix_days * 86400e3).toISOString()`).
 
 ## [2.13.0] — 2026-09-12
 ### Added

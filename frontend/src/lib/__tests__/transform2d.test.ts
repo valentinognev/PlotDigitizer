@@ -90,6 +90,27 @@ describe('log scale with non-positive bounds', () => {
   })
 })
 
+describe('log and date on the same axis', () => {
+  it('is rejected by validateCalibration', () => {
+    const cal: Calibration = {
+      source: 'manual',
+      coords_type: 'cartesian',
+      x: {
+        scale: 'log+date' as Calibration['x']['scale'],
+        ref_points: [
+          { pixel: [100, 400], value: 1 },
+          { pixel: [500, 400], value: 10 },
+        ],
+      },
+      y: linearZeroMin().y,
+    }
+    expect(isCalibrationValid(cal)).toBe(false)
+    const err = calibrationError(cal)
+    expect(err).not.toBeNull()
+    expect(err!.message).toMatch(/Log and date/)
+  })
+})
+
 describe('axesCheckerPolyline log-polar inner ring', () => {
   it('uses min pinned R>0 when origin_radius is 0 (Python policy)', () => {
     const cal: Calibration = {

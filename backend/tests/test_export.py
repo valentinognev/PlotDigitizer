@@ -264,6 +264,31 @@ def test_export_csv_omits_whitespace_only_figure_comments():
         assert not line.startswith("# ylabel:")
 
 
+def test_export_csv_date_axis_writes_formatted_date_not_unix_days():
+    session = _session_ready()
+    assert session.calibration is not None
+    session.calibration = Calibration(
+        x=CalibrationAxis(
+            scale="date",
+            ref_points=[
+                RefPoint(pixel=(0.0, 0.0), value=18262.0),
+                RefPoint(pixel=(100.0, 0.0), value=18290.0),
+            ],
+        ),
+        y=CalibrationAxis(
+            scale="linear",
+            ref_points=[
+                RefPoint(pixel=(0.0, 100.0), value=0.0),
+                RefPoint(pixel=(0.0, 0.0), value=10.0),
+            ],
+        ),
+    )
+    session.curves[0].points = [Point(pixel=(50.0, 50.0), origin="user")]
+    out = export_csv(session)
+    assert "2020/01/15" in out
+    assert "18276" not in out
+
+
 def test_export_csv_figure_comments_before_units():
     session = _session_ready()
     session.calibration = _map_cal()
