@@ -242,4 +242,36 @@ describe('resolvePreferencesSave', () => {
 
     expect(result.pending).toEqual({})
   })
+
+  it('clears leftover calibrations so a later figure or calibration-only patch does not replay the list', () => {
+    const first: NonNullable<Session['calibration']> = {
+      id: 'cal-1',
+      name: 'Axes',
+      x: { scale: 'linear', ref_points: [] },
+      y: { scale: 'linear', ref_points: [] },
+      source: 'manual',
+    }
+    const remaining = [first]
+    const sent = { calibration: first, calibrations: remaining, manual_calibration: true }
+    const pending = { ...sent }
+    const saved = baseSession({ calibration: first, calibrations: remaining })
+
+    const afterDelete = resolvePreferencesSave(pending, sent, saved)
+
+    expect(afterDelete.pending.calibrations).toBeUndefined()
+    expect(afterDelete.pending).toEqual({})
+
+    const figure = { title: 'Fig', xlabel: '', ylabel: '' }
+    const laterPending = { ...afterDelete.pending, figure }
+    expect(laterPending).toEqual({ figure })
+    expect(laterPending.calibrations).toBeUndefined()
+
+    const added: NonNullable<Session['calibration']> = {
+      ...first,
+      id: 'cal-2',
+      name: 'Axes 2',
+    }
+    const laterCalPending = { ...afterDelete.pending, calibration: added }
+    expect(laterCalPending.calibrations).toBeUndefined()
+  })
 })

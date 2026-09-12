@@ -253,25 +253,30 @@ export function buildPreviewConfig(
       },
     }
   }
+  const axisCal =
+    coords === 'cartesian'
+      ? (list.find((cal) => coordsTypeOf(cal) === 'cartesian') ?? calibration)
+      : calibration
+  const axisCoords = coordsTypeOf(axisCal)
   const units =
-    coords === 'map' && calibration.scale_bar?.units ? ` (${calibration.scale_bar.units})` : ''
+    axisCoords === 'map' && axisCal.scale_bar?.units ? ` (${axisCal.scale_bar.units})` : ''
   const layout: Record<string, unknown> = {
     ...PLOT_LAYOUT_BASE,
     ...titleLayout,
     height: h,
     xaxis: {
-      title: xlabelText ?? (coords === 'map' ? `x${units}` : coords === 'bar' ? 'label' : 'X'),
+      title: xlabelText ?? (axisCoords === 'map' ? `x${units}` : axisCoords === 'bar' ? 'label' : 'X'),
       gridcolor: '#334155',
       automargin: true,
       autorange: true,
-      type: coords === 'bar' ? 'category' : plotlyAxisType(calibration.x.scale),
+      type: axisCoords === 'bar' ? 'category' : plotlyAxisType(axisCal.x.scale),
     },
     yaxis: {
-      title: ylabelText ?? (coords === 'map' ? `y${units}` : coords === 'bar' ? 'value' : 'Y'),
+      title: ylabelText ?? (axisCoords === 'map' ? `y${units}` : axisCoords === 'bar' ? 'value' : 'Y'),
       gridcolor: '#334155',
       automargin: true,
       autorange: true,
-      type: plotlyAxisType(calibration.y.scale),
+      type: plotlyAxisType(axisCal.y.scale),
     },
   }
   if (y2Holder.cal) {

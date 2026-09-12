@@ -47,6 +47,9 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 - Undo snapshots include `calibrations`. Preferences PATCH can replace the list (delete).
 ### Changed
 - Pixel → data still uses `calibration_for_curve` (Task 16). Unskew/mesh still write the singleton without list upsert.
+### Fixed
+- Delete no longer leaves `calibrations` in the prefs pending buffer (later figure/Add PATCH cannot drop axes).
+- Dual-Y preview layout follows the first cartesian set vs `y2`, not whichever axes the panel is editing.
 
 ## [2.15.0] — 2026-09-12
 ### Added

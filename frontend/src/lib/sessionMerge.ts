@@ -130,6 +130,9 @@ export function resolvePreferencesSave(
   if (sent.workspace !== undefined && nextPending.workspace === sent.workspace) {
     delete nextPending.workspace
   }
+  if (sent.calibrations !== undefined && nextPending.calibrations === sent.calibrations) {
+    delete nextPending.calibrations
+  }
 
   return result
 }

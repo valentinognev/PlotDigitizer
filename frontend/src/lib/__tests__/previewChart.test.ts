@@ -288,6 +288,74 @@ describe('buildPreviewConfig', () => {
     expect(layout.yaxis2?.overlaying).toBe('y')
     expect(layout.yaxis2?.side).toBe('right')
   })
+
+  it('lays out y/y2 from first cartesian vs y2 holder even when the active cal is the second', () => {
+    const left: Calibration = {
+      ...cartesianCal(),
+      id: 'cal-left',
+      name: 'Left',
+      x: {
+        scale: 'linear',
+        ref_points: [
+          { pixel: [0, 0], value: 0 },
+          { pixel: [100, 0], value: 10 },
+        ],
+      },
+      y: {
+        scale: 'linear',
+        ref_points: [
+          { pixel: [0, 100], value: 0 },
+          { pixel: [0, 0], value: 10 },
+        ],
+      },
+    }
+    const right: Calibration = {
+      ...cartesianCal(),
+      id: 'cal-right',
+      name: 'Right',
+      x: {
+        scale: 'log',
+        ref_points: [
+          { pixel: [0, 0], value: 1 },
+          { pixel: [100, 0], value: 100 },
+        ],
+      },
+      y: {
+        scale: 'log',
+        ref_points: [
+          { pixel: [0, 100], value: 1 },
+          { pixel: [0, 0], value: 100 },
+        ],
+      },
+    }
+    const leftCurve: Curve = {
+      ...curve,
+      calibration_id: 'cal-left',
+      points: [{ id: 'p1', pixel: [50, 50], origin: 'user' }],
+    }
+    const rightCurve: Curve = {
+      ...curve,
+      id: 'c2',
+      label: 'B',
+      color: '#0f0',
+      calibration_id: 'cal-right',
+      points: [{ id: 'p2', pixel: [50, 50], origin: 'user' }],
+    }
+    const cfg = buildPreviewConfig(
+      [leftCurve, rightCurve],
+      { calibration: right, calibrations: [left, right] },
+      200,
+    )
+    const layout = cfg.layout as PreviewLayout & {
+      yaxis2?: { type?: string; overlaying?: string }
+    }
+    expect(cfg.traces[0].yaxis).toBeUndefined()
+    expect(cfg.traces[1].yaxis).toBe('y2')
+    expect(layout.xaxis?.type).toBe('linear')
+    expect(layout.yaxis?.type).toBe('linear')
+    expect(layout.yaxis2?.type).toBe('log')
+    expect(layout.yaxis2?.overlaying).toBe('y')
+  })
 })
 
 describe('previewEmptyReason', () => {
