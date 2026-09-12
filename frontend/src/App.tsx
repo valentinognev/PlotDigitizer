@@ -86,7 +86,7 @@ import { appendAxisPoint, restoreAxisUiFlags, setScaleBarPixel } from './lib/axe
 import { imageSourceLabel } from './lib/imageSource'
 import { handleClipboardPaste } from './lib/clipboardPaste'
 import { formatCursorReadout } from './lib/cursorReadout'
-import { fileFromDrop } from './lib/imageDrop'
+import { handleRootFileDragOver, handleRootFileDrop } from './lib/imageDrop'
 import { applyNudge, shouldHandleNudgeKey } from './lib/nudge'
 import { pixelToData } from './lib/transform2d'
 import { getAxisBounds, isCalibrationValid, updateAxisBound, areCalibrationPixelsInImage, type AxisBoundKey } from './lib/transform'
@@ -1197,22 +1197,11 @@ export default function App() {
   return (
     <div
       className="flex h-full min-h-0 flex-col overflow-hidden"
-      onDragOver={(e) => {
-        if (busy) return
-        if (
-          fileFromDrop(e.dataTransfer) ||
-          Array.from(e.dataTransfer?.types ?? []).includes('Files')
-        ) {
-          e.preventDefault()
-          e.dataTransfer.dropEffect = 'copy'
-        }
-      }}
+      onDragOver={handleRootFileDragOver}
       onDrop={(e) => {
-        if (busy) return
-        const file = fileFromDrop(e.dataTransfer)
-        if (!file) return
-        e.preventDefault()
-        void handleUpload(file)
+        handleRootFileDrop(e, busy, (file) => {
+          void handleUpload(file)
+        })
       }}
     >
       <header className="shrink-0 flex items-center justify-between border-b border-slate-700 px-4 py-2">
