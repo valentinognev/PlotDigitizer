@@ -320,12 +320,25 @@ export function buildConstraints(cal: Calibration): Constraint[] {
   return constraintsRefPoints(cal)
 }
 
+function extremePair<T extends { pixel: [number, number] }>(refs: T[], coord: 0 | 1): T[] {
+  if (refs.length <= 2) return refs.slice()
+  let lo = 0
+  let hi = 0
+  for (let i = 1; i < refs.length; i++) {
+    const v = refs[i].pixel[coord]
+    if (v < refs[lo].pixel[coord]) lo = i
+    if (v > refs[hi].pixel[coord]) hi = i
+  }
+  if (lo === hi) return [refs[lo]]
+  return [refs[lo], refs[hi]]
+}
+
 function constraintsRefPoints(cal: Calibration): Constraint[] {
   const out: Constraint[] = []
-  for (const rp of cal.x.ref_points) {
+  for (const rp of extremePair(cal.x.ref_points, 0)) {
     out.push({ pixel: rp.pixel, axis: 'u', value: logValue(rp.value, cal.x.scale, 'x') })
   }
-  for (const rp of cal.y.ref_points) {
+  for (const rp of extremePair(cal.y.ref_points, 1)) {
     out.push({ pixel: rp.pixel, axis: 'v', value: logValue(rp.value, cal.y.scale, 'y') })
   }
   if (!out.length) throw new CalibrationError('Calibration has no reference points', 'Place X/Y bounds or precise axis points')
@@ -559,12 +572,17 @@ export function axesCheckerPolyline(cal: Calibration, _imageSize: [number, numbe
   return corners.map((c) => dataToPixel(cal, c))
 }
 
-export function isCalibrationValid(cal: Calibration | null): boolean {
-  if (!cal) return false
+export function calibrationError(cal: Calibration | null): CalibrationError | null {
+  if (!cal) return null
   try {
     validateCalibration(cal)
-    return true
-  } catch {
-    return false
+    return null
+  } catch (e) {
+    return e instanceof CalibrationError ? e : new CalibrationError(String(e))
   }
+}
+
+export function isCalibrationValid(cal: Calibration | null): boolean {
+  if (!cal) return false
+  return calibrationError(cal) === null
 }

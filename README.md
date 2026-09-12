@@ -1,7 +1,7 @@
 # PlotDigitizer
 
-**Manual, human-in-the-loop digitization of plots.** Upload a figure image, calibrate the axes,
-place and refine data points on each curve, and export the result as CSV or JSON.
+**Manual, human-in-the-loop digitization of plots.** Upload or paste a figure image, calibrate the
+axes, place and refine data points on each curve, and export CSV (with a sidecar PNG) or JSON.
 
 > **For contributors / agents:** [`refs/WORKFLOW.md`](refs/WORKFLOW.md) is the authoritative build
 > spec, and **[`UPDATES.md`](UPDATES.md) is mandatory reading and maintaining** — read it before
@@ -22,14 +22,14 @@ data-space preview, and project save/load — without relying on external AI ser
 
 PlotDigitizer uses a **manual-first pipeline**:
 
-1. **Upload** a plot image (including photos taken at an angle).
+1. **Upload or paste** a plot image (Ctrl+V / Cmd+V; including photos taken at an angle).
 2. **Calibrate** in Cartesian (four bounds or 3+ precise axis points, linear or log), **Polar** (θ units, radius scale, origin radius), or **Map** (two-point scale bar). Affine/projective models map rotated or perspective photos without resampling ink.
 3. **Unskew** *(optional)*: preview and apply perspective or mesh correction when you still want a straightened image.
 4. **Condition** the curve: per-curve colour filter and optional grid removal; toggle the binary mask overlay.
 5. **Place** points on each curve, or **auto-digitize**: segment-fill along ink, or **point-match** for scatter markers (sample one marker, accept/reject ranked candidates).
 6. **Refine** line curves with **Improve** (mask corridor) and **Densify**. Scatter curves (`connect_as: scatter`) stay markers-only.
 7. Watch the **preview chart** in data space (cartesian, polar θ/R, or map units).
-8. **Export** CSV / JSON, or save a **project** (`.pdproj.json`). CSV columns follow the coordinate system (`x,y` / `theta,R` / `x,y` plus units).
+8. **Export** CSV (numbers plus a sidecar PNG of the working plot, same stem) or **Save JSON** project (`.pdproj.json`, image embedded). CSV columns follow the coordinate system (`x,y` / `theta,R` / `x,y` plus units).
 
 **Pixel coordinates are the source of truth.** Data-space values are always derived through the
 current calibration, so re-calibrating instantly remaps all points.
@@ -65,7 +65,7 @@ current calibration, so re-calibrating instantly remaps all points.
 | Frontend         | React + Tailwind CSS                                              |
 | Image editing UI | Konva.js / react-konva                                           |
 | Preview chart    | Plotly                                                            |
-| Exports          | CSV, JSON, project (`.pdproj.json`)                              |
+| Exports          | CSV (+ sidecar PNG), JSON project (`.pdproj.json`, image embedded) |
 
 ---
 
@@ -104,19 +104,20 @@ npm install
 npm run dev
 ```
 
-Open http://127.0.0.1:5173, upload a plot image, and start digitizing.
+Open http://127.0.0.1:5173, upload or paste a plot image, and start digitizing.
 
 ### Tests
 
 ```bash
 cd backend && .venv/bin/pytest -q
+cd frontend && npm test
 ```
 
 ---
 
 ## Typical Workflow
 
-1. **Upload** a plot image.
+1. **Upload** a plot image, or **paste** one (Ctrl+V / Cmd+V; ignored while typing in a text field).
 2. Click **Place bounds** in the Calibration panel, then click the plot four times: X min, X max,
    Y min, Y max. Optional: **Precise (3+ points)** for affine/projective, **Polar**, or **Map**
    (scale bar) calibration.
@@ -131,7 +132,7 @@ cd backend && .venv/bin/pytest -q
    it) so overlapping strokes can be traced next.
 8. **Drag** points to correct positions; use box-select, Delete, and curve reassignment as needed.
 9. Watch the **preview chart** update in data-space.
-10. **Export** CSV/JSON or **Save JSON** project when satisfied.
+10. **CSV** writes `*.csv` plus a sidecar `*.png` of the working plot. **Save JSON** embeds the image with calibration, curves, and workspace.
 
 ---
 
@@ -145,6 +146,6 @@ cd backend && .venv/bin/pytest -q
 
 ## Status
 
-**v2.6** — precision toolkit: affine/projective/polar/map calibration, colour-filter + grid
-conditioning, segment-fill and point-match auto-digitize, scatter curves, polar/map preview and
-export. Current version: see [`UPDATES.md`](UPDATES.md).
+**v2.9** — clipboard paste to start a session; CSV export writes a sidecar PNG; JSON still embeds
+the image. Precision toolkit (v2.6+): affine/projective/polar/map calibration, colour-filter + grid
+conditioning, segment-fill and point-match, scatter curves. Current version: see [`UPDATES.md`](UPDATES.md).

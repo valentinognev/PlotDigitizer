@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildPreviewConfig, connectAsToPlotlyMode } from '../previewChart'
+import { buildPreviewConfig, connectAsToPlotlyMode, previewEmptyReason } from '../previewChart'
 import type { Calibration, Curve } from '../../types'
 
 describe('connectAsToPlotlyMode', () => {
@@ -108,5 +108,105 @@ describe('buildPreviewConfig', () => {
     expect(cfg.traces[0].type).toBe('scatter')
     expect(String(layout.xaxis?.title)).toContain('km')
     expect(String(layout.yaxis?.title)).toContain('km')
+  })
+
+  it('applies figure title and axis label overrides for cartesian', () => {
+    const cfg = buildPreviewConfig([curve], cartesianCal(), 200, {
+      title: 'Fig',
+      xlabel: 'Time',
+      ylabel: 'V',
+    })
+    const layout = cfg.layout as PreviewLayout & {
+      title?: { text?: string; automargin?: boolean }
+    }
+    expect(layout.title?.text).toBe('Fig')
+    expect(layout.title?.automargin).toBe(true)
+    expect(layout.xaxis?.title).toBe('Time')
+    expect(layout.yaxis?.title).toBe('V')
+  })
+
+  it('keeps default axis titles and no layout title when figure is empty/omitted', () => {
+    const cfg = buildPreviewConfig([curve], cartesianCal(), 200)
+    const layout = cfg.layout as PreviewLayout & { title?: unknown }
+    expect(layout.xaxis?.title).toBe('X')
+    expect(layout.yaxis?.title).toBe('Y')
+    expect(layout.title).toBeUndefined()
+
+    const cfgWithEmptyFigure = buildPreviewConfig([curve], cartesianCal(), 200, {
+      title: '',
+      xlabel: '  ',
+      ylabel: '',
+    })
+    const layout2 = cfgWithEmptyFigure.layout as PreviewLayout & { title?: unknown }
+    expect(layout2.xaxis?.title).toBe('X')
+    expect(layout2.yaxis?.title).toBe('Y')
+    expect(layout2.title).toBeUndefined()
+  })
+
+  it('maps figure labels to polar radial/angular axis titles', () => {
+    const cfg = buildPreviewConfig(
+      [{ ...curve, connect_as: 'scatter' }],
+      polarCal(),
+      200,
+      { title: '', xlabel: 'theta', ylabel: 'radius' },
+    )
+    const layout = cfg.layout as PreviewLayout & {
+      polar?: { radialaxis?: { title?: unknown }; angularaxis?: { title?: unknown } }
+    }
+    expect(layout.polar?.radialaxis?.title).toBe('radius')
+    expect(layout.polar?.angularaxis?.title).toBe('theta')
+  })
+
+  it('overrides default map axis label style with a custom xlabel', () => {
+    const cal: Calibration = {
+      ...cartesianCal(),
+      coords_type: 'map',
+      scale_bar: {
+        pixel_a: [0, 100],
+        pixel_b: [100, 100],
+        length: 50,
+        units: 'km',
+      },
+    }
+    const cfg = buildPreviewConfig([curve], cal, 200, { title: '', xlabel: 'Distance', ylabel: '' })
+    const layout = cfg.layout as PreviewLayout
+    expect(layout.xaxis?.title).toBe('Distance')
+    expect(String(layout.yaxis?.title)).toContain('km')
+  })
+})
+
+describe('previewEmptyReason', () => {
+  it('explains log(0) instead of a generic missing-calibration message', () => {
+    const cal: Calibration = {
+      ...cartesianCal(),
+      x: { ...cartesianCal().x, scale: 'log' },
+      y: { ...cartesianCal().y, scale: 'log' },
+    }
+    const reason = previewEmptyReason(cal, true)
+    expect(reason).toMatch(/Log scale cannot use Xmin = 0 and Ymin = 0/)
+    expect(reason).toMatch(/greater than 0/)
+    expect(reason).not.toMatch(/Set calibration to preview/i)
+    expect(reason).not.toMatch(/reference values/i)
+  })
+
+  it('is null when log bounds are positive', () => {
+    const cal: Calibration = {
+      ...cartesianCal(),
+      x: {
+        scale: 'log',
+        ref_points: [
+          { pixel: [0, 0], value: 1 },
+          { pixel: [100, 0], value: 10 },
+        ],
+      },
+      y: {
+        scale: 'log',
+        ref_points: [
+          { pixel: [0, 100], value: 1 },
+          { pixel: [0, 0], value: 10 },
+        ],
+      },
+    }
+    expect(previewEmptyReason(cal, true)).toBeNull()
   })
 })

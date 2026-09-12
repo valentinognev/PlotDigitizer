@@ -133,6 +133,47 @@ def _assert_calibration_rejected(res) -> None:
         assert detail["code"] == "calibration_invalid"
 
 
+def test_patch_preferences_persists_figure():
+    session_id = _session_id()
+    patch = client.patch(
+        f"/sessions/{session_id}/preferences",
+        json={"figure": {"title": "A", "xlabel": "t", "ylabel": "V"}},
+    )
+    assert patch.status_code == 200, patch.text
+    body = patch.json()
+    assert body["figure"]["title"] == "A"
+    assert body["figure"]["xlabel"] == "t"
+    assert body["figure"]["ylabel"] == "V"
+
+    got = client.get(f"/sessions/{session_id}").json()
+    assert got["figure"]["title"] == "A"
+    assert got["figure"]["xlabel"] == "t"
+    assert got["figure"]["ylabel"] == "V"
+
+
+def test_patch_preferences_figure_partial_merge_preserves_other_fields():
+    session_id = _session_id()
+    client.patch(
+        f"/sessions/{session_id}/preferences",
+        json={"figure": {"title": "A", "xlabel": "t", "ylabel": "V"}},
+    )
+
+    patch = client.patch(
+        f"/sessions/{session_id}/preferences",
+        json={"figure": {"title": "B"}},
+    )
+    assert patch.status_code == 200, patch.text
+    body = patch.json()
+    assert body["figure"]["title"] == "B"
+    assert body["figure"]["xlabel"] == "t"
+    assert body["figure"]["ylabel"] == "V"
+
+    got = client.get(f"/sessions/{session_id}").json()
+    assert got["figure"]["title"] == "B"
+    assert got["figure"]["xlabel"] == "t"
+    assert got["figure"]["ylabel"] == "V"
+
+
 def test_patch_preferences_round_trips_incomplete_precise_axis_point():
     session_id = _session_id()
     draft = _precise_draft_one_empty_axis_point()

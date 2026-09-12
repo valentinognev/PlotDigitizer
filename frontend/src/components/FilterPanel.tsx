@@ -43,7 +43,7 @@ export function FilterPanel({
     : 'no grid detected'
 
   return (
-    <section className="min-w-0 shrink rounded-lg border border-slate-700 bg-slate-800/50 px-2 py-1 text-[11px]">
+    <section className="min-w-0 max-w-full flex-1 basis-72 overflow-hidden rounded-lg border border-slate-700 bg-slate-800/50 px-2 py-1 text-[11px]">
       <div className="mb-1 flex flex-wrap items-center gap-2">
         <h3 className="shrink-0 font-semibold text-slate-200">Filter</h3>
         <select

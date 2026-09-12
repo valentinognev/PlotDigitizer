@@ -2,6 +2,7 @@ import type {
   Calibration,
   ColorFilter,
   Curve,
+  FigureMeta,
   GridGeometrySettings,
   MatchCandidate,
   SegmentPublic,
@@ -9,6 +10,7 @@ import type {
   WorkspaceState,
 } from '../types'
 import { maskPreviewUrl } from '../lib/colorFilter'
+import { sidecarPngFilename } from '../lib/exportFlow'
 
 const DEFAULT_TIMEOUT_MS = 120_000
 
@@ -133,6 +135,7 @@ export async function patchSessionPreferences(
     calibration?: Calibration
     manual_calibration?: boolean
     workspace?: WorkspaceState | null
+    figure?: FigureMeta
   },
 ): Promise<Session> {
   return request<Session>(`/sessions/${id}/preferences`, {
@@ -188,15 +191,32 @@ export async function redoSession(id: string): Promise<Session> {
   return request<Session>(`/sessions/${id}/redo`, { method: 'POST' })
 }
 
-export const EXPORT_FRAME_NAME = 'plot-digitizer-export'
-
 const EXPORT_DEFAULT_NAMES = {
   csv: 'plot_digitizer.csv',
   json: 'plot_digitizer.pdproj.json',
 } as const
 
-async function exportUrl(sessionId: string, format: 'csv' | 'json'): Promise<string> {
-  return `/sessions/${sessionId}/export?format=${format}&_=${Date.now()}`
+function isAbortError(err: unknown): boolean {
+  return (
+    (err instanceof DOMException && err.name === 'AbortError') ||
+    (err instanceof Error && err.name === 'AbortError')
+  )
+}
+
+function parseContentDispositionFilename(header: string | null): string | null {
+  if (!header) return null
+  const star = /filename\*\s*=\s*(?:UTF-8''|utf-8'')([^;]+)/i.exec(header)
+  if (star?.[1]) {
+    try {
+      return decodeURIComponent(star[1].trim().replace(/^"(.*)"$/, '$1'))
+    } catch {
+      return star[1].trim()
+    }
+  }
+  const quoted = /filename\s*=\s*"((?:\\.|[^"])*)"/i.exec(header)
+  if (quoted?.[1]) return quoted[1].replace(/\\"/g, '"')
+  const unquoted = /filename\s*=\s*([^;]+)/i.exec(header)
+  return unquoted?.[1]?.trim().replace(/^["']|["']$/g, '') ?? null
 }
 
 async function readExportError(res: Response): Promise<string> {
@@ -205,7 +225,7 @@ async function readExportError(res: Response): Promise<string> {
     const body = await res.json()
     const err = body?.error ?? body?.detail
     if (typeof err === 'object' && err && 'message' in err) {
-      message = String(err.message)
+      message = String((err as { message: string }).message)
     }
   } catch {
     /* ignore */
@@ -213,35 +233,79 @@ async function readExportError(res: Response): Promise<string> {
   return message
 }
 
-function submitExportForm(sessionId: string, format: 'csv' | 'json'): void {
-  const form = document.createElement('form')
-  form.method = 'GET'
-  form.action = `/sessions/${sessionId}/export`
-  form.target = EXPORT_FRAME_NAME
-  form.style.display = 'none'
+async function fetchExportBlob(
+  sessionId: string,
+  format: 'csv' | 'json',
+): Promise<{ blob: Blob; filename: string }> {
+  const res = await fetch(`/sessions/${sessionId}/export?format=${format}&_=${Date.now()}`)
+  if (!res.ok) throw new Error(await readExportError(res))
+  return {
+    blob: await res.blob(),
+    filename:
+      parseContentDispositionFilename(res.headers.get('content-disposition')) ??
+      EXPORT_DEFAULT_NAMES[format],
+  }
+}
 
-  for (const [name, value] of [
-    ['format', format],
-    ['_', String(Date.now())],
-  ] as const) {
-    const input = document.createElement('input')
-    input.type = 'hidden'
-    input.name = name
-    input.value = value
-    form.appendChild(input)
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.rel = 'noopener'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
+async function saveCsvSidecarPng(
+  sessionId: string,
+  csvFilename: string,
+  csvHandle?: FileSystemFileHandle,
+): Promise<void> {
+  let blob: Blob
+  try {
+    const res = await fetch(`/sessions/${sessionId}/image`)
+    if (!res.ok) throw new Error(await readExportError(res))
+    blob = await res.blob()
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    throw new Error('CSV saved, but the PNG sidecar failed: ' + message)
   }
 
-  document.body.appendChild(form)
-  form.submit()
-  form.remove()
+  const pngName = sidecarPngFilename(csvFilename)
+  const getParent = (
+    csvHandle as FileSystemFileHandle & { getParent?: () => Promise<FileSystemDirectoryHandle> } | undefined
+  )?.getParent
+  if (typeof getParent === 'function') {
+    try {
+      const parent = await getParent.call(csvHandle)
+      const pngHandle = await parent.getFileHandle(pngName, { create: true })
+      const writable = await pngHandle.createWritable()
+      try {
+        await writable.write(blob)
+        await writable.close()
+        return
+      } catch (err) {
+        try {
+          await writable.abort()
+        } catch {
+          /* already closed */
+        }
+        throw err
+      }
+    } catch {
+      // Directory write unavailable; fall back to a blob download.
+    }
+  }
+  downloadBlob(blob, pngName)
 }
 
 export async function triggerSessionExport(
   sessionId: string,
   format: 'csv' | 'json',
 ): Promise<void> {
-  const url = await exportUrl(sessionId, format)
-
   const savePicker = (
     window as Window & {
       showSaveFilePicker?: (options: {
@@ -251,6 +315,8 @@ export async function triggerSessionExport(
     }
   ).showSaveFilePicker
 
+  let prepared: { blob: Blob; filename: string } | undefined
+  let pickerHandle: FileSystemFileHandle | undefined
   if (savePicker) {
     try {
       const handle = await savePicker({
@@ -260,19 +326,52 @@ export async function triggerSessionExport(
             ? [{ description: 'CSV', accept: { 'text/csv': ['.csv'] } }]
             : [{ description: 'JSON', accept: { 'application/json': ['.json'] } }],
       })
-      const res = await fetch(url)
-      if (!res.ok) throw new Error(await readExportError(res))
+      const requestPermission = (
+        handle as FileSystemFileHandle & {
+          requestPermission?: (descriptor: { mode: 'readwrite' }) => Promise<PermissionState>
+        }
+      ).requestPermission
+      if (typeof requestPermission === 'function') {
+        const perm = await requestPermission.call(handle, { mode: 'readwrite' })
+        if (perm === 'denied') {
+          throw Object.assign(new Error('Permission denied'), { name: 'NotAllowedError' })
+        }
+      }
       const writable = await handle.createWritable()
-      await writable.write(await res.blob())
-      await writable.close()
-      return
+      try {
+        prepared = await fetchExportBlob(sessionId, format)
+        await writable.write(prepared.blob)
+        await writable.close()
+        pickerHandle = handle
+      } catch (err) {
+        try {
+          await writable.abort()
+        } catch {
+          /* already closed */
+        }
+        throw err
+      }
     } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return
-      if (err instanceof Error && err.name === 'AbortError') return
+      if (isAbortError(err)) return
     }
   }
 
-  submitExportForm(sessionId, format)
+  if (pickerHandle && prepared) {
+    if (format === 'csv') {
+      await saveCsvSidecarPng(
+        sessionId,
+        pickerHandle.name || prepared.filename,
+        pickerHandle,
+      )
+    }
+    return
+  }
+
+  prepared ??= await fetchExportBlob(sessionId, format)
+  downloadBlob(prepared.blob, prepared.filename)
+  if (format === 'csv') {
+    await saveCsvSidecarPng(sessionId, prepared.filename)
+  }
 }
 
 export async function suggestFilter(

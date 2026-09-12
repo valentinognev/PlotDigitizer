@@ -132,6 +132,12 @@ export interface MeshGridPayload {
   vertices: MeshVertexPayload[]
 }
 
+export interface FigureMeta {
+  title: string
+  xlabel: string
+  ylabel: string
+}
+
 export interface Session {
   id: string
   image_meta: ImageMeta
@@ -142,6 +148,7 @@ export interface Session {
   workspace?: WorkspaceState | null
   history: unknown[]
   image_url: string
+  figure: FigureMeta
 }
 
 export interface ApiErrorBody {

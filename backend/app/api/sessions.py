@@ -79,6 +79,7 @@ def _to_public(stored) -> SessionPublic:
         workspace=s.workspace,
         history=s.history,
         image_url=f"/sessions/{s.id}/image?v={s.image_meta.revision}",
+        figure=s.figure,
     )
 
 
@@ -198,6 +199,9 @@ def patch_preferences(session_id: str, body: SessionPreferencesPatch) -> Session
             stored.session.workspace = current.model_copy(update=merged)
         else:
             stored.session.workspace = body.workspace
+    if body.figure is not None:
+        merged_figure = body.figure.model_dump(exclude_unset=True)
+        stored.session.figure = stored.session.figure.model_copy(update=merged_figure)
     session_store.update(session_id, stored.session)
     return _to_public(stored)
 

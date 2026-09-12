@@ -1,5 +1,20 @@
-import type { Calibration, ConnectAs, Curve, ThetaUnits } from '../types'
+import type { Calibration, ConnectAs, Curve, FigureMeta, ThetaUnits } from '../types'
+import { formatCalibrationIssue } from './transform'
 import { pixelToData } from './transform2d'
+
+export function previewEmptyReason(
+  calibration: Calibration | null,
+  hasVisiblePoints: boolean,
+): string | null {
+  if (!calibration) {
+    return hasVisiblePoints
+      ? 'Set calibration to preview curves in data space.'
+      : 'Set valid calibration to preview data-space plot'
+  }
+  const copy = formatCalibrationIssue(calibration)
+  if (!copy) return null
+  return `${copy.message} ${copy.hint}`
+}
 
 export function connectAsToPlotlyMode(
   connectAs: ConnectAs | undefined,
@@ -27,6 +42,11 @@ const PLOT_LAYOUT_BASE = {
   uirevision: 'plot-preview',
 } as const
 
+function nonEmpty(s: string | undefined): string | undefined {
+  const trimmed = s?.trim()
+  return trimmed ? trimmed : undefined
+}
+
 function isPlottable(calibration: Calibration, a: number, b: number): boolean {
   if (!Number.isFinite(a) || !Number.isFinite(b)) return false
   const coords = calibration.coords_type ?? 'cartesian'
@@ -43,8 +63,15 @@ export function buildPreviewConfig(
   curves: Curve[],
   calibration: Calibration,
   height: number,
+  figure?: FigureMeta,
 ): { traces: Array<Record<string, unknown>>; layout: Record<string, unknown> } {
   const coords = calibration.coords_type ?? 'cartesian'
+  const titleText = nonEmpty(figure?.title)
+  const xlabelText = nonEmpty(figure?.xlabel)
+  const ylabelText = nonEmpty(figure?.ylabel)
+  // Object form (not a bare string) so automargin can grow the top margin for the
+  // title instead of letting the fixed PLOT_LAYOUT_BASE.margin.t clip it.
+  const titleLayout = titleText ? { title: { text: titleText, automargin: true } } : {}
   const traces: Array<Record<string, unknown>> = []
   for (const curve of curves) {
     if (!curve.visible) continue
@@ -101,15 +128,19 @@ export function buildPreviewConfig(
       traces,
       layout: {
         ...PLOT_LAYOUT_BASE,
+        ...titleLayout,
         height: h,
         polar: {
           radialaxis: {
-            title: 'R',
+            title: ylabelText ?? 'R',
             type: radialType,
             gridcolor: '#334155',
             range: origin !== 0 ? [origin, null] : undefined,
           },
-          angularaxis: { direction: 'counterclockwise' },
+          angularaxis: {
+            direction: 'counterclockwise',
+            ...(xlabelText ? { title: xlabelText } : {}),
+          },
         },
       },
     }
@@ -120,16 +151,17 @@ export function buildPreviewConfig(
     traces,
     layout: {
       ...PLOT_LAYOUT_BASE,
+      ...titleLayout,
       height: h,
       xaxis: {
-        title: coords === 'map' ? `x${units}` : 'X',
+        title: xlabelText ?? (coords === 'map' ? `x${units}` : 'X'),
         gridcolor: '#334155',
         automargin: true,
         autorange: true,
         type: calibration.x.scale === 'log' ? 'log' : 'linear',
       },
       yaxis: {
-        title: coords === 'map' ? `y${units}` : 'Y',
+        title: ylabelText ?? (coords === 'map' ? `y${units}` : 'Y'),
         gridcolor: '#334155',
         automargin: true,
         autorange: true,

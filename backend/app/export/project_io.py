@@ -10,6 +10,7 @@ from app.calibration.calibration import CalibrationError, pixel_to_data, validat
 from app.models.schemas import (
     Calibration,
     Curve,
+    FigureMeta,
     ImageSource,
     Session,
     WorkspaceState,
@@ -71,6 +72,7 @@ def export_project_json(session: Session, *, image_bytes: bytes) -> str:
         "manual_calibration": session.manual_calibration,
         "curves": [_curve_export_entry(session, curve) for curve in session.curves],
         "workspace": (session.workspace or WorkspaceState()).model_dump(),
+        "figure": session.figure.model_dump(),
     }
     return json.dumps(payload, indent=2)
 
@@ -145,6 +147,9 @@ def load_project_from_text(text: str) -> tuple[Session, bytes]:
         WorkspaceState(**workspace_raw) if isinstance(workspace_raw, dict) else WorkspaceState()
     )
 
+    figure_raw = payload.get("figure")
+    figure = FigureMeta(**figure_raw) if isinstance(figure_raw, dict) else FigureMeta()
+
     session = Session(
         image_meta=image_meta,
         image_source=image_source,
@@ -153,6 +158,7 @@ def load_project_from_text(text: str) -> tuple[Session, bytes]:
         curves=_curves_from_project(payload),
         workspace=workspace,
         history=[],
+        figure=figure,
     )
     return session, image_bytes
 

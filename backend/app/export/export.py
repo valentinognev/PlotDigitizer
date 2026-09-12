@@ -33,11 +33,27 @@ def export_json(session: Session, *, image_bytes: bytes) -> str:
     return export_project_json(session, image_bytes=image_bytes)
 
 
+def _csv_figure_comment_lines(session: Session) -> list[str]:
+    lines: list[str] = []
+    title = session.figure.title.strip()
+    if title:
+        lines.append(f"# title: {title}")
+    xlabel = session.figure.xlabel.strip()
+    if xlabel:
+        lines.append(f"# xlabel: {xlabel}")
+    ylabel = session.figure.ylabel.strip()
+    if ylabel:
+        lines.append(f"# ylabel: {ylabel}")
+    return lines
+
+
 def export_csv(session: Session) -> str:
     if not session.calibration:
         raise CalibrationError("Calibration required for export")
     validate_calibration(session.calibration)
     buf = io.StringIO()
+    for line in _csv_figure_comment_lines(session):
+        buf.write(line + "\n")
     units = csv_units_line(session.calibration)
     if units:
         buf.write(units + "\n")

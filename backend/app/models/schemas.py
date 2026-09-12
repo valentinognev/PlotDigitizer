@@ -126,6 +126,12 @@ class MeshGridPayload(BaseModel):
     vertices: list[MeshVertexPayload]
 
 
+class FigureMeta(BaseModel):
+    title: str = ""
+    xlabel: str = ""
+    ylabel: str = ""
+
+
 class WorkspaceState(BaseModel):
     active_curve_id: str | None = None
     resample_count: int = Field(default=DEFAULT_POINT_COUNT, ge=2, le=200)
@@ -158,6 +164,7 @@ class Session(BaseModel):
     curves: list[Curve] = Field(default_factory=list)
     workspace: WorkspaceState | None = None
     history: list[HistoryEntry] = Field(default_factory=list)
+    figure: FigureMeta = Field(default_factory=FigureMeta)
 
 
 class SessionPublic(BaseModel):
@@ -170,6 +177,7 @@ class SessionPublic(BaseModel):
     workspace: WorkspaceState | None = None
     history: list[HistoryEntry]
     image_url: str
+    figure: FigureMeta = Field(default_factory=FigureMeta)
 
 
 class ApiErrorDetail(BaseModel):
@@ -191,6 +199,7 @@ class SessionPreferencesPatch(BaseModel):
     calibration: Calibration | None = None
     manual_calibration: bool | None = None
     workspace: WorkspaceState | None = None
+    figure: FigureMeta | None = None
 
 
 class ResampleRequest(BaseModel):

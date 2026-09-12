@@ -46,7 +46,13 @@ import {
   patchPointsPixel,
   reassignPoints as reassignPointsLocal,
 } from './lib/sessionPatch'
-import { mergePreferencesUpdate, mergeSessionUpdate } from './lib/sessionMerge'
+import {
+  applyPreferencesPatchLocal,
+  mergePreferencesUpdate,
+  mergeSessionUpdate,
+  resolvePreferencesSave,
+  type PreferencesPatch,
+} from './lib/sessionMerge'
 import {
   computeMeshWarpTransform,
   DEFAULT_MESH_SECTIONS,
@@ -77,8 +83,11 @@ import {
 } from './lib/pointMatch'
 import { appendAxisPoint, restoreAxisUiFlags, setScaleBarPixel } from './lib/axesChecker'
 import { imageSourceLabel } from './lib/imageSource'
+import { handleClipboardPaste } from './lib/clipboardPaste'
 import { getAxisBounds, isCalibrationValid, updateAxisBound, areCalibrationPixelsInImage, type AxisBoundKey } from './lib/transform'
-import type { Calibration, CanvasMode, ColorFilter, SegmentPublic, Session } from './types'
+import type { Calibration, CanvasMode, ColorFilter, FigureMeta, SegmentPublic, Session } from './types'
+
+const EMPTY_FIGURE: FigureMeta = { title: '', xlabel: '', ylabel: '' }
 
 function toast(message: string) {
   const el = document.getElementById('toast')
@@ -109,6 +118,7 @@ export default function App() {
   const [busyMessage, setBusyMessage] = useState<string | null>(null)
   const [initializing, setInitializing] = useState(true)
   const [draftCalibration, setDraftCalibration] = useState<Calibration | null>(null)
+  const [figure, setFigure] = useState<FigureMeta>(EMPTY_FIGURE)
   const [unskewPreview, setUnskewPreview] = useState(false)
   const [unskewMode, setUnskewMode] = useState<UnskewMode>('perspective')
   const [meshGrid, setMeshGrid] = useState<MeshGridState | null>(null)
@@ -120,11 +130,7 @@ export default function App() {
   const filterSeq = useRef(0)
   const prefsDebounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const filterDebounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const pendingPrefsPatch = useRef<{
-    calibration?: Calibration
-    manual_calibration?: boolean
-    workspace?: Session['workspace']
-  }>({})
+  const pendingPrefsPatch = useRef<PreferencesPatch>({})
 
   const applyWorkspaceFromSession = useCallback((s: Session | null) => {
     if (!s) {
@@ -199,6 +205,7 @@ export default function App() {
     (s: Session | null) => {
       setSession(s)
       setDraftCalibration(s?.calibration ?? null)
+      setFigure(s?.figure ?? EMPTY_FIGURE)
       applyWorkspaceFromSession(s)
     },
     [applyWorkspaceFromSession],
@@ -242,6 +249,7 @@ export default function App() {
   useEffect(() => {
     pendingPrefsPatch.current = {}
     setDraftCalibration(session?.calibration ?? null)
+    setFigure(session?.figure ?? EMPTY_FIGURE)
     setAxisPlaceStep(null)
     setUnskewPreview(false)
     setMaskEpoch(0)
@@ -372,6 +380,17 @@ export default function App() {
       setBusyMessage(null)
     }
   }
+
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      if (busy) return
+      handleClipboardPaste(e, (file) => {
+        void handleUpload(file)
+      })
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [busy])
 
   const patchCurvesQuiet = useCallback(
     (
@@ -515,11 +534,7 @@ export default function App() {
 
   const savePreferencesQuiet = useCallback(
     (
-      patch: {
-        calibration?: Calibration
-        manual_calibration?: boolean
-        workspace?: Session['workspace']
-      },
+      patch: PreferencesPatch,
       options?: { debounceMs?: number },
     ) => {
       const sessionId = session?.id
@@ -527,14 +542,9 @@ export default function App() {
 
       pendingPrefsPatch.current = { ...pendingPrefsPatch.current, ...patch }
 
-      const applyLocal = (current: Session): Session => ({
-        ...current,
-        ...(patch.calibration !== undefined ? { calibration: patch.calibration } : {}),
-        manual_calibration: true,
-      })
-
-      setSession((current) => (current ? applyLocal(current) : current))
+      setSession((current) => (current ? applyPreferencesPatchLocal(current, patch) : current))
       if (patch.calibration !== undefined) setDraftCalibration(patch.calibration)
+      if (patch.figure !== undefined) setFigure(patch.figure)
 
       const flush = () => {
         const toSend = { ...pendingPrefsPatch.current }
@@ -542,9 +552,11 @@ export default function App() {
         patchSessionPreferences(sessionId, toSend)
           .then((saved) => {
             if (seq !== prefsSeq.current) return
-            pendingPrefsPatch.current = {}
+            const resolved = resolvePreferencesSave(pendingPrefsPatch.current, toSend, saved)
+            pendingPrefsPatch.current = resolved.pending
             setSession((prev) => mergePreferencesUpdate(prev, saved))
-            if (saved.calibration) setDraftCalibration(saved.calibration)
+            if (resolved.calibration) setDraftCalibration(resolved.calibration)
+            if (resolved.figure) setFigure(resolved.figure)
           })
           .catch((e) => {
             if (seq !== prefsSeq.current) return
@@ -574,13 +586,15 @@ export default function App() {
     clearTimeout(prefsDebounce.current)
     const toSend = { ...pendingPrefsPatch.current }
     if (Object.keys(toSend).length === 0) return
-    pendingPrefsPatch.current = {}
     const seq = ++prefsSeq.current
     try {
       const saved = await patchSessionPreferences(sessionId, toSend)
       if (seq !== prefsSeq.current) return
+      const resolved = resolvePreferencesSave(pendingPrefsPatch.current, toSend, saved)
+      pendingPrefsPatch.current = resolved.pending
       setSession((prev) => mergePreferencesUpdate(prev, saved))
-      if (saved.calibration) setDraftCalibration(saved.calibration)
+      if (resolved.calibration) setDraftCalibration(resolved.calibration)
+      if (resolved.figure) setFigure(resolved.figure)
     } catch (e) {
       if (seq !== prefsSeq.current) return
       toast(e instanceof Error ? e.message : 'Calibration save failed')
@@ -1110,6 +1124,10 @@ export default function App() {
     bumpChecker()
   }
 
+  const handleFigureChange = (next: FigureMeta) => {
+    savePreferencesQuiet({ figure: next }, { debounceMs: 200 })
+  }
+
   const handleToggleAxesChecker = (show: boolean) => {
     setShowAxesChecker(show)
     if (!session) return
@@ -1145,7 +1163,10 @@ export default function App() {
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <label className="cursor-pointer rounded bg-slate-700 px-3 py-1.5 text-xs hover:bg-slate-600">
+          <label
+            className="cursor-pointer rounded bg-slate-700 px-3 py-1.5 text-xs hover:bg-slate-600"
+            title="Or paste (Ctrl+V / Cmd+V)"
+          >
             Upload image
             <input
               type="file"
@@ -1188,7 +1209,7 @@ export default function App() {
 
       <p id="toast" className="shrink-0 px-4 py-0.5 text-center text-xs text-amber-300" />
 
-      <div className="shrink-0 flex gap-2 overflow-x-auto border-b border-slate-800 px-2 py-2">
+      <div className="flex shrink-0 flex-wrap gap-2 overflow-x-auto border-b border-slate-800 px-2 py-2">
         <UnskewPanel
           mode={unskewMode}
           canTogglePreview={canToggleUnskewPreview}
@@ -1257,6 +1278,9 @@ export default function App() {
           canExportCsv={!!session && isCalibrationValid(calibration)}
           canImport={!!session && isCalibrationValid(calibration)}
           busy={busy}
+          figure={figure}
+          onFigureChange={handleFigureChange}
+          onBeforeExport={flushPreferencesQuiet}
           onExportError={(message) => toast(message)}
           onLoadProject={(file) =>
             run(async () => {
@@ -1336,7 +1360,7 @@ export default function App() {
             />
           </div>
           <div className="min-h-0 overflow-hidden">
-            <PreviewChart curves={session?.curves ?? []} calibration={calibration} />
+            <PreviewChart curves={session?.curves ?? []} calibration={calibration} figure={figure} />
           </div>
         </div>
 

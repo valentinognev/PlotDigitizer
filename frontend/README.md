@@ -14,7 +14,7 @@ for setup and workflow.
 | `CalibrationPanel.tsx` | Manual axis bounds: place on plot, enter min/max values            |
 | `CurveList.tsx`      | Curves, place-points mode, Improve / Densify per curve               |
 | `PreviewChart.tsx`   | Plotly live preview in data-space                                    |
-| `ExportPanel.tsx`    | Open/save project, CSV/JSON export, curve import                     |
+| `ExportPanel.tsx`    | Open/save project, CSV (+ sidecar PNG) / JSON export, curve import     |
 
 Top toolbar order: **Unskew** → **Calibration** → **Export**.
 
@@ -25,7 +25,9 @@ Top toolbar order: **Unskew** → **Calibration** → **Export**.
 - `src/lib/unskew.ts` — homography from axis bounds; preview warp; mirrors `backend/app/cv/unskew.py`
 - `src/lib/meshWarp.ts` — mesh grid, hybrid warp, point mapping; mirrors `backend/app/cv/mesh_warp.py`
 - `src/lib/sessionPatch.ts` — optimistic local curve/point updates
-- `src/api/client.ts` — typed REST client (includes `applyUnskew` with perspective or mesh mode)
+- `src/api/client.ts` — typed REST client (includes `applyUnskew` with perspective or mesh mode); CSV export also saves a sidecar PNG
+- `src/lib/clipboardPaste.ts` — clipboard image → `File` for Ctrl+V / Cmd+V upload
+- `src/lib/exportFlow.ts` — pre-export preference flush; CSV sidecar PNG filename
 
 ## Unskew preview
 

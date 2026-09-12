@@ -1,7 +1,8 @@
 import { memo, useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
 import PlotlyModule from 'react-plotly.js'
-import type { Calibration, Curve } from '../types'
-import { buildPreviewConfig } from '../lib/previewChart'
+import type { Calibration, Curve, FigureMeta } from '../types'
+import { buildPreviewConfig, previewEmptyReason } from '../lib/previewChart'
+import { formatCalibrationIssue } from '../lib/transform'
 import { isCalibrationValid } from '../lib/transform2d'
 
 /** Vite/Rolldown CJS interop: default export may be nested under `.default`. */
@@ -22,6 +23,7 @@ const PLOT_CONFIG = {
 interface Props {
   curves: Curve[]
   calibration: Calibration | null
+  figure?: FigureMeta
 }
 
 function hashStr(s: string): number {
@@ -30,8 +32,17 @@ function hashStr(s: string): number {
   return h
 }
 
-function plotRevision(curves: Curve[], calibration: Calibration | null): number {
+function plotRevision(
+  curves: Curve[],
+  calibration: Calibration | null,
+  figure?: FigureMeta,
+): number {
   let revision = 0
+  if (figure) {
+    revision += hashStr(figure.title) * 3
+    revision += hashStr(figure.xlabel) * 5
+    revision += hashStr(figure.ylabel) * 7
+  }
   if (calibration) {
     revision += calibration.x.ref_points.length * 17
     revision += calibration.y.ref_points.length * 31
@@ -70,7 +81,7 @@ function hasVisiblePoints(curves: Curve[]): boolean {
   return curves.some((c) => c.visible && c.points.length > 0)
 }
 
-export const PreviewChart = memo(function PreviewChart({ curves, calibration }: Props) {
+export const PreviewChart = memo(function PreviewChart({ curves, calibration, figure }: Props) {
   const plotHostRef = useRef<HTMLDivElement>(null)
   const [plotHeight, setPlotHeight] = useState(280)
   const valid = isCalibrationValid(calibration)
@@ -87,27 +98,44 @@ export const PreviewChart = memo(function PreviewChart({ curves, calibration }: 
   }, [valid])
 
   const traces = useMemo(
-    () => (valid && calibration ? buildPreviewConfig(curves, calibration, plotHeight).traces : []),
-    [curves, calibration, valid, plotHeight],
+    () =>
+      valid && calibration
+        ? buildPreviewConfig(curves, calibration, plotHeight, figure).traces
+        : [],
+    [curves, calibration, valid, plotHeight, figure],
   )
   const layout = useMemo(
-    () => (valid && calibration ? buildPreviewConfig(curves, calibration, plotHeight).layout : null),
-    [curves, calibration, valid, plotHeight],
+    () =>
+      valid && calibration
+        ? buildPreviewConfig(curves, calibration, plotHeight, figure).layout
+        : null,
+    [curves, calibration, valid, plotHeight, figure],
   )
   const revision = useMemo(
-    () => plotRevision(curves, valid ? calibration : null),
-    [curves, calibration, valid],
+    () => plotRevision(curves, valid ? calibration : null, figure),
+    [curves, calibration, valid, figure],
   )
 
-  const missingCalibrationMessage = hasVisiblePoints(curves)
-    ? 'Set calibration to preview curves in data space.'
-    : 'Set valid calibration to preview data-space plot'
+  const issueCopy = formatCalibrationIssue(calibration)
+  const missingCalibrationMessage = previewEmptyReason(
+    calibration,
+    hasVisiblePoints(curves),
+  )
 
   return (
     <div className="flex h-full max-h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border border-slate-700 bg-slate-900 p-2">
       {!valid ? (
-        <div className="flex flex-1 items-center justify-center px-4 text-center text-sm text-slate-400">
-          {missingCalibrationMessage}
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
+          {issueCopy ? (
+            <>
+              <p className="text-sm font-medium text-amber-300">{issueCopy.message}</p>
+              <p className="text-sm text-slate-400">{issueCopy.hint}</p>
+            </>
+          ) : (
+            <p className="text-sm text-slate-400">
+              {missingCalibrationMessage ?? 'Set valid calibration to preview data-space plot'}
+            </p>
+          )}
         </div>
       ) : (
         <div ref={plotHostRef} className="min-h-0 flex-1">
@@ -119,7 +147,7 @@ export const PreviewChart = memo(function PreviewChart({ curves, calibration }: 
             <Plot
               key={calibration!.coords_type ?? 'cartesian'}
               data={traces}
-              layout={layout ?? buildPreviewConfig(curves, calibration!, plotHeight).layout}
+              layout={layout ?? buildPreviewConfig(curves, calibration!, plotHeight, figure).layout}
               revision={revision}
               useResizeHandler
               style={{ width: '100%', height: '100%' }}

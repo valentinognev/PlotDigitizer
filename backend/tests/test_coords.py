@@ -169,6 +169,41 @@ def test_orthogonal_matches_old_1d_fit_to_1e_12(name, cal, pixels):
         assert back[1] == pytest.approx(px[1], abs=1e-8)
 
 
+def test_four_bound_orthogonal_ignores_intermediate_ticks():
+    """YMIN/YMAX (and XMIN/XMAX) marks must map to their values even if leftover ticks remain.
+
+    Four-bound UI only shows the extreme pixels; lstsq over hidden ticks pulls the
+    baseline off y=0 (see last-session plots sitting above ymin in the preview).
+    """
+    cal = Calibration(
+        x=CalibrationAxis(
+            scale="linear",
+            ref_points=[
+                RefPoint(pixel=(100.0, 400.0), value=0.0),
+                RefPoint(pixel=(200.0, 400.0), value=2.0),
+                RefPoint(pixel=(500.0, 400.0), value=10.0),
+            ],
+        ),
+        y=CalibrationAxis(
+            scale="linear",
+            ref_points=[
+                RefPoint(pixel=(100.0, 400.0), value=0.0),
+                RefPoint(pixel=(100.0, 250.0), value=1.0),
+                RefPoint(pixel=(100.0, 100.0), value=5.0),
+            ],
+        ),
+        source="manual",
+    )
+    assert pixel_to_data(cal, (100.0, 400.0))[1] == pytest.approx(0.0, abs=1e-12)
+    assert pixel_to_data(cal, (100.0, 100.0))[1] == pytest.approx(5.0, abs=1e-12)
+    assert pixel_to_data(cal, (100.0, 250.0))[1] == pytest.approx(2.5, abs=1e-12)
+    assert pixel_to_data(cal, (300.0, 250.0))[0] == pytest.approx(5.0, abs=1e-12)
+    assert pixel_to_data(cal, (300.0, 250.0))[1] == pytest.approx(2.5, abs=1e-12)
+    assert pixel_to_data(cal, (300.0, 250.0)) == pytest.approx(
+        oracle_pixel_to_data(cal, (300.0, 250.0)), abs=1e-12
+    )
+
+
 def test_existing_calibration_helpers_still_importable():
     from app.calibration.calibration import (
         CalibrationError as FacadeError,

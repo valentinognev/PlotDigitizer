@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import type { Calibration } from '../../types'
-import { formatAxisValue, getAxisBounds, pixelToData } from '../transform'
+import { formatAxisValue, formatCalibrationIssue, getAxisBounds, pixelToData } from '../transform'
 import { solveTransform, type Constraint } from '../transform2d'
 
 const linearCal: Calibration = {
@@ -30,6 +30,33 @@ describe('pixelToData (orthogonal, existing mapping)', () => {
     const data = pixelToData(linearCal, [300, 250])
     expect(data[0]).toBeCloseTo(5, 12)
     expect(data[1]).toBeCloseTo(2.5, 12)
+  })
+
+  it('maps YMIN/YMAX pixels to their values when leftover ticks remain', () => {
+    const cal: Calibration = {
+      x: {
+        scale: 'linear',
+        ref_points: [
+          { pixel: [100, 400], value: 0 },
+          { pixel: [200, 400], value: 2 },
+          { pixel: [500, 400], value: 10 },
+        ],
+      },
+      y: {
+        scale: 'linear',
+        ref_points: [
+          { pixel: [100, 400], value: 0 },
+          { pixel: [100, 250], value: 1 },
+          { pixel: [100, 100], value: 5 },
+        ],
+      },
+      source: 'manual',
+    }
+    expect(pixelToData(cal, [100, 400])[1]).toBeCloseTo(0, 12)
+    expect(pixelToData(cal, [100, 100])[1]).toBeCloseTo(5, 12)
+    expect(pixelToData(cal, [100, 250])[1]).toBeCloseTo(2.5, 12)
+    expect(pixelToData(cal, [300, 250])[0]).toBeCloseTo(5, 12)
+    expect(pixelToData(cal, [300, 250])[1]).toBeCloseTo(2.5, 12)
   })
 
   it('maps log X the same way as 10 ** (slope * px + intercept)', () => {
@@ -63,6 +90,34 @@ describe('getAxisBounds / formatAxisValue', () => {
   it('formats numbers without throwing', () => {
     expect(formatAxisValue(12.5)).toBe('12.5')
     expect(formatAxisValue(Number.POSITIVE_INFINITY)).toBe('—')
+  })
+})
+
+describe('formatCalibrationIssue', () => {
+  it('names each log bound that is 0', () => {
+    const cal: Calibration = {
+      ...linearCal,
+      x: { ...linearCal.x, scale: 'log' },
+      y: { ...linearCal.y, scale: 'log' },
+    }
+    const copy = formatCalibrationIssue(cal)
+    expect(copy).not.toBeNull()
+    expect(copy!.message).toBe('Log scale cannot use Xmin = 0 and Ymin = 0.')
+    expect(copy!.hint).toBe('Enter the numbers printed on the plot axes (must be greater than 0).')
+  })
+
+  it('names only the log axis that is invalid', () => {
+    const cal: Calibration = {
+      ...linearCal,
+      x: { ...linearCal.x, scale: 'log' },
+    }
+    const copy = formatCalibrationIssue(cal)
+    expect(copy).not.toBeNull()
+    expect(copy!.message).toBe('Log scale cannot use Xmin = 0.')
+  })
+
+  it('is null when calibration is valid', () => {
+    expect(formatCalibrationIssue(linearCal)).toBeNull()
   })
 })
 

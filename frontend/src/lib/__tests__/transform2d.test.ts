@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import vectors from '../__fixtures__/transform-vectors.json'
-import { axesCheckerPolyline, dataToPixel, pixelToData, type Calibration } from '../transform2d'
+import {
+  axesCheckerPolyline,
+  calibrationError,
+  dataToPixel,
+  isCalibrationValid,
+  pixelToData,
+  type Calibration,
+} from '../transform2d'
 
 type Case = {
   name: string
@@ -21,6 +28,65 @@ describe('transform2d parity with Python', () => {
       expect(back[0], c.name + ' px').toBeCloseTo(c.pixel[0], 6)
       expect(back[1], c.name + ' py').toBeCloseTo(c.pixel[1], 6)
     }
+  })
+})
+
+function linearZeroMin(): Calibration {
+  return {
+    source: 'manual',
+    coords_type: 'cartesian',
+    x: {
+      scale: 'linear',
+      ref_points: [
+        { pixel: [100, 400], value: 0 },
+        { pixel: [500, 400], value: 1 },
+      ],
+    },
+    y: {
+      scale: 'linear',
+      ref_points: [
+        { pixel: [100, 400], value: 0 },
+        { pixel: [100, 100], value: 2 },
+      ],
+    },
+  }
+}
+
+describe('log scale with non-positive bounds', () => {
+  it('is invalid and names the log requirement when xmin is 0', () => {
+    const cal: Calibration = {
+      ...linearZeroMin(),
+      x: { ...linearZeroMin().x, scale: 'log' },
+      y: { ...linearZeroMin().y, scale: 'log' },
+    }
+    expect(isCalibrationValid(cal)).toBe(false)
+    const err = calibrationError(cal)
+    expect(err).not.toBeNull()
+    expect(err!.message).toMatch(/log scale requires all reference values > 0/i)
+    expect(err!.hint).toMatch(/greater than zero/i)
+  })
+
+  it('stays valid when log bounds are positive', () => {
+    const cal: Calibration = {
+      source: 'manual',
+      coords_type: 'cartesian',
+      x: {
+        scale: 'log',
+        ref_points: [
+          { pixel: [100, 400], value: 1 },
+          { pixel: [500, 400], value: 10 },
+        ],
+      },
+      y: {
+        scale: 'log',
+        ref_points: [
+          { pixel: [100, 400], value: 1 },
+          { pixel: [100, 100], value: 10 },
+        ],
+      },
+    }
+    expect(isCalibrationValid(cal)).toBe(true)
+    expect(calibrationError(cal)).toBeNull()
   })
 })
 

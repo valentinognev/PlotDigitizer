@@ -7,7 +7,7 @@ from typing import Literal
 
 import numpy as np
 
-from app.models.schemas import Calibration, TransformModel
+from app.models.schemas import Calibration, RefPoint, TransformModel
 
 _RANK_TOL = 1e-10
 _COLLINEAR_AREA = 1e-6
@@ -107,9 +107,26 @@ def build_constraints(cal: Calibration) -> list[Constraint]:
     return _constraints_from_ref_points(cal)
 
 
+def _extreme_pair(ref_points: list[RefPoint], coord: int) -> list[RefPoint]:
+    """Leftmost/rightmost (coord=0) or topmost/bottommost (coord=1) refs."""
+    if len(ref_points) <= 2:
+        return list(ref_points)
+    lo = hi = 0
+    for i in range(1, len(ref_points)):
+        v = ref_points[i].pixel[coord]
+        if v < ref_points[lo].pixel[coord]:
+            lo = i
+        if v > ref_points[hi].pixel[coord]:
+            hi = i
+    if lo == hi:
+        return [ref_points[lo]]
+    return [ref_points[lo], ref_points[hi]]
+
+
 def _constraints_from_ref_points(cal: Calibration) -> list[Constraint]:
     out: list[Constraint] = []
-    for rp in cal.x.ref_points:
+    # Four-bound UI only shows extreme pixels; leftover ticks must not pull the fit.
+    for rp in _extreme_pair(cal.x.ref_points, 0):
         out.append(
             Constraint(
                 pixel=(float(rp.pixel[0]), float(rp.pixel[1])),
@@ -117,7 +134,7 @@ def _constraints_from_ref_points(cal: Calibration) -> list[Constraint]:
                 value=_log_value(float(rp.value), cal.x.scale, "x"),
             )
         )
-    for rp in cal.y.ref_points:
+    for rp in _extreme_pair(cal.y.ref_points, 1):
         out.append(
             Constraint(
                 pixel=(float(rp.pixel[0]), float(rp.pixel[1])),

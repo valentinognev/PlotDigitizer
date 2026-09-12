@@ -40,9 +40,57 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [2.9.1] — 2026-09-12
+### Changed
+- README documents clipboard paste, CSV sidecar PNG, and JSON embedded image; status is v2.9.
+
+## [2.9.0] — 2026-09-12
+### Added
+- Paste a plot image from the clipboard (Ctrl+V / Cmd+V; ignored in text fields) to start a session, same path as Upload image.
+- CSV export also writes a sidecar PNG of the working plot image with the same filename stem. JSON still embeds the image; no extra PNG.
+
 ## [2.8.0] — 2026-09-05
 ### Added
 - Header subtitle shows the current image path (`image_source.path` if a project stored one, otherwise the uploaded filename). Empty session: `No image loaded`. Long names ellipsis; full path is in the tooltip.
+
+## [2.7.1] — 2026-09-05
+### Fixed
+- Figure title/xlabel/ylabel typing could lose the last keystroke: the debounced preferences save cleared the *entire* pending-patch buffer and blindly applied the server response, so typing a second character while the first PATCH was still in flight got overwritten. `savePreferencesQuiet`/`flushPreferencesQuiet` now use `resolvePreferencesSave` (new, unit-tested in `sessionMerge.ts`) to only clear/apply a key once it round-trips unchanged, leaving newer edits (and unrelated pending keys) alone.
+- Exporting JSON/CSV right after typing a label could omit it (still inside the 200ms debounce window). `ExportPanel` now takes an `onBeforeExport` hook (wired to `flushPreferencesQuiet` in `App.tsx`) and awaits it (best-effort) before triggering the export, via a small extracted/tested `runSessionExport` helper (`lib/exportFlow.ts`).
+- Preview chart title used a bare string with a fixed `margin.t: 24`, clipping the title. `buildPreviewConfig` now emits `layout.title` as `{ text, automargin: true }` so Plotly grows the top margin instead of clipping.
+- Added deferred backend tests confirming existing behavior: whitespace-only figure fields emit no CSV `# title/xlabel/ylabel:` line; a partial `PATCH /preferences` figure update preserves the other figure fields.
+
+## [2.7.0] — 2026-09-05
+### Added
+- Project panel gained Figure title / xlabel / ylabel text fields (compact and full layouts), disabled until a session exists. Values persist via `PATCH /sessions/{id}/preferences` (`figure`, ~200ms debounce while typing), are saved in the project JSON and CSV comments (backend, prior version), and are shown on the preview chart: non-empty title becomes the plot title, xlabel/ylabel override axis titles (angular/radial axis titles for polar), defaulting to the existing `X`/`Y`/map-units/`R` labels when left blank.
+
+## [2.6.8] — 2026-09-05
+### Fixed
+- Browser Save JSON/CSV used a hidden iframe download: Chrome wrote JSON straight to Downloads with no dialog, and CSV was rendered in the iframe so nothing was saved. Export now uses the native save picker when available, and a blob download fallback so both formats save.
+
+## [2.6.7] — 2026-09-04
+### Changed
+- Log-scale invalid preview now names the fields (`Xmin = 0 and Ymin = 0`) and tells you to enter the axis numbers from the figure.
+
+## [2.6.6] — 2026-09-04
+### Fixed
+- Switching X/Y to log with xmin/ymin at 0 blanked the preview with a generic “set calibration” message. Log of zero is still invalid; the panel now names the error, highlights those fields, and the preview repeats the same hint.
+
+## [2.6.5] — 2026-09-04
+### Fixed
+- Save JSON/CSV left 0-byte files when overwriting: `showSaveFilePicker` truncates the chosen file immediately, then `createWritable` throws `NotAllowedError` on this platform. Export now uses a single form download so the browser writes the response body (same name still overwrites).
+
+## [2.6.4] — 2026-09-04
+### Fixed
+- Four-bound cartesian mapping uses only XMIN/XMAX and YMIN/YMAX pixels. Leftover tick refs no longer pull the orthogonal fit, so points on the axis sit at ymin (and ymax marks map to ymax) in the preview and export.
+
+## [2.6.3] — 2026-09-04
+### Changed
+- X min/max and Y min/max canvas marks are hollow rings with a centered cross so the axis pixel stays visible while placing and dragging.
+
+## [2.6.2] — 2026-09-04
+### Fixed
+- Toolbar panels wrap instead of overlapping at reduced width: Calibration no longer shrinks below its content and paints over Project.
 
 ## [2.6.1] — 2026-09-04
 ### Fixed

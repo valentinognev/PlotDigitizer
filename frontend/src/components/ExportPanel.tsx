@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react'
-import { EXPORT_FRAME_NAME, triggerSessionExport } from '../api/client'
+import { triggerSessionExport } from '../api/client'
+import { runSessionExport } from '../lib/exportFlow'
+import type { FigureMeta } from '../types'
 
 interface Props {
   sessionId: string | null
@@ -7,10 +9,51 @@ interface Props {
   canExportCsv: boolean
   canImport: boolean
   busy?: boolean
+  figure?: FigureMeta
+  onFigureChange?: (figure: FigureMeta) => void
+  /** Flush any debounced-but-unsent preferences (e.g. figure title/labels) before exporting. */
+  onBeforeExport?: () => Promise<void>
   onLoadProject?: (file: File) => void
   onImport?: (file: File) => void
   onExportError?: (message: string) => void
   compact?: boolean
+}
+
+const EMPTY_FIGURE: FigureMeta = { title: '', xlabel: '', ylabel: '' }
+
+function FigureFields({
+  figure,
+  disabled,
+  onFigureChange,
+  fullWidth,
+}: {
+  figure: FigureMeta
+  disabled: boolean
+  onFigureChange?: (figure: FigureMeta) => void
+  fullWidth?: boolean
+}) {
+  const inputClass = `rounded border border-slate-600 bg-slate-900 px-1 py-0.5 text-[11px] disabled:cursor-not-allowed disabled:opacity-50 ${
+    fullWidth ? 'w-full' : ''
+  }`
+  const field = (labelText: string, key: keyof FigureMeta) => (
+    <label className="flex flex-col gap-0.5 text-[10px] text-slate-400">
+      {labelText}
+      <input
+        type="text"
+        disabled={disabled}
+        className={inputClass}
+        value={figure[key]}
+        onChange={(e) => onFigureChange?.({ ...figure, [key]: e.target.value })}
+      />
+    </label>
+  )
+  return (
+    <div className="mb-1.5 flex flex-col gap-1">
+      {field('Figure title', 'title')}
+      {field('xlabel', 'xlabel')}
+      {field('ylabel', 'ylabel')}
+    </div>
+  )
 }
 
 export function ExportPanel({
@@ -19,11 +62,15 @@ export function ExportPanel({
   canExportCsv,
   canImport,
   busy,
+  figure,
+  onFigureChange,
+  onBeforeExport,
   onLoadProject,
   onImport,
   onExportError,
   compact,
 }: Props) {
+  const figureValue = figure ?? EMPTY_FIGURE
   const importInputRef = useRef<HTMLInputElement>(null)
   const projectInputRef = useRef<HTMLInputElement>(null)
   const [exporting, setExporting] = useState<'csv' | 'json' | null>(null)
@@ -34,7 +81,10 @@ export function ExportPanel({
     if (format === 'json' && !canExportProject) return
     setExporting(format)
     try {
-      await triggerSessionExport(sessionId, format)
+      await runSessionExport(format, {
+        onBeforeExport,
+        triggerExport: (f) => triggerSessionExport(sessionId, f),
+      })
     } catch (e) {
       onExportError?.(e instanceof Error ? e.message : 'Export failed')
     } finally {
@@ -131,23 +181,19 @@ export function ExportPanel({
     </>
   )
 
-  const exportFrame = (
-    <iframe
-      name={EXPORT_FRAME_NAME}
-      title="Export download"
-      className="sr-only"
-      hidden
-    />
-  )
-
   if (compact) {
     return (
-      <section className="shrink-0 rounded-lg border border-slate-700 bg-slate-800/50 p-2">
-        {exportFrame}
+      <section className="min-w-0 max-w-full flex-1 basis-72 overflow-hidden rounded-lg border border-slate-700 bg-slate-800/50 p-2">
         <h3 className="mb-1 text-xs font-semibold text-slate-200">Project</h3>
-        <p className="mb-1.5 text-[10px] leading-snug text-slate-500">
+        <p className="mb-1.5 break-words text-[10px] leading-snug text-slate-500">
           JSON saves the plot image, calibration, curves, and workspace for full restore.
         </p>
+        <FigureFields
+          figure={figureValue}
+          disabled={!sessionId}
+          onFigureChange={onFigureChange}
+          fullWidth
+        />
         <div className="flex flex-wrap gap-1.5">
           {openProjectButton}
           <button
@@ -174,12 +220,17 @@ export function ExportPanel({
 
   return (
     <section className="rounded-lg border border-slate-700 bg-slate-800/50 p-3">
-      {exportFrame}
       <h3 className="mb-2 text-sm font-semibold text-slate-200">Project</h3>
+      <FigureFields
+        figure={figureValue}
+        disabled={!sessionId}
+        onFigureChange={onFigureChange}
+        fullWidth
+      />
       {!sessionId ? (
         <div className="flex gap-2">
           {openProjectButton}
-          <p className="text-xs text-slate-400">Or upload an image to start.</p>
+          <p className="text-xs text-slate-400">Or upload or paste an image to start.</p>
         </div>
       ) : (
         <div className="flex flex-wrap gap-2">

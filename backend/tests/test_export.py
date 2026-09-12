@@ -11,6 +11,7 @@ from app.models.schemas import (
     Calibration,
     CalibrationAxis,
     Curve,
+    FigureMeta,
     Point,
     RefPoint,
     ScaleBar,
@@ -195,3 +196,80 @@ def test_csv_headers_and_values_map_includes_units():
     parts = lines[2].split(",")
     assert abs(float(parts[2]) - x) < 1e-9
     assert abs(float(parts[3]) - y) < 1e-9
+
+
+def test_export_json_includes_figure_and_round_trips():
+    import json
+
+    session = _session_ready()
+    session.figure = FigureMeta(title="T", xlabel="Xlab", ylabel="Ylab")
+    out = export_json(session, image_bytes=TINY_PNG_BYTES)
+    payload = json.loads(out)
+    assert payload["figure"]["title"] == "T"
+    assert payload["figure"]["xlabel"] == "Xlab"
+    assert payload["figure"]["ylabel"] == "Ylab"
+
+    restored, _img = load_project_from_text(out)
+    assert restored.figure.title == "T"
+    assert restored.figure.xlabel == "Xlab"
+    assert restored.figure.ylabel == "Ylab"
+
+
+def test_export_json_defaults_empty_figure():
+    import json
+
+    out = export_json(_session_ready(), image_bytes=TINY_PNG_BYTES)
+    payload = json.loads(out)
+    assert payload["figure"] == {"title": "", "xlabel": "", "ylabel": ""}
+
+
+def test_load_project_without_figure_defaults_empty():
+    import json
+
+    out = export_json(_session_ready(), image_bytes=TINY_PNG_BYTES)
+    payload = json.loads(out)
+    del payload["figure"]
+    restored, _img = load_project_from_text(json.dumps(payload))
+    assert restored.figure.title == ""
+    assert restored.figure.xlabel == ""
+    assert restored.figure.ylabel == ""
+
+
+def test_export_csv_writes_figure_comments_before_header():
+    session = _session_ready()
+    session.figure = FigureMeta(title="T", xlabel="Xlab", ylabel="Ylab")
+    out = export_csv(session)
+    lines = out.splitlines()
+    assert lines[0] == "# title: T"
+    assert lines[1] == "# xlabel: Xlab"
+    assert lines[2] == "# ylabel: Ylab"
+    assert lines[3] == "curve_id,curve_label,x,y"
+
+
+def test_export_csv_omits_empty_figure_comments():
+    out = export_csv(_session_ready())
+    for line in out.splitlines():
+        assert not line.startswith("# title:")
+        assert not line.startswith("# xlabel:")
+        assert not line.startswith("# ylabel:")
+
+
+def test_export_csv_omits_whitespace_only_figure_comments():
+    session = _session_ready()
+    session.figure = FigureMeta(title="   ", xlabel="\t", ylabel="  \n ")
+    out = export_csv(session)
+    for line in out.splitlines():
+        assert not line.startswith("# title:")
+        assert not line.startswith("# xlabel:")
+        assert not line.startswith("# ylabel:")
+
+
+def test_export_csv_figure_comments_before_units():
+    session = _session_ready()
+    session.calibration = _map_cal()
+    session.curves[0].points = [Point(pixel=(50.0, 50.0), origin="user")]
+    session.figure = FigureMeta(title="Map")
+    out = export_csv(session)
+    lines = out.splitlines()
+    assert lines[0] == "# title: Map"
+    assert lines[1] == "# units: km"

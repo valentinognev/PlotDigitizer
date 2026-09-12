@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Circle, Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text } from 'react-konva'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import type Konva from 'konva'
+import { calibrationMarkVisual } from '../lib/calibrationMark'
 import { getAxisBounds, type AxisBoundKey } from '../lib/transform'
 import { AXIS_PLACE_LABELS, showFourBoundMarks } from '../lib/calibration'
 import {
@@ -776,6 +777,7 @@ export function EditorCanvas({
                   pixel={axisMarkToLayer(key, bound.pixel)}
                   color={key.startsWith('x') ? '#22d3ee' : '#e879f9'}
                   scale={totalScale}
+                  hollow
                   active={axisPlaceStep === key}
                   onDragStart={() => setStageDraggable(false)}
                   onDragEnd={(px) => {
@@ -904,6 +906,7 @@ function CalibrationMark({
   pixel,
   color,
   scale,
+  hollow,
   active,
   onDragStart,
   onDragEnd,
@@ -912,11 +915,17 @@ function CalibrationMark({
   pixel: [number, number]
   color: string
   scale: number
+  hollow?: boolean
   active?: boolean
   onDragStart: () => void
   onDragEnd: (pixel: [number, number]) => void
 }) {
-  const r = (active ? 10 : 8) / scale
+  const visual = calibrationMarkVisual({
+    hollow: hollow ?? false,
+    active: active ?? false,
+    color,
+    scale,
+  })
   const fontSize = 11 / scale
   return (
     <Group
@@ -937,13 +946,30 @@ function CalibrationMark({
       }}
     >
       <Circle
-        radius={r}
-        fill={color}
-        stroke={active ? '#fbbf24' : '#fff'}
-        strokeWidth={(active ? 3 : 2) / scale}
+        radius={visual.radius}
+        fill={visual.fill}
+        stroke={visual.stroke}
+        strokeWidth={visual.strokeWidth}
+        hitStrokeWidth={visual.hitStrokeWidth}
       />
+      {visual.cross && (
+        <>
+          <Line
+            points={visual.cross.horizontal}
+            stroke={visual.cross.stroke}
+            strokeWidth={visual.cross.strokeWidth}
+            listening={false}
+          />
+          <Line
+            points={visual.cross.vertical}
+            stroke={visual.cross.stroke}
+            strokeWidth={visual.cross.strokeWidth}
+            listening={false}
+          />
+        </>
+      )}
       <Text
-        x={r + 2 / scale}
+        x={visual.radius + 2 / scale}
         y={-fontSize / 2}
         text={label}
         fontSize={fontSize}

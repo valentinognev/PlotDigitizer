@@ -8,16 +8,13 @@ import type {
 } from '../types'
 import {
   formatAxisValue,
+  formatCalibrationIssue,
   getAxisBounds,
   updateAxisBound,
   type AxisBoundKey,
 } from '../lib/transform'
 import { AXIS_PLACE_LABELS } from '../lib/calibration'
-import {
-  isCalibrationValid,
-  resolutionAt,
-  resolvedModel,
-} from '../lib/transform2d'
+import { resolutionAt, resolvedModel } from '../lib/transform2d'
 import { formatModelLabel, formatResolution } from '../lib/axesChecker'
 
 interface Props {
@@ -59,6 +56,7 @@ function BoundInput({
   useEffect(() => {
     setDraft(value == null ? '' : String(value))
   }, [value])
+  const invalidLog = logScale && value != null && value <= 0
   const tryCommit = (raw: string) => {
     if (shouldDeferBoundCommit(raw)) return
     const n = Number(raw)
@@ -70,8 +68,10 @@ function BoundInput({
     <input
       type="text"
       inputMode="decimal"
-      title={title}
-      className="input-no-spinner w-[4.5rem] rounded border border-slate-600 bg-slate-900 px-1 py-0.5"
+      title={invalidLog ? 'Enter a value greater than 0 — log scale cannot use 0' : title}
+      className={`input-no-spinner w-[4.5rem] rounded border bg-slate-900 px-1 py-0.5 ${
+        invalidLog ? 'border-amber-500 text-amber-200' : 'border-slate-600'
+      }`}
       value={draft}
       onChange={(e) => {
         const raw = e.target.value
@@ -115,17 +115,19 @@ export function CalibrationPanel({
   const coords: CoordsType = calibration?.coords_type ?? 'cartesian'
   const bounds = calibration && coords === 'cartesian' && !preciseMode ? getAxisBounds(calibration) : null
 
+  const issue = useMemo(() => formatCalibrationIssue(calibration), [calibration])
+
   const modelLabel = useMemo(() => {
-    if (!calibration || !isCalibrationValid(calibration)) return 'invalid'
+    if (!calibration || issue) return 'invalid'
     try {
       return resolvedModel(calibration)
     } catch {
       return 'invalid'
     }
-  }, [calibration])
+  }, [calibration, issue])
 
   const resolutionText = useMemo(() => {
-    if (!calibration || !isCalibrationValid(calibration)) return '—'
+    if (!calibration || issue) return '—'
     try {
       const pixel =
         calibration.axis_points?.[0]?.pixel ??
@@ -136,7 +138,7 @@ export function CalibrationPanel({
     } catch {
       return '—'
     }
-  }, [calibration, coords])
+  }, [calibration, coords, issue])
 
   const setCoords = (next: CoordsType) => {
     if (!calibration) return
@@ -172,8 +174,8 @@ export function CalibrationPanel({
         : 'Click four points on the plot: X min, X max, Y min, Y max'
 
   return (
-    <section className="min-w-0 shrink rounded-lg border border-slate-700 bg-slate-800/50 px-2 py-1 text-[11px]">
-      <div className="mb-1 flex items-center gap-2">
+    <section className="min-w-0 max-w-full flex-1 basis-72 overflow-hidden rounded-lg border border-slate-700 bg-slate-800/50 px-2 py-1 text-[11px]">
+      <div className="mb-1 flex flex-wrap items-center gap-2">
         <h3 className="shrink-0 font-semibold text-slate-200">Calibration</h3>
         <select
           className="rounded border border-slate-600 bg-slate-900 px-1 py-0.5"
@@ -244,7 +246,7 @@ export function CalibrationPanel({
       {calibration && coords === 'cartesian' && bounds && !preciseMode && (
         <div className="flex flex-col gap-0.5">
           {(['x', 'y'] as const).map((axis) => (
-            <div key={axis} className="flex items-center gap-2">
+            <div key={axis} className="flex flex-wrap items-center gap-2">
               <label className="inline-flex w-14 shrink-0 items-center gap-1 text-slate-300">
                 {axis.toUpperCase()}
                 <select
@@ -302,7 +304,7 @@ export function CalibrationPanel({
           </label>
           <p>{(calibration.axis_points ?? []).length} axis points — click the plot, then type X and/or Y</p>
           {(calibration.axis_points ?? []).map((pt, i) => (
-            <div key={pt.id} className="flex items-center gap-2">
+            <div key={pt.id} className="flex flex-wrap items-center gap-2">
               <span className="w-6 shrink-0 text-slate-400">#{i + 1}</span>
               <label className="inline-flex items-center gap-1 text-slate-300">
                 X
@@ -393,7 +395,7 @@ export function CalibrationPanel({
           </label>
           <p>Click the plot to place a point, then type θ and R. {(calibration.axis_points ?? []).length} placed.</p>
           {(calibration.axis_points ?? []).map((pt, i) => (
-            <div key={pt.id} className="flex items-center gap-2">
+            <div key={pt.id} className="flex flex-wrap items-center gap-2">
               <span className="w-6 shrink-0 text-slate-400">#{i + 1}</span>
               <label className="inline-flex items-center gap-1 text-slate-300">
                 θ
@@ -487,9 +489,11 @@ export function CalibrationPanel({
         </div>
       )}
 
-      <div className="mt-1 flex items-center gap-2 text-slate-400">
-        <span>model {formatModelLabel(modelLabel)}</span>
-        <span>{resolutionText}</span>
+      <div className="mt-1 flex flex-wrap items-center gap-2 text-slate-400">
+        <span className={issue ? 'text-amber-300' : undefined}>
+          {issue ? issue.message : `model ${formatModelLabel(modelLabel)}`}
+        </span>
+        <span className={issue ? 'text-amber-300/80' : undefined}>{issue?.hint ?? resolutionText}</span>
         <label className="ml-auto inline-flex items-center gap-1">
           <input
             type="checkbox"
