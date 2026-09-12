@@ -40,6 +40,10 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [2.12.1] — 2026-09-12
+### Fixed
+- View data Precision style no longer crashes when Digits is 0: precision digits are clamped to 1–21 (0 stays valid for Fixed/Exponential/Ignore).
+
 ## [2.12.0] — 2026-09-12
 ### Added
 - View data table under the preview chart: visible curves in data space (x/y or theta/R), sort, digits + Ignore/Fixed/Precision/Exponential, Copy TSV (`Copied N rows`). Empty when calibration is invalid or no visible points.

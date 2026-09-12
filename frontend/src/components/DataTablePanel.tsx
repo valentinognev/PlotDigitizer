@@ -25,6 +25,12 @@ const STYLES: { value: NumberStyle; label: string }[] = [
 const controlClass =
   'rounded border border-slate-600 bg-slate-900 px-1 py-0.5 text-slate-200 disabled:cursor-not-allowed disabled:opacity-50'
 
+/** Precision needs 1–21; Fixed/Exponential/Ignore may use 0. */
+export function formatDigits(digits: number, style: NumberStyle): number {
+  if (style !== 'precision') return digits
+  return Math.min(21, Math.max(1, digits))
+}
+
 export function DataTablePanel({ curves, calibration, onToast }: Props) {
   const [sortKey, setSortKey] = useState<'a' | 'b'>('a')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
@@ -44,10 +50,11 @@ export function DataTablePanel({ curves, calibration, onToast }: Props) {
   const aLabel = rows[0]?.aLabel ?? 'x'
   const bLabel = rows[0]?.bLabel ?? 'y'
   const empty = rows.length === 0
+  const shownDigits = formatDigits(digits, style)
 
   const handleCopy = async () => {
     if (empty) return
-    const text = tableToClipboardText(rows, '\t', { digits, style })
+    const text = tableToClipboardText(rows, '\t', { digits: shownDigits, style })
     try {
       await navigator.clipboard.writeText(text)
       onToast?.(`Copied ${rows.length} rows`)
@@ -137,8 +144,8 @@ export function DataTablePanel({ curves, calibration, onToast }: Props) {
               {rows.map((row) => (
                 <tr key={`${row.curveId}:${row.pointId}`} className="text-slate-200">
                   <td className="px-1 py-0.5">{row.curveLabel}</td>
-                  <td className="px-1 py-0.5">{formatNumber(row.a, digits, style)}</td>
-                  <td className="px-1 py-0.5">{formatNumber(row.b, digits, style)}</td>
+                  <td className="px-1 py-0.5">{formatNumber(row.a, shownDigits, style)}</td>
+                  <td className="px-1 py-0.5">{formatNumber(row.b, shownDigits, style)}</td>
                 </tr>
               ))}
             </tbody>
