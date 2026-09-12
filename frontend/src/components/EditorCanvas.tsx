@@ -64,6 +64,8 @@ interface Props {
   maskView?: MaskView
   segments: SegmentLite[]
   onSegmentFillClick: (pixel: [number, number]) => void
+  onHoverPixel: (pixel: [number, number] | null) => void
+  cursorReadout?: string
 }
 
 type GroupDrag = {
@@ -157,6 +159,8 @@ export function EditorCanvas({
   maskView = 'none',
   segments,
   onSegmentFillClick,
+  onHoverPixel,
+  cursorReadout,
 }: Props) {
   const axisBounds = calibration ? getAxisBounds(calibration) : null
   const [image, setImage] = useState<HTMLImageElement | null>(null)
@@ -552,6 +556,7 @@ export function EditorCanvas({
     const pos = stage?.getPointerPosition()
     if (!pos) return
     const [x, y] = toImageCoords(pos.x, pos.y)
+    onHoverPixel(toOriginalCoords([x, y]))
 
     if (filling) {
       const hit = nearestSegment(segments, toOriginalCoords([x, y]), 12)
@@ -654,6 +659,7 @@ export function EditorCanvas({
         warpingPreview={warpingPreview}
         meshEditing={showMeshGrid}
         segmentFill={filling}
+        cursorReadout={cursorReadout}
       />
       <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden">
       <Stage
@@ -662,6 +668,7 @@ export function EditorCanvas({
         onWheel={handleWheel}
         onClick={handleStageClick}
         onMouseMove={handleMouseMove}
+        onMouseLeave={() => onHoverPixel(null)}
         onMouseUp={handleMouseUp}
         draggable={stageDraggable && (canvasMode === 'select' || spacePan) && !axisPlaceStep && !filling}
         x={stagePos.x}
@@ -861,6 +868,7 @@ function PlotInteractionHint({
   warpingPreview,
   meshEditing,
   segmentFill,
+  cursorReadout,
 }: {
   canvasMode: CanvasMode
   axisPlaceStep: AxisBoundKey | null
@@ -868,6 +876,7 @@ function PlotInteractionHint({
   warpingPreview?: boolean
   meshEditing?: boolean
   segmentFill?: boolean
+  cursorReadout?: string
 }) {
   let text: string
   const panHint = 'Middle-drag or Space + left-drag: pan · Wheel: zoom'
@@ -886,18 +895,25 @@ function PlotInteractionHint({
   } else if (meshEditing) {
     text = `Drag boundary vertices to match plot curvature · Drag tangent handles to adjust edge direction · ${panHint}`
   } else {
-    text = `Left-click point: select · Shift/Ctrl + click: add/remove from selection · Left-drag empty area: box-select · Shift/Ctrl + drag box: add to selection · Drag selected point(s): move · Delete/Backspace or double-click: delete · Left-click empty: clear selection · ${panHint}`
+    text = `Left-click point: select · Shift/Ctrl + click: add/remove from selection · Left-drag empty area: box-select · Shift/Ctrl + drag box: add to selection · Drag selected point(s): move · Arrow keys: nudge 1 px (Shift: 10) · Delete/Backspace or double-click: delete · Left-click empty: clear selection · ${panHint}`
   }
   if (warpingPreview) text = `Building correction preview… · ${text}`
   else if (correctionPreview) text = `Correction preview · ${text}`
 
   return (
-    <p
-      className="shrink-0 border-b border-slate-700/80 bg-slate-800/90 px-2 py-1.5 text-[10px] leading-snug text-slate-400"
-      title={text}
-    >
-      {text}
-    </p>
+    <>
+      <p
+        className="shrink-0 border-b border-slate-700/80 bg-slate-800/90 px-2 py-1.5 text-[10px] leading-snug text-slate-400"
+        title={text}
+      >
+        {text}
+      </p>
+      {cursorReadout ? (
+        <p className="shrink-0 border-b border-slate-700/80 bg-slate-800/90 px-2 py-0.5 text-left font-mono text-[10px] tabular-nums text-slate-300">
+          {cursorReadout}
+        </p>
+      ) : null}
+    </>
   )
 }
 

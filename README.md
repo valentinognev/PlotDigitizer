@@ -117,7 +117,7 @@ cd frontend && npm test
 
 ## Typical Workflow
 
-1. **Upload** a plot image, or **paste** one (Ctrl+V / Cmd+V; ignored while typing in a text field).
+1. **Upload** a plot image, **paste** one (Ctrl+V / Cmd+V; ignored while typing in a text field), or **drop** an image file onto the window.
 2. Click **Place bounds** in the Calibration panel, then click the plot four times: X min, X max,
    Y min, Y max. Optional: **Precise (3+ points)** for affine/projective, **Polar**, or **Map**
    (scale bar) calibration.
@@ -130,7 +130,9 @@ cd frontend && npm test
 6. Use **Improve** (OpenCV trace), **Densify**, or **Segment fill** (click a stroke) to refine a curve.
 7. *(Optional)* **Remove from plot** erases the active curve from the working image (Undo restores
    it) so overlapping strokes can be traced next.
-8. **Drag** points to correct positions; use box-select, Delete, and curve reassignment as needed.
+8. **Drag** points to correct positions; **arrow keys** nudge a selection 1 px (Shift: 10). The
+   **magnifier** (right column, above Curves) zooms 5× around the cursor; the readout under the
+   canvas shows pixel (and data when calibrated). Box-select, Delete, and curve reassignment as needed.
 9. Watch the **preview chart** update in data-space.
 10. **CSV** writes `*.csv` plus a sidecar `*.png` of the working plot. **Save JSON** embeds the image with calibration, curves, and workspace.
 

@@ -30,6 +30,7 @@ import { FilterPanel, type MaskView } from './components/FilterPanel'
 import { AutoDigitizePanel } from './components/AutoDigitizePanel'
 import { CurveList } from './components/CurveList'
 import { EditorCanvas } from './components/EditorCanvas'
+import { MagnifierView } from './components/MagnifierView'
 import { ExportPanel } from './components/ExportPanel'
 import { PreviewChart } from './components/PreviewChart'
 import { firstVisibleCurve } from './lib/curves'
@@ -84,6 +85,10 @@ import {
 import { appendAxisPoint, restoreAxisUiFlags, setScaleBarPixel } from './lib/axesChecker'
 import { imageSourceLabel } from './lib/imageSource'
 import { handleClipboardPaste } from './lib/clipboardPaste'
+import { formatCursorReadout } from './lib/cursorReadout'
+import { fileFromDrop } from './lib/imageDrop'
+import { applyNudge, shouldHandleNudgeKey } from './lib/nudge'
+import { pixelToData } from './lib/transform2d'
 import { getAxisBounds, isCalibrationValid, updateAxisBound, areCalibrationPixelsInImage, type AxisBoundKey } from './lib/transform'
 import type { Calibration, CanvasMode, ColorFilter, FigureMeta, SegmentPublic, Session } from './types'
 
@@ -116,6 +121,7 @@ export default function App() {
   const [resampleCount, setResampleCount] = useState(DEFAULT_POINT_COUNT)
   const [busy, setBusy] = useState(false)
   const [busyMessage, setBusyMessage] = useState<string | null>(null)
+  const [hoverPixel, setHoverPixel] = useState<[number, number] | null>(null)
   const [initializing, setInitializing] = useState(true)
   const [draftCalibration, setDraftCalibration] = useState<Calibration | null>(null)
   const [figure, setFigure] = useState<FigureMeta>(EMPTY_FIGURE)
@@ -253,6 +259,7 @@ export default function App() {
     setAxisPlaceStep(null)
     setUnskewPreview(false)
     setMaskEpoch(0)
+    setHoverPixel(null)
   }, [session?.id])
 
   useEffect(() => {
@@ -610,19 +617,22 @@ export default function App() {
     }
   }
 
-  const handleMovePoints = (moves: Array<{ pointId: string; pixel: [number, number] }>) => {
-    if (!moves.length) return
-    patchCurvesQuiet(
-      {
-        point_patches: moves.map(({ pointId, pixel }) => ({
-          point_id: pointId,
-          pixel,
-          origin: 'user' as const,
-        })),
-      },
-      (current) => patchPointsPixel(current, moves),
-    )
-  }
+  const handleMovePoints = useCallback(
+    (moves: Array<{ pointId: string; pixel: [number, number] }>) => {
+      if (!moves.length) return
+      patchCurvesQuiet(
+        {
+          point_patches: moves.map(({ pointId, pixel }) => ({
+            point_id: pointId,
+            pixel,
+            origin: 'user' as const,
+          })),
+        },
+        (current) => patchPointsPixel(current, moves),
+      )
+    },
+    [patchCurvesQuiet],
+  )
 
   const handleSelectPoint = (pointId: string, additive: boolean) => {
     setSelectedPointIds((prev) => {
@@ -753,6 +763,30 @@ export default function App() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      const delta = shouldHandleNudgeKey(e, selectedPointIds.length)
+      if (!delta || !session) return
+      e.preventDefault()
+      const bounds = {
+        w: session.image_meta.width - 1,
+        h: session.image_meta.height - 1,
+      }
+      const selected = new Set(selectedPointIds)
+      const moves: Array<{ pointId: string; pixel: [number, number] }> = []
+      for (const curve of session.curves) {
+        for (const pt of curve.points) {
+          if (selected.has(pt.id)) {
+            moves.push({ pointId: pt.id, pixel: applyNudge(pt.pixel, delta, bounds) })
+          }
+        }
+      }
+      handleMovePoints(moves)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [selectedPointIds, session, handleMovePoints])
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
       if (canvasMode === 'segment-fill') {
         setCanvasMode('select')
@@ -810,6 +844,13 @@ export default function App() {
   const calibration = draftCalibration ?? session?.calibration ?? null
   const imageWidth = session?.image_meta.width ?? 0
   const imageHeight = session?.image_meta.height ?? 0
+  const hoverData =
+    hoverPixel && calibration && isCalibrationValid(calibration)
+      ? pixelToData(calibration, hoverPixel)
+      : null
+  const cursorReadout = hoverPixel
+    ? formatCursorReadout(hoverPixel, hoverData, calibration?.coords_type)
+    : ''
 
   useEffect(() => {
     if (!calibration || !meshGrid || imageWidth < 1 || imageHeight < 1) return
@@ -1154,7 +1195,26 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+    <div
+      className="flex h-full min-h-0 flex-col overflow-hidden"
+      onDragOver={(e) => {
+        if (busy) return
+        if (
+          fileFromDrop(e.dataTransfer) ||
+          Array.from(e.dataTransfer?.types ?? []).includes('Files')
+        ) {
+          e.preventDefault()
+          e.dataTransfer.dropEffect = 'copy'
+        }
+      }}
+      onDrop={(e) => {
+        if (busy) return
+        const file = fileFromDrop(e.dataTransfer)
+        if (!file) return
+        e.preventDefault()
+        void handleUpload(file)
+      }}
+    >
       <header className="shrink-0 flex items-center justify-between border-b border-slate-700 px-4 py-2">
         <div className="min-w-0 flex-1 pr-3">
           <h1 className="text-lg font-bold text-slate-100">PlotDigitizer</h1>
@@ -1357,6 +1417,8 @@ export default function App() {
                   : null
               }
               maskView={maskView}
+              onHoverPixel={setHoverPixel}
+              cursorReadout={cursorReadout}
             />
           </div>
           <div className="min-h-0 overflow-hidden">
@@ -1395,6 +1457,14 @@ export default function App() {
             onApplyAccepted={handlePointMatchApply}
             onClearCandidates={() => setPointMatchState(emptyPointMatch)}
           />
+          <div className="mb-2 flex h-[160px] shrink-0 items-center justify-center">
+            <MagnifierView
+              imageUrl={imageUrl}
+              cursor={hoverPixel}
+              imageW={imageWidth}
+              imageH={imageHeight}
+            />
+          </div>
           <CurveList
             curves={session?.curves ?? []}
             activeCurveId={activeCurveId}

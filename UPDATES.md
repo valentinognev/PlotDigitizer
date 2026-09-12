@@ -40,6 +40,10 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [2.11.0] — 2026-09-12
+### Added
+- Precision UX: 160×160 pixelated magnifier (5× crop) above the Curves list; cursor readout under the canvas hint (pixel, plus data when calibrated); arrow keys nudge selected points 1 px (Shift: 10), clamped to the image; drag-and-drop an image onto the app to start a session.
+
 ## [2.10.0] — 2026-09-12
 ### Added
 - Curves panel: Up/Down buttons reorder curves in the list (preview, canvas overlay, and export follow that order).

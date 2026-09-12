@@ -1,5 +1,16 @@
+import { isEditablePasteTarget } from './clipboardPaste'
+
 export const NUDGE_STEP_PX = 1
 export const NUDGE_SHIFT_STEP_PX = 10
+
+export function shouldHandleNudgeKey(
+  e: { key: string; shiftKey: boolean; target: EventTarget | null },
+  selectedCount: number,
+): [number, number] | null {
+  if (!selectedCount) return null
+  if (isEditablePasteTarget(e.target)) return null
+  return nudgeDelta(e.key, e.shiftKey)
+}
 
 export function nudgeDelta(key: string, shift: boolean): [number, number] | null {
   const step = shift ? NUDGE_SHIFT_STEP_PX : NUDGE_STEP_PX
