@@ -15,7 +15,9 @@ for setup and workflow.
 | `CalibrationPanel.tsx` | Axes stage: named axes list (Add / Rename / Delete); place bounds; the selected set is `session.calibration` |
 | `FigureFields.tsx`   | Axes stage: figure title / xlabel / ylabel |
 | `CurvePicker.tsx`    | Image stage: compact active-curve switcher |
-| `CurveList.tsx`      | Digitize stage: curves, place-points mode, Improve / Densify, per-curve Axes select |
+| `CurveList.tsx`      | Digitize stage, Curves tab: curves, place-points mode, Improve / Densify, per-curve Axes select |
+| `DigitizeMethodTabs.tsx` | Digitize stage: Auto / Curves tablist under the magnifier |
+| `AutoDigitizePanel.tsx` | Digitize stage, Auto tab: region mask, averaging window, Sample Δx, colour extract, segment-fill, point-match |
 | `PreviewChart.tsx`   | Axes / Digitize: Plotly live preview in data-space (dual-Y overlay when two cartesian cals) |
 | `ExportPanel.tsx`    | Header: Open / Save JSON / CSV / Import (`variant="header"`) |
 
@@ -24,6 +26,7 @@ Toolbar: header export (Open / Save JSON / CSV / Import) + stage tabs, not Unske
 ## Key libraries
 
 - `src/lib/workflowStage.ts` — stage ids, chrome flags, landing tab, exclusive canvas-mode clamp
+- `src/lib/digitizeMethod.ts` — Digitize Auto / Curves tab ids, chrome flags, exclusive canvas-mode clamp
 - `src/lib/transform.ts` — pixel ↔ data calibration (mirrors backend)
 - `src/lib/calibration.ts` — axis bound placement helpers
 - `src/lib/unskew.ts` — homography from axis bounds; preview warp; mirrors `backend/app/cv/unskew.py`

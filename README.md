@@ -24,7 +24,7 @@ PlotDigitizer uses a **manual-first pipeline** in three editor stages (tabs stay
 
 1. **Image** — **Upload or paste** a plot (Ctrl+V / Cmd+V; including photos taken at an angle). Colour-filter and optional grid removal; toggle the binary mask overlay. Optional **Unskew** (perspective or mesh) once axis bounds exist — place them on **Axes** first, then return here to preview/apply.
 2. **Axes** — **Calibrate** in Cartesian (four bounds or 3+ precise axis points, linear, log, or date), **Polar** (θ units, radius scale, origin radius), **Map** (two-point scale bar), or **Bar** (two-point value axis, optional rotated/horizontal). Affine/projective models map rotated or perspective photos without resampling ink. Add extra named axes; set figure title / xlabel / ylabel. Preview lives on Axes and Digitize.
-3. **Digitize** — **Place** points on each curve, or **auto-digitize**: draw a **region mask** (box / pen / erase), run **Averaging window** (ΔX/ΔY px), **Sample Δx** in data space, **Extract this colour** after a colour pick (or **Propose curves from colours**), segment-fill along ink, or **point-match** for scatter markers (sample one marker, accept/reject ranked candidates). Bind each curve with the per-curve Axes select in the Curves list (not the Axes tab).
+3. **Digitize** — right-column **Auto** / **Curves** tabs (default Curves). **Curves:** **Place** points on each curve; bind each curve with the per-curve Axes select. **Auto:** draw a **region mask** (box / pen / erase), run **Averaging window** (ΔX/ΔY px), **Sample Δx** in data space, **Extract this colour** after a colour pick (or **Propose curves from colours**), segment-fill along ink, or **point-match** for scatter markers (sample one marker, accept/reject ranked candidates).
 4. **Refine** line curves with **Improve** (mask corridor) and **Densify**. Scatter curves (`connect_as: scatter`) stay markers-only.
 5. Watch the **preview chart** in data space (cartesian, polar θ/R, map units, or bar labels vs values). Two cartesian axes overlay a second Y (`yaxis2`).
 6. **Export** from the header: CSV (numbers plus a sidecar PNG of the working plot, same stem) or **Save JSON** project (`.pdproj.json`, image embedded). CSV columns follow the coordinate system (`x,y` / `theta,R` / `x,y` plus units / `label,value` for bar).
@@ -126,9 +126,8 @@ cd frontend && npm test
    or **Bar** (P1/P2 on the value axis, v1/v2, Rotated/horizontal). **Add** extra named axes when a
    figure needs a second Y. Enter the **axis values** (linear, log, or date per axis) and the
    figure **title / labels**. Date axes store Unix days from 1970-01-01 UTC; type tokens like `YYYY/MM/DD`.
-4. On **Digitize**, **Add curves** and turn on **Place points** to click seed points on each curve.
-   Bind each curve with the per-curve Axes select in the Curves list.
-5. Use **Improve** (OpenCV trace), **Densify**, **Averaging window**, **Sample Δx**, or **Segment fill** (click a stroke) to refine a curve. Optional region mask (Box / Pen / Erase) ANDs with the colour filter; **Clear region** restores the full image.
+4. On **Digitize**, the **Curves** tab is selected. **Add curves** and turn on **Place points** to click seed points on each curve. Bind each curve with the per-curve Axes select in the Curves list.
+5. Switch to **Auto** for **Averaging window**, **Sample Δx**, **Segment fill**, colour extract, or point-match. Optional region mask (Box / Pen / Erase) ANDs with the colour filter; **Clear region** restores the full image. Use **Improve** / **Densify** on the Curves tab.
 6. *(Optional)* **Remove from plot** erases the active curve from the working image (Undo restores
    it) so overlapping strokes can be traced next.
 7. **Drag** points to correct positions; **arrow keys** nudge a selection 1 px (Shift: 10). The
@@ -149,7 +148,7 @@ cd frontend && npm test
 
 ## Status
 
-**v2.18** — editor stages as tabs (Image / Axes / Digitize); Open / Save JSON / CSV / Import in
+**v2.19** — Digitize Auto / Curves tabs share the right column; editor stages as tabs (Image / Axes / Digitize); Open / Save JSON / CSV / Import in
 the header. Clipboard paste to start a session; CSV export writes a sidecar PNG; JSON still embeds
 the image. Precision toolkit (v2.6+): affine/projective/polar/map calibration, colour-filter + grid
 conditioning, segment-fill and point-match, scatter curves. Current version: see [`UPDATES.md`](UPDATES.md).

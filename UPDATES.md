@@ -40,6 +40,10 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [2.19.0] — 2026-09-13
+### Added
+- Digitize right column: **Auto** / **Curves** tabs share the pane under the magnifier (default Curves). Switching Auto cancels mask / segment-fill / point-match; switching Curves cancels Place points. Choice is session-local, not saved in the project.
+
 ## [2.18.0] — 2026-09-13
 ### Added
 - Editor stages as tabs: **Image** (Unskew, Filter, compact curve picker), **Axes** (Calibration, figure title/labels, preview), **Digitize** (Auto digitize, Curves, preview). Tabs are always reachable; after upload the Image tab is selected; opening a project lands on Digitize if any curve has points, otherwise Axes if calibration is valid, else Image.

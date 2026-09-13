@@ -43,6 +43,7 @@ import { FigureFields } from './components/FigureFields'
 import { PreviewChart } from './components/PreviewChart'
 import { DataTablePanel } from './components/DataTablePanel'
 import { StageTabs } from './components/StageTabs'
+import { DigitizeMethodTabs } from './components/DigitizeMethodTabs'
 import { firstVisibleCurve } from './lib/curves'
 import { DEFAULT_POINT_COUNT } from './lib/constants'
 import {
@@ -120,6 +121,12 @@ import {
   stageChrome,
   type WorkflowStage,
 } from './lib/workflowStage'
+import {
+  canvasModeAllowedOnDigitizeMethod,
+  DEFAULT_DIGITIZE_METHOD,
+  digitizeMethodChrome,
+  type DigitizeMethod,
+} from './lib/digitizeMethod'
 import type { Calibration, CanvasMode, ColorFilter, FigureMeta, RegionBox, RegionMask, SegmentPublic, Session } from './types'
 
 const EMPTY_FIGURE: FigureMeta = { title: '', xlabel: '', ylabel: '' }
@@ -134,6 +141,7 @@ export default function App() {
   const sessionRef = useRef(session)
   sessionRef.current = session
   const [workflowStage, setWorkflowStage] = useState<WorkflowStage>('image')
+  const [digitizeMethod, setDigitizeMethod] = useState<DigitizeMethod>(DEFAULT_DIGITIZE_METHOD)
   const sessionLandingIdRef = useRef<string | null>(null)
   const sessionLandingReasonRef = useRef<'upload' | 'restore'>('restore')
   const [activeCurveId, setActiveCurveId] = useState<string | null>(null)
@@ -183,9 +191,14 @@ export default function App() {
     )
     if (next !== null) {
       setWorkflowStage(next)
+      setDigitizeMethod(DEFAULT_DIGITIZE_METHOD)
       sessionLandingIdRef.current = session?.id ?? null
       sessionLandingReasonRef.current = 'restore'
-      setCanvasMode((mode) => canvasModeAllowedOnStage(next, mode))
+      setCanvasMode((mode) => {
+        const afterStage = canvasModeAllowedOnStage(next, mode)
+        if (next !== 'digitize') return afterStage
+        return canvasModeAllowedOnDigitizeMethod(DEFAULT_DIGITIZE_METHOD, afterStage)
+      })
       if (shouldResetAxisPlacementOnStage(next)) {
         setAxisPlaceStep(null)
         setPreciseMode(false)
@@ -874,7 +887,10 @@ export default function App() {
 
   const handleWorkflowStageChange = (next: WorkflowStage) => {
     if (next === workflowStage) return
-    const nextMode = canvasModeAllowedOnStage(next, canvasMode)
+    let nextMode = canvasModeAllowedOnStage(next, canvasMode)
+    if (next === 'digitize') {
+      nextMode = canvasModeAllowedOnDigitizeMethod(digitizeMethod, nextMode)
+    }
     if (nextMode !== canvasMode) handleCanvasModeChange(nextMode)
     if (shouldResetAxisPlacementOnStage(next)) {
       setAxisPlaceStep(null)
@@ -882,6 +898,13 @@ export default function App() {
       setScaleBarStep(null)
     }
     setWorkflowStage(next)
+  }
+
+  const handleDigitizeMethodChange = (next: DigitizeMethod) => {
+    if (next === digitizeMethod) return
+    const nextMode = canvasModeAllowedOnDigitizeMethod(next, canvasMode)
+    if (nextMode !== canvasMode) handleCanvasModeChange(nextMode)
+    setDigitizeMethod(next)
   }
 
   const handleAddPoint = (pixel: [number, number]) => {
@@ -1442,6 +1465,7 @@ export default function App() {
   }
 
   const chrome = stageChrome(workflowStage)
+  const methodChrome = digitizeMethodChrome(digitizeMethod)
 
   return (
     <div
@@ -1710,7 +1734,24 @@ export default function App() {
           {chrome.showFigureFields && (
             <FigureFields figure={figure} disabled={!session} onFigureChange={handleFigureChange} />
           )}
-          {chrome.showAutoDigitize && (
+          <div className="mb-2 flex h-[160px] shrink-0 items-center justify-center">
+            <MagnifierView
+              imageUrl={imageUrl}
+              cursor={hoverPixel}
+              imageW={imageWidth}
+              imageH={imageHeight}
+            />
+          </div>
+          {(chrome.showAutoDigitize || chrome.showCurveList) && (
+            <div className="mb-2 shrink-0">
+              <DigitizeMethodTabs
+                method={digitizeMethod}
+                onChange={handleDigitizeMethodChange}
+                disabled={!session}
+              />
+            </div>
+          )}
+          {chrome.showAutoDigitize && methodChrome.showAutoDigitize && (
             <AutoDigitizePanel
               busy={busy}
               disabled={!activeCurveId}
@@ -1750,15 +1791,7 @@ export default function App() {
               proposeDisabled={busy || !session}
             />
           )}
-          <div className="mb-2 flex h-[160px] shrink-0 items-center justify-center">
-            <MagnifierView
-              imageUrl={imageUrl}
-              cursor={hoverPixel}
-              imageW={imageWidth}
-              imageH={imageHeight}
-            />
-          </div>
-          {chrome.showCurveList && (
+          {chrome.showCurveList && methodChrome.showCurveList && (
             <CurveList
               curves={session?.curves ?? []}
               calibrations={calibrationsList}

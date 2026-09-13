@@ -97,7 +97,7 @@ export function AutoDigitizePanel({
   const sampleReady = sampleXStepReady(xmin, xmax, delx)
 
   return (
-    <section className="rounded-lg border border-slate-700 bg-slate-800/50 p-3">
+    <section className="flex flex-1 min-h-0 flex-col overflow-y-auto rounded-lg border border-slate-700 bg-slate-800/50 p-3">
       <h3 className="mb-2 text-sm font-semibold text-slate-200">Auto digitize</h3>
       <div className="flex flex-col gap-2 text-[11px] text-slate-300">
         <div className="flex flex-wrap gap-1">
