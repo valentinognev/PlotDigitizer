@@ -4,6 +4,7 @@ import {
   buildPreviewConfig,
   connectAsToPlotlyMode,
   previewEmptyReason,
+  previewSkin,
 } from '../previewChart'
 import type { Calibration, Curve } from '../../types'
 
@@ -355,6 +356,22 @@ describe('buildPreviewConfig', () => {
     expect(layout.yaxis?.type).toBe('linear')
     expect(layout.yaxis2?.type).toBe('log')
     expect(layout.yaxis2?.overlaying).toBe('y')
+  })
+
+  it('uses night plot chrome by default and day colors when theme is day', () => {
+    const night = buildPreviewConfig([curve], cartesianCal(), 200)
+    expect(night.layout.paper_bgcolor).toBe('#0f172a')
+    expect(night.layout.plot_bgcolor).toBe('#1e293b')
+    expect((night.layout.font as { color: string }).color).toBe('#e2e8f0')
+    expect((night.layout.xaxis as { gridcolor: string }).gridcolor).toBe('#334155')
+
+    const day = buildPreviewConfig([curve], cartesianCal(), 200, undefined, 'day')
+    expect(day.layout.paper_bgcolor).toBe('#f8fafc')
+    expect(day.layout.plot_bgcolor).toBe('#ffffff')
+    expect((day.layout.font as { color: string }).color).toBe('#0f172a')
+    expect((day.layout.xaxis as { gridcolor: string }).gridcolor).toBe('#cbd5e1')
+    expect(previewSkin('night').paper_bgcolor).toBe('#0f172a')
+    expect(previewSkin('day').paper_bgcolor).toBe('#f8fafc')
   })
 })
 

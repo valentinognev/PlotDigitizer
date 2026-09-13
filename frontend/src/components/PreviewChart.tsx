@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState, type ComponentType } from '
 import PlotlyModule from 'react-plotly.js'
 import type { Calibration, Curve, FigureMeta } from '../types'
 import { buildPreviewConfig, previewEmptyReason } from '../lib/previewChart'
+import type { Theme } from '../lib/theme'
 import { formatCalibrationIssue } from '../lib/transform'
 import { isCalibrationValid } from '../lib/transform2d'
 
@@ -25,6 +26,7 @@ interface Props {
   calibration: Calibration | null
   calibrations?: Calibration[]
   figure?: FigureMeta
+  theme: Theme
 }
 
 function hashStr(s: string): number {
@@ -37,9 +39,10 @@ function plotRevision(
   curves: Curve[],
   calibration: Calibration | null,
   calibrations: Calibration[] | undefined,
-  figure?: FigureMeta,
+  figure: FigureMeta | undefined,
+  theme: Theme,
 ): number {
-  let revision = 0
+  let revision = hashStr(theme)
   if (figure) {
     revision += hashStr(figure.title) * 3
     revision += hashStr(figure.xlabel) * 5
@@ -92,6 +95,7 @@ export const PreviewChart = memo(function PreviewChart({
   calibration,
   calibrations,
   figure,
+  theme,
 }: Props) {
   const plotHostRef = useRef<HTMLDivElement>(null)
   const [plotHeight, setPlotHeight] = useState(280)
@@ -112,20 +116,22 @@ export const PreviewChart = memo(function PreviewChart({
   const traces = useMemo(
     () =>
       valid
-        ? buildPreviewConfig(curves, { calibration, calibrations }, plotHeight, figure).traces
+        ? buildPreviewConfig(curves, { calibration, calibrations }, plotHeight, figure, theme)
+            .traces
         : [],
-    [curves, calibration, calibrations, valid, plotHeight, figure],
+    [curves, calibration, calibrations, valid, plotHeight, figure, theme],
   )
   const layout = useMemo(
     () =>
       valid
-        ? buildPreviewConfig(curves, { calibration, calibrations }, plotHeight, figure).layout
+        ? buildPreviewConfig(curves, { calibration, calibrations }, plotHeight, figure, theme)
+            .layout
         : null,
-    [curves, calibration, calibrations, valid, plotHeight, figure],
+    [curves, calibration, calibrations, valid, plotHeight, figure, theme],
   )
   const revision = useMemo(
-    () => plotRevision(curves, valid ? calibration : null, calibrations, figure),
-    [curves, calibration, calibrations, valid, figure],
+    () => plotRevision(curves, valid ? calibration : null, calibrations, figure, theme),
+    [curves, calibration, calibrations, valid, figure, theme],
   )
 
   const issueCopy = formatCalibrationIssue(calibration)
@@ -166,6 +172,7 @@ export const PreviewChart = memo(function PreviewChart({
                   { calibration, calibrations },
                   plotHeight,
                   figure,
+                  theme,
                 ).layout
               }
               revision={revision}

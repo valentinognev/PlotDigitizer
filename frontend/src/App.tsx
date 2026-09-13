@@ -44,7 +44,9 @@ import { PreviewChart } from './components/PreviewChart'
 import { DataTablePanel } from './components/DataTablePanel'
 import { StageTabs } from './components/StageTabs'
 import { DigitizeMethodTabs } from './components/DigitizeMethodTabs'
+import { ThemeSwitch } from './components/ThemeSwitch'
 import { firstVisibleCurve } from './lib/curves'
+import { readStoredTheme, setTheme, type Theme } from './lib/theme'
 import { DEFAULT_POINT_COUNT } from './lib/constants'
 import {
   AXIS_PLACE_ORDER,
@@ -172,6 +174,7 @@ export default function App() {
   const [unskewPreview, setUnskewPreview] = useState(false)
   const [unskewMode, setUnskewMode] = useState<UnskewMode>('perspective')
   const [meshGrid, setMeshGrid] = useState<MeshGridState | null>(null)
+  const [theme, setThemeState] = useState<Theme>(() => readStoredTheme(window.localStorage))
   /** Calibration plot quad the current mesh is synced to — used to detect calibration
    *  moves (which should remap the mesh) vs. direct mesh-vertex edits (which should not). */
   const meshSyncedQuadRef = useRef<PlotQuad | null>(null)
@@ -182,6 +185,10 @@ export default function App() {
   const prefsDebounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const filterDebounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const pendingPrefsPatch = useRef<PreferencesPatch>({})
+
+  useEffect(() => {
+    setTheme(theme, document.documentElement, window.localStorage)
+  }, [theme])
 
   useEffect(() => {
     const next = nextStageOnSessionIdentityChange(
@@ -1487,6 +1494,7 @@ export default function App() {
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <ThemeSwitch theme={theme} onChange={setThemeState} />
           <label
             className="cursor-pointer rounded bg-slate-700 px-3 py-1.5 text-xs hover:bg-slate-600"
             title="Or paste (Ctrl+V / Cmd+V)"
@@ -1719,6 +1727,7 @@ export default function App() {
                   calibration={calibration}
                   calibrations={calibrationsList}
                   figure={figure}
+                  theme={theme}
                 />
               </div>
               {chrome.showDataTable && (

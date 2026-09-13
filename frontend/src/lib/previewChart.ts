@@ -1,6 +1,29 @@
 import type { Calibration, ConnectAs, Curve, FigureMeta, Scale, ThetaUnits } from '../types'
+import type { Theme } from './theme'
 import { formatCalibrationIssue } from './transform'
 import { pixelToData } from './transform2d'
+
+export function previewSkin(theme: Theme): {
+  paper_bgcolor: string
+  plot_bgcolor: string
+  fontColor: string
+  gridcolor: string
+} {
+  if (theme === 'day') {
+    return {
+      paper_bgcolor: '#f8fafc',
+      plot_bgcolor: '#ffffff',
+      fontColor: '#0f172a',
+      gridcolor: '#cbd5e1',
+    }
+  }
+  return {
+    paper_bgcolor: '#0f172a',
+    plot_bgcolor: '#1e293b',
+    fontColor: '#e2e8f0',
+    gridcolor: '#334155',
+  }
+}
 
 function coordsTypeOf(cal: Calibration): NonNullable<Calibration['coords_type']> {
   return cal.coords_type ?? 'cartesian'
@@ -66,12 +89,19 @@ export function thetaToPlotly(
 
 const PLOT_LAYOUT_BASE = {
   autosize: true,
-  paper_bgcolor: '#0f172a',
-  plot_bgcolor: '#1e293b',
-  font: { color: '#e2e8f0', size: 11 },
   margin: { l: 48, r: 12, t: 24, b: 36 },
   uirevision: 'plot-preview',
 } as const
+
+function plotLayoutChrome(theme: Theme) {
+  const skin = previewSkin(theme)
+  return {
+    ...PLOT_LAYOUT_BASE,
+    paper_bgcolor: skin.paper_bgcolor,
+    plot_bgcolor: skin.plot_bgcolor,
+    font: { color: skin.fontColor, size: 11 },
+  }
+}
 
 function nonEmpty(s: string | undefined): string | undefined {
   const trimmed = s?.trim()
@@ -165,11 +195,14 @@ export function buildPreviewConfig(
   sessionOrCals: PreviewCalSource,
   height: number,
   figure?: FigureMeta,
+  theme: Theme = 'night',
 ): { traces: Array<Record<string, unknown>>; layout: Record<string, unknown> } {
   const { fallback, list } = resolvePreviewCals(sessionOrCals)
   const calibration = fallback
+  const chrome = plotLayoutChrome(theme)
+  const gridcolor = previewSkin(theme).gridcolor
   if (!calibration) {
-    return { traces: [], layout: { ...PLOT_LAYOUT_BASE, height: Math.max(height, 120) } }
+    return { traces: [], layout: { ...chrome, height: Math.max(height, 120) } }
   }
   const coords = coordsTypeOf(calibration)
   const titleText = nonEmpty(figure?.title)
@@ -237,14 +270,14 @@ export function buildPreviewConfig(
     return {
       traces,
       layout: {
-        ...PLOT_LAYOUT_BASE,
+        ...chrome,
         ...titleLayout,
         height: h,
         polar: {
           radialaxis: {
             title: ylabelText ?? 'R',
             type: radialType,
-            gridcolor: '#334155',
+            gridcolor,
             range: origin !== 0 ? [origin, null] : undefined,
           },
           angularaxis: {
@@ -263,19 +296,19 @@ export function buildPreviewConfig(
   const units =
     axisCoords === 'map' && axisCal.scale_bar?.units ? ` (${axisCal.scale_bar.units})` : ''
   const layout: Record<string, unknown> = {
-    ...PLOT_LAYOUT_BASE,
+    ...chrome,
     ...titleLayout,
     height: h,
     xaxis: {
       title: xlabelText ?? (axisCoords === 'map' ? `x${units}` : axisCoords === 'bar' ? 'label' : 'X'),
-      gridcolor: '#334155',
+      gridcolor,
       automargin: true,
       autorange: true,
       type: axisCoords === 'bar' ? 'category' : plotlyAxisType(axisCal.x.scale),
     },
     yaxis: {
       title: ylabelText ?? (axisCoords === 'map' ? `y${units}` : axisCoords === 'bar' ? 'value' : 'Y'),
-      gridcolor: '#334155',
+      gridcolor,
       automargin: true,
       autorange: true,
       type: plotlyAxisType(axisCal.y.scale),
@@ -288,7 +321,7 @@ export function buildPreviewConfig(
       title: nonEmpty(y2.name) ?? 'Y',
       overlaying: 'y',
       side: 'right',
-      gridcolor: '#334155',
+      gridcolor,
       automargin: true,
       autorange: true,
       type: plotlyAxisType(y2.y.scale),

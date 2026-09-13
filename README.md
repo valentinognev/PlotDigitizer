@@ -27,7 +27,7 @@ PlotDigitizer uses a **manual-first pipeline** in three editor stages (tabs stay
 3. **Digitize** — right-column **Auto** / **Curves** tabs (default Curves). **Curves:** **Place** points on each curve; bind each curve with the per-curve Axes select. **Auto:** draw a **region mask** (box / pen / erase), run **Averaging window** (ΔX/ΔY px), **Sample Δx** in data space, **Extract this colour** after a colour pick (or **Propose curves from colours**), segment-fill along ink, or **point-match** for scatter markers (sample one marker, accept/reject ranked candidates).
 4. **Refine** line curves with **Improve** (mask corridor) and **Densify**. Scatter curves (`connect_as: scatter`) stay markers-only.
 5. Watch the **preview chart** in data space (cartesian, polar θ/R, map units, or bar labels vs values). Two cartesian axes overlay a second Y (`yaxis2`).
-6. **Export** from the header: CSV (numbers plus a sidecar PNG of the working plot, same stem) or **Save JSON** project (`.pdproj.json`, image embedded). CSV columns follow the coordinate system (`x,y` / `theta,R` / `x,y` plus units / `label,value` for bar).
+6. **Export** from the header: CSV (numbers plus a sidecar PNG of the working plot, same stem) or **Save JSON** project (`.pdproj.json`, image embedded). CSV columns follow the coordinate system (`x,y` / `theta,R` / `x,y` plus units / `label,value` for bar). The same header row has **Night|Day** (Night default; last choice remembered in the browser). The plot image does not change.
 
 **Pixel coordinates are the source of truth.** Data-space values are always derived through the
 current calibration, so re-calibrating instantly remaps all points.
@@ -115,7 +115,7 @@ cd frontend && npm test
 
 ## Typical Workflow
 
-1. **Upload** a plot image, **paste** one (Ctrl+V / Cmd+V; ignored while typing in a text field), or **drop** an image file onto the window. After load, the **Image** tab is selected.
+1. **Upload** a plot image, **paste** one (Ctrl+V / Cmd+V; ignored while typing in a text field), or **drop** an image file onto the window. After load, the **Image** tab is selected. **Night|Day** in the header switches chrome (Night default).
 2. On **Image**, condition the curve with **Filter** (colour / grid) and optionally **Unskew**.
    Unskew still needs placed axis bounds — switch to **Axes** first, place the bounds, then return
    to Image to preview/apply. Choose **Perspective** or **Mesh**, adjust the mesh boundary if
@@ -148,7 +148,7 @@ cd frontend && npm test
 
 ## Status
 
-**v2.19** — Digitize Auto / Curves tabs share the right column; editor stages as tabs (Image / Axes / Digitize); Open / Save JSON / CSV / Import in
-the header. Clipboard paste to start a session; CSV export writes a sidecar PNG; JSON still embeds
+**v2.20** — Digitize Auto / Curves tabs share the right column; editor stages as tabs (Image / Axes / Digitize); Open / Save JSON / CSV / Import in
+the header. Chrome has a Night|Day switch (Night default). Clipboard paste to start a session; CSV export writes a sidecar PNG; JSON still embeds
 the image. Precision toolkit (v2.6+): affine/projective/polar/map calibration, colour-filter + grid
 conditioning, segment-fill and point-match, scatter curves. Current version: see [`UPDATES.md`](UPDATES.md).

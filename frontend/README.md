@@ -21,8 +21,9 @@ for setup and workflow.
 | `AutoDigitizePanel.tsx` | Digitize stage, Auto tab: region mask, averaging window, Sample Δx, colour extract, segment-fill, point-match |
 | `PreviewChart.tsx`   | Axes / Digitize: Plotly live preview in data-space (dual-Y overlay when two cartesian cals) |
 | `ExportPanel.tsx`    | Header: Open / Save JSON / CSV / Import (`variant="header"`) |
+| `ThemeSwitch.tsx`    | Header: Night\|Day chrome skin (Night default; `localStorage` `plotdigitizer.theme`) |
 
-Toolbar: header export (Open / Save JSON / CSV / Import) + stage tabs, not Unskew → Calibration → Export.
+Toolbar: header Night|Day + export (Open / Save JSON / CSV / Import) + stage tabs, not Unskew → Calibration → Export.
 
 ## Key libraries
 
@@ -36,6 +37,7 @@ Toolbar: header export (Open / Save JSON / CSV / Import) + stage tabs, not Unske
 - `src/api/client.ts` — typed REST client (includes `applyUnskew` with perspective or mesh mode); CSV export also saves a sidecar PNG
 - `src/lib/clipboardPaste.ts` — clipboard image → `File` for Ctrl+V / Cmd+V upload
 - `src/lib/exportFlow.ts` — pre-export preference flush; CSV sidecar PNG filename
+- `src/lib/theme.ts` — Night|Day parse/persist/`data-theme` (default night)
 
 ## Unskew preview
 

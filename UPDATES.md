@@ -40,6 +40,12 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [2.20.0] — 2026-09-13
+### Added
+- Day chrome skin + Night|Day header switch; last choice in localStorage (`plotdigitizer.theme`); Night default.
+### Changed
+- Plotly preview follows the selected theme.
+
 ## [2.19.1] — 2026-09-13
 ### Changed
 - Magnifier sits in a 160px well under the figure, bottom-left of the canvas column, instead of the top of the right sidebar.
