@@ -1,3 +1,16 @@
+export function hoverPixelFromClient(
+  clientX: number,
+  clientY: number,
+  container: { left: number; top: number },
+  stagePos: { x: number; y: number },
+  scale: number,
+  toOriginal: (layer: [number, number]) => [number, number],
+): [number, number] {
+  const layerX = (clientX - container.left - stagePos.x) / scale
+  const layerY = (clientY - container.top - stagePos.y) / scale
+  return toOriginal([layerX, layerY])
+}
+
 export function magnifierSourceRect(
   imageW: number,
   imageH: number,

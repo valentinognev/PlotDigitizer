@@ -114,12 +114,16 @@ def dominant_trace_colors(img_bgr: np.ndarray, limit: int = 8) -> list[str]:
     dist = _bgr_dist01(pixels, bg)
     sat = _sat01(sampled).reshape(-1)
     keep = dist > 0.08
-    if float(np.median(sat)) < 0.08:
+    # Median sat of the whole figure is ~0 (paper). Detect a colour plot from
+    # chromatic pixels among the non-background remainder so grey grid/axes
+    # are not proposed as traces.
+    chromatic = keep & (sat >= 0.08)
+    if int(np.count_nonzero(chromatic)) >= 8:
+        keep = chromatic
+    else:
         lum = _luminance01(sampled).reshape(-1)
         bg_lum = float(0.114 * bg[0] + 0.587 * bg[1] + 0.299 * bg[2]) / 255.0
         keep &= np.abs(lum - bg_lum) > 0.08
-    else:
-        keep &= sat >= 0.08
 
     remaining = pixels[keep]
     if remaining.shape[0] == 0:

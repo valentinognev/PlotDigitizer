@@ -38,10 +38,22 @@ echo "==> Stopping PlotDigitizer"
 stop_pid_file "Backend" "$BACKEND_PID_FILE"
 stop_pid_file "Frontend" "$FRONTEND_PID_FILE"
 
+if [[ -f "$RUN_DIR/backend.port" ]]; then
+  BACKEND_PORT="$(cat "$RUN_DIR/backend.port")"
+else
+  BACKEND_PORT="${BACKEND_PORT:-8000}"
+fi
+if [[ -f "$RUN_DIR/frontend.port" ]]; then
+  FRONTEND_PORT="$(cat "$RUN_DIR/frontend.port")"
+else
+  FRONTEND_PORT="${FRONTEND_PORT:-5173}"
+fi
+
 # Clean up child processes (e.g. vite/node spawned by npm)
 if command -v pkill >/dev/null 2>&1; then
-  pkill -f "uvicorn app.main:app.*--port ${BACKEND_PORT:-8000}" 2>/dev/null || true
-  pkill -f "vite preview.*--port ${FRONTEND_PORT:-5173}" 2>/dev/null || true
+  pkill -f "uvicorn app.main:app.*--port ${BACKEND_PORT}" 2>/dev/null || true
+  pkill -f "vite preview.*--port ${FRONTEND_PORT}" 2>/dev/null || true
 fi
+rm -f "$RUN_DIR/backend.port" "$RUN_DIR/frontend.port"
 
 echo "Done."

@@ -25,6 +25,8 @@ import type { MaskView } from './FilterPanel'
 import type { SegmentLite } from '../lib/segments'
 import { flattenPolyline, nearestSegment } from '../lib/segments'
 import { boxFromDrag, isMaskCanvasMode } from '../lib/regionMask'
+import { IDLE_CURSOR_READOUT } from '../lib/cursorReadout'
+import { hoverPixelFromClient } from '../lib/magnifier'
 import type { Calibration, CanvasMode, Curve, MatchCandidate, Point, RegionBox } from '../types'
 
 interface Props {
@@ -198,6 +200,7 @@ export function EditorCanvas({
   const [maskBox, setMaskBox] = useState<ImageBox | null>(null)
   const [maskStroke, setMaskStroke] = useState<[number, number][] | null>(null)
   const maskBoxStartRef = useRef<[number, number] | null>(null)
+  const objectDragRef = useRef(false)
   const filling = canvasMode === 'segment-fill'
   const masking = isMaskCanvasMode(canvasMode)
 
@@ -454,6 +457,52 @@ export function EditorCanvas({
     [totalScale, stagePos],
   )
 
+  const syncHoverFromClient = useCallback(
+    (clientX: number, clientY: number) => {
+      const el = containerRef.current
+      if (!el) return
+      onHoverPixel(
+        hoverPixelFromClient(
+          clientX,
+          clientY,
+          el.getBoundingClientRect(),
+          stagePos,
+          totalScale,
+          toOriginalCoords,
+        ),
+      )
+    },
+    [onHoverPixel, stagePos, totalScale, toOriginalCoords],
+  )
+
+  const clearHoverIfIdle = useCallback(
+    (buttons: number) => {
+      if (buttons) return
+      onHoverPixel(null)
+    },
+    [onHoverPixel],
+  )
+
+  const alignObjectDrag = useCallback(
+    (e: KonvaEventObject<DragEvent>) => {
+      objectDragRef.current = true
+      const stage = e.target.getStage()
+      const pos = stage?.getPointerPosition()
+      if (!pos) {
+        onHoverPixel(toOriginalCoords([e.target.x(), e.target.y()]))
+        return
+      }
+      const layer = toImageCoords(pos.x, pos.y)
+      e.target.position({ x: layer[0], y: layer[1] })
+      onHoverPixel(toOriginalCoords(layer))
+    },
+    [onHoverPixel, toImageCoords, toOriginalCoords],
+  )
+
+  const endObjectDrag = useCallback(() => {
+    objectDragRef.current = false
+  }, [])
+
   const displayPixel = useCallback(
     (pt: Point): [number, number] => {
       const base = toDisplayCoords(pt.pixel)
@@ -583,7 +632,7 @@ export function EditorCanvas({
     const pos = stage?.getPointerPosition()
     if (!pos) return
     const [x, y] = toImageCoords(pos.x, pos.y)
-    onHoverPixel(toOriginalCoords([x, y]))
+    if (!objectDragRef.current) onHoverPixel(toOriginalCoords([x, y]))
 
     if (filling) {
       const hit = nearestSegment(segments, toOriginalCoords([x, y]), 12)
@@ -671,6 +720,7 @@ export function EditorCanvas({
   }
 
   const movePointDrag = (pt: Point, e: KonvaEventObject<DragEvent>) => {
+    alignObjectDrag(e)
     if (!groupDrag || pt.id !== groupDrag.anchorId) return
     const start = groupDrag.starts.get(pt.id)
     if (!start) return
@@ -681,6 +731,7 @@ export function EditorCanvas({
   }
 
   const endPointDrag = (pt: Point, e: KonvaEventObject<DragEvent>) => {
+    endObjectDrag()
     setStageDraggable(true)
     if (groupDrag && selectedSet.has(pt.id) && multiSelected) {
       const moves = selectedPointIds
@@ -720,14 +771,22 @@ export function EditorCanvas({
         segmentFill={filling}
         cursorReadout={cursorReadout}
       />
-      <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden">
+      <div
+        ref={containerRef}
+        className="min-h-0 flex-1 overflow-hidden"
+        onPointerMove={(e) => {
+          if (objectDragRef.current) return
+          syncHoverFromClient(e.clientX, e.clientY)
+        }}
+        onPointerLeave={(e) => clearHoverIfIdle(e.buttons)}
+      >
       <Stage
         width={viewSize.w}
         height={viewSize.h}
         onWheel={handleWheel}
         onClick={handleStageClick}
         onMouseMove={handleMouseMove}
-        onMouseLeave={() => onHoverPixel(null)}
+        onMouseLeave={(e) => clearHoverIfIdle(e.evt.buttons)}
         onMouseUp={handleMouseUp}
         draggable={
           stageDraggable && (canvasMode === 'select' || spacePan) && !axisPlaceStep && !filling && !masking
@@ -790,9 +849,10 @@ export function EditorCanvas({
                         calibration?.coords_type === 'bar' && pt.label ? pt.label : undefined
                       }
                       onPointerDown={(e) => handlePointPointerDown(pt, e)}
-                      onDragStart={() => {
+                      onDragStart={(e) => {
                         setStageDraggable(false)
                         prepareGroupDrag(pt)
+                        alignObjectDrag(e)
                       }}
                       onDragMove={(e) => movePointDrag(pt, e)}
                       onDragEnd={(e) => endPointDrag(pt, e)}
@@ -873,7 +933,9 @@ export function EditorCanvas({
                   hollow
                   active={axisPlaceStep === key}
                   onDragStart={() => setStageDraggable(false)}
+                  onDragMove={alignObjectDrag}
                   onDragEnd={(px) => {
+                    endObjectDrag()
                     setStageDraggable(true)
                     onMoveCalibrationMark(key, axisMarkFromLayer(key, px))
                   }}
@@ -891,7 +953,9 @@ export function EditorCanvas({
               color="#fbbf24"
               scale={totalScale}
               onDragStart={() => setStageDraggable(false)}
+              onDragMove={alignObjectDrag}
               onDragEnd={(px) => {
+                endObjectDrag()
                 setStageDraggable(true)
                 onMoveAxisPoint?.(pt.id, toOriginalCoords(px))
               }}
@@ -906,8 +970,10 @@ export function EditorCanvas({
                 scale={totalScale}
                 active={true}
                 onDragStart={() => setStageDraggable(false)}
+                onDragMove={alignObjectDrag}
                 onDragEnd={(px) => {
-                  setStageDraggable(true)
+                    endObjectDrag()
+                    setStageDraggable(true)
                   onMoveScaleBar?.('a', toOriginalCoords(px))
                 }}
               />
@@ -918,8 +984,10 @@ export function EditorCanvas({
                 scale={totalScale}
                 active={true}
                 onDragStart={() => setStageDraggable(false)}
+                onDragMove={alignObjectDrag}
                 onDragEnd={(px) => {
-                  setStageDraggable(true)
+                    endObjectDrag()
+                    setStageDraggable(true)
                   onMoveScaleBar?.('b', toOriginalCoords(px))
                 }}
               />
@@ -934,8 +1002,10 @@ export function EditorCanvas({
                 scale={totalScale}
                 active={true}
                 onDragStart={() => setStageDraggable(false)}
+                onDragMove={alignObjectDrag}
                 onDragEnd={(px) => {
-                  setStageDraggable(true)
+                    endObjectDrag()
+                    setStageDraggable(true)
                   onMoveScaleBar?.('a', toOriginalCoords(px))
                 }}
               />
@@ -947,7 +1017,9 @@ export function EditorCanvas({
                   scale={totalScale}
                   active={true}
                   onDragStart={() => setStageDraggable(false)}
+                  onDragMove={alignObjectDrag}
                   onDragEnd={(px) => {
+                    endObjectDrag()
                     setStageDraggable(true)
                     onMoveScaleBar?.('b', toOriginalCoords(px))
                   }}
@@ -961,7 +1033,11 @@ export function EditorCanvas({
               scale={totalScale}
               onUpdateVertex={onUpdateMeshVertex}
               onDragStart={() => setStageDraggable(false)}
-              onDragEnd={() => setStageDraggable(true)}
+              onHoverFromDrag={alignObjectDrag}
+              onDragEnd={() => {
+                endObjectDrag()
+                setStageDraggable(true)
+              }}
             />
           )}
           <AxesCheckerOverlay
@@ -987,7 +1063,7 @@ function PlotInteractionHint({
   warpingPreview,
   meshEditing,
   segmentFill,
-  cursorReadout,
+  cursorReadout = IDLE_CURSOR_READOUT,
 }: {
   canvasMode: CanvasMode
   axisPlaceStep: AxisBoundKey | null
@@ -1033,11 +1109,9 @@ function PlotInteractionHint({
       >
         {text}
       </p>
-      {cursorReadout ? (
-        <p className="shrink-0 border-b border-slate-700/80 bg-slate-800/90 px-2 py-0.5 text-left font-mono text-[10px] tabular-nums text-slate-300">
-          {cursorReadout}
-        </p>
-      ) : null}
+      <p className="shrink-0 overflow-hidden border-b border-slate-700/80 bg-slate-800/90 px-2 py-0.5 text-left font-mono text-[10px] tabular-nums whitespace-nowrap text-slate-300">
+        {cursorReadout}
+      </p>
     </>
   )
 }
@@ -1050,6 +1124,7 @@ function CalibrationMark({
   hollow,
   active,
   onDragStart,
+  onDragMove,
   onDragEnd,
 }: {
   label: string
@@ -1059,6 +1134,7 @@ function CalibrationMark({
   hollow?: boolean
   active?: boolean
   onDragStart: () => void
+  onDragMove?: (e: KonvaEventObject<DragEvent>) => void
   onDragEnd: (pixel: [number, number]) => void
 }) {
   const visual = calibrationMarkVisual({
@@ -1080,6 +1156,11 @@ function CalibrationMark({
       onDragStart={(e) => {
         e.cancelBubble = true
         onDragStart()
+        onDragMove?.(e)
+      }}
+      onDragMove={(e) => {
+        e.cancelBubble = true
+        onDragMove?.(e)
       }}
       onDragEnd={(e) => {
         e.cancelBubble = true
@@ -1143,7 +1224,7 @@ function DraggablePoint({
   scale: number
   caption?: string
   onPointerDown: (e: KonvaEventObject<MouseEvent>) => void
-  onDragStart: () => void
+  onDragStart: (e: KonvaEventObject<DragEvent>) => void
   onDragMove: (e: KonvaEventObject<DragEvent>) => void
   onDragEnd: (e: KonvaEventObject<DragEvent>) => void
   onDelete: () => void
@@ -1166,7 +1247,7 @@ function DraggablePoint({
       }}
       onDragStart={(e) => {
         e.cancelBubble = true
-        onDragStart()
+        onDragStart(e)
       }}
       onDragMove={(e) => {
         e.cancelBubble = true

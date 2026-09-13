@@ -12,6 +12,7 @@ BACKEND_HOST="${BACKEND_HOST:-127.0.0.1}"
 BACKEND_PORT="${BACKEND_PORT:-8000}"
 FRONTEND_HOST="${FRONTEND_HOST:-127.0.0.1}"
 FRONTEND_PORT="${FRONTEND_PORT:-5173}"
+PORT_TRIES="${PORT_TRIES:-50}"
 
 mkdir -p "$RUN_DIR"
 
@@ -29,8 +30,8 @@ is_running() {
 }
 
 if is_running "$BACKEND_PID_FILE" || is_running "$FRONTEND_PID_FILE"; then
-  echo "PlotDigitizer appears to be running already. Use ./kill.sh first." >&2
-  exit 1
+  echo "==> Already running; stopping it first"
+  "$ROOT/kill.sh"
 fi
 
 if [[ ! -x "$ROOT/backend/.venv/bin/uvicorn" ]]; then
@@ -55,6 +56,50 @@ if [[ "$needs_frontend_build" -eq 1 ]]; then
   (cd "$ROOT/frontend" && npm run build)
 fi
 
+# True if anything is listening on TCP $2 (host $1 is used for /dev/tcp fallback).
+port_occupied() {
+  local host="$1"
+  local port="$2"
+  if command -v ss >/dev/null 2>&1; then
+    [[ -n "$(ss -ltnH "sport = :${port}" 2>/dev/null)" ]]
+    return $?
+  fi
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -nP -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1
+    return $?
+  fi
+  timeout 0.2 bash -c "echo >/dev/tcp/${host}/${port}" >/dev/null 2>&1
+}
+
+# Print the first free port at or above $2. Checks each candidate; never reuses $3.
+pick_free_port() {
+  local host="$1"
+  local port="$2"
+  local avoid="${3:-}"
+  local i
+  for ((i = 0; i < PORT_TRIES; i++)); do
+    if [[ -n "$avoid" && "$port" -eq "$avoid" ]]; then
+      echo "==> Port ${port} already chosen for the other process, trying $((port + 1))" >&2
+      port=$((port + 1))
+      continue
+    fi
+    if port_occupied "$host" "$port"; then
+      echo "==> Port ${port} is in use, trying $((port + 1))" >&2
+      port=$((port + 1))
+      continue
+    fi
+    echo "$port"
+    return 0
+  done
+  echo "No free TCP port found after ${PORT_TRIES} tries (started at $2)." >&2
+  return 1
+}
+
+BACKEND_PORT="$(pick_free_port "$BACKEND_HOST" "$BACKEND_PORT")"
+FRONTEND_PORT="$(pick_free_port "$FRONTEND_HOST" "$FRONTEND_PORT" "$BACKEND_PORT")"
+echo "$BACKEND_PORT" >"$RUN_DIR/backend.port"
+echo "$FRONTEND_PORT" >"$RUN_DIR/frontend.port"
+
 echo "==> Starting PlotDigitizer (background)"
 
 cd "$ROOT/backend"
@@ -65,7 +110,8 @@ nohup .venv/bin/uvicorn app.main:app \
 echo $! >"$BACKEND_PID_FILE"
 
 cd "$ROOT/frontend"
-nohup npm run preview -- --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" \
+export PLOT_API_ORIGIN="http://${BACKEND_HOST}:${BACKEND_PORT}"
+nohup npm run preview -- --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" --strictPort \
   >>"$FRONTEND_LOG" 2>&1 &
 echo $! >"$FRONTEND_PID_FILE"
 

@@ -16,7 +16,8 @@ for setup and workflow.
 | `FigureFields.tsx`   | Axes stage: figure title / xlabel / ylabel |
 | `CurvePicker.tsx`    | Image stage: compact active-curve switcher |
 | `CurveList.tsx`      | Digitize stage, Curves tab: curves, place-points mode, Improve / Densify, per-curve Axes select |
-| `DigitizeMethodTabs.tsx` | Digitize stage: Auto / Curves tablist under the magnifier |
+| `MagnifierView.tsx`  | 160×160 5× zoom, left-aligned under the figure                         |
+| `DigitizeMethodTabs.tsx` | Digitize stage: Auto / Curves tablist at the top of the right column |
 | `AutoDigitizePanel.tsx` | Digitize stage, Auto tab: region mask, averaging window, Sample Δx, colour extract, segment-fill, point-match |
 | `PreviewChart.tsx`   | Axes / Digitize: Plotly live preview in data-space (dual-Y overlay when two cartesian cals) |
 | `ExportPanel.tsx`    | Header: Open / Save JSON / CSV / Import (`variant="header"`) |

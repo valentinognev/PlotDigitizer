@@ -1067,9 +1067,11 @@ export default function App() {
     hoverPixel && calibration && isCalibrationValid(calibration)
       ? pixelToData(calibration, hoverPixel)
       : null
-  const cursorReadout = hoverPixel
-    ? formatCursorReadout(hoverPixel, hoverData, calibration?.coords_type)
-    : ''
+  const cursorReadout = formatCursorReadout(
+    hoverPixel,
+    hoverData,
+    calibration?.coords_type,
+  )
 
   useEffect(() => {
     if (!calibration || !meshGrid || imageWidth < 1 || imageHeight < 1) return
@@ -1641,8 +1643,9 @@ export default function App() {
 
       <main className="flex min-h-0 flex-1 overflow-hidden">
         <div className={previewGridClassName(chrome.showPreview)}>
-          <div className="min-h-0 overflow-hidden">
-            <EditorCanvas
+          <div className="flex min-h-0 flex-col overflow-hidden">
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <EditorCanvas
               imageUrl={imageUrl}
               width={session?.image_meta.width ?? 800}
               height={session?.image_meta.height ?? 500}
@@ -1697,7 +1700,16 @@ export default function App() {
               maskView={maskView}
               onHoverPixel={setHoverPixel}
               cursorReadout={cursorReadout}
-            />
+              />
+            </div>
+            <div className="flex h-[160px] shrink-0 items-end justify-start">
+              <MagnifierView
+                imageUrl={imageUrl}
+                cursor={hoverPixel}
+                imageW={imageWidth}
+                imageH={imageHeight}
+              />
+            </div>
           </div>
           {chrome.showPreview && (
             <div className="flex min-h-0 flex-col gap-2 overflow-hidden">
@@ -1734,14 +1746,6 @@ export default function App() {
           {chrome.showFigureFields && (
             <FigureFields figure={figure} disabled={!session} onFigureChange={handleFigureChange} />
           )}
-          <div className="mb-2 flex h-[160px] shrink-0 items-center justify-center">
-            <MagnifierView
-              imageUrl={imageUrl}
-              cursor={hoverPixel}
-              imageW={imageWidth}
-              imageH={imageHeight}
-            />
-          </div>
           {(chrome.showAutoDigitize || chrome.showCurveList) && (
             <div className="mb-2 shrink-0">
               <DigitizeMethodTabs

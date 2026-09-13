@@ -1,4 +1,5 @@
 import { Circle, Group, Line } from 'react-konva'
+import type { KonvaEventObject } from 'konva/lib/Node'
 import {
   meshGridSize,
   resolveMeshGrid,
@@ -12,6 +13,7 @@ interface Props {
   onUpdateVertex: (row: number, col: number, vertex: MeshVertex) => void
   onDragStart: () => void
   onDragEnd: () => void
+  onHoverFromDrag?: (e: KonvaEventObject<DragEvent>) => void
 }
 
 function isBoundary(i: number, j: number, size: number): boolean {
@@ -25,6 +27,7 @@ export function MeshGridOverlay({
   onUpdateVertex,
   onDragStart,
   onDragEnd,
+  onHoverFromDrag,
 }: Props) {
   const gridSize = meshGridSize(mesh)
   const grid = resolveMeshGrid(mesh)
@@ -84,9 +87,11 @@ export function MeshGridOverlay({
           onDragStart={(e) => {
             e.cancelBubble = true
             onDragStart()
+            onHoverFromDrag?.(e)
           }}
           onDragMove={(e) => {
             e.cancelBubble = true
+            onHoverFromDrag?.(e)
             onUpdateVertex(row, col, {
               ...vertex,
               position: [e.target.x(), e.target.y()],

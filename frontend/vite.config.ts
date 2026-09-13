@@ -29,6 +29,12 @@ function asset404Plugin(): Plugin {
   }
 }
 
+const apiOrigin = process.env.PLOT_API_ORIGIN ?? 'http://127.0.0.1:8000'
+const apiProxy = {
+  '/sessions': apiOrigin,
+  '/health': apiOrigin,
+}
+
 export default defineConfig({
   plugins: [react(), tailwindcss(), asset404Plugin()],
   test: {
@@ -42,19 +48,13 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    proxy: {
-      '/sessions': 'http://127.0.0.1:8000',
-      '/health': 'http://127.0.0.1:8000',
-    },
+    proxy: apiProxy,
   },
   preview: {
     port: 5173,
     headers: {
       'Cache-Control': 'no-cache, no-store, must-revalidate',
     },
-    proxy: {
-      '/sessions': 'http://127.0.0.1:8000',
-      '/health': 'http://127.0.0.1:8000',
-    },
+    proxy: apiProxy,
   },
 })

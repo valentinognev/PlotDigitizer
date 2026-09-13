@@ -37,13 +37,24 @@ describe('App digitize method wiring', () => {
     )
   })
 
-  it('puts magnifier above method tabs, then only the selected panel', () => {
+  it('puts the magnifier below the figure, left-aligned, not in the aside', () => {
+    const canvas = app.indexOf('<EditorCanvas')
     const mag = app.indexOf('<MagnifierView')
+    const aside = app.indexOf('<aside')
+    expect(canvas).toBeGreaterThan(0)
+    expect(mag).toBeGreaterThan(canvas)
+    expect(aside).toBeGreaterThan(mag)
+    expect(app.slice(aside)).not.toContain('<MagnifierView')
+    const well = app.slice(app.lastIndexOf('<div', mag), mag)
+    expect(well).toContain('justify-start')
+    expect(well).toContain('h-[160px]')
+  })
+
+  it('puts method tabs then only the selected panel', () => {
     const methodTabs = app.indexOf('<DigitizeMethodTabs')
     const auto = app.indexOf('<AutoDigitizePanel')
     const curves = app.indexOf('<CurveList')
-    expect(mag).toBeGreaterThan(0)
-    expect(methodTabs).toBeGreaterThan(mag)
+    expect(methodTabs).toBeGreaterThan(0)
     expect(auto).toBeGreaterThan(methodTabs)
     expect(curves).toBeGreaterThan(auto)
     expect(app).toContain('digitizeMethodChrome(digitizeMethod)')

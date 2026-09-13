@@ -71,3 +71,39 @@ def test_dominant_trace_colors_finds_red_and_blue_rects():
     colors = dominant_trace_colors(img, limit=8)
     assert any(_hex_near(c, "#ff0000") for c in colors)
     assert any(_hex_near(c, "#0000ff") for c in colors)
+
+
+def _is_near_gray_or_black_or_white(hex_color: str, tol: int = 24) -> bool:
+    r, g, b = _hex_rgb(hex_color)
+    if max(r, g, b) - min(r, g, b) <= tol:
+        return True
+    return max(r, g, b) <= tol
+
+
+def test_dominant_trace_colors_skips_gray_grid_on_color_plot():
+    from app.cv.color_filter import dominant_trace_colors
+
+    img = _bgr(80, 80, (255, 255, 255))
+    for y in range(0, 80, 4):
+        img[y, :] = (192, 192, 192)
+    for x in range(0, 80, 4):
+        img[:, x] = (192, 192, 192)
+    img[-1, :] = (0, 0, 0)
+    img[:, 0] = (0, 0, 0)
+    _paint(img, slice(10, 18), slice(10, 70), (0, 0, 255))  # red
+    _paint(img, slice(30, 38), slice(10, 70), (255, 0, 0))  # blue
+
+    colors = dominant_trace_colors(img, limit=8)
+    assert any(_hex_near(c, "#ff0000") for c in colors)
+    assert any(_hex_near(c, "#0000ff") for c in colors)
+    assert colors, "expected chromatic traces"
+    assert not any(_is_near_gray_or_black_or_white(c) for c in colors)
+
+
+def test_dominant_trace_colors_keeps_black_ink_on_white():
+    from app.cv.color_filter import dominant_trace_colors
+
+    img = _bgr(80, 80, (255, 255, 255))
+    _paint(img, slice(30, 50), slice(10, 70), (0, 0, 0))
+    colors = dominant_trace_colors(img, limit=8)
+    assert any(_hex_near(c, "#000000") for c in colors)

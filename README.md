@@ -77,7 +77,7 @@ current calibration, so re-calibrating instantly remaps all points.
 ./kill.sh      # stop servers
 ```
 
-Open http://127.0.0.1:5173
+Open the App URL that `./start.sh` prints (default http://127.0.0.1:5173; if that port is taken it walks upward until it finds a free one).
 
 ### Manual dev mode
 
@@ -131,7 +131,7 @@ cd frontend && npm test
 6. *(Optional)* **Remove from plot** erases the active curve from the working image (Undo restores
    it) so overlapping strokes can be traced next.
 7. **Drag** points to correct positions; **arrow keys** nudge a selection 1 px (Shift: 10). The
-   **magnifier** (right column) zooms 5× around the cursor; the readout under the
+   **magnifier** (bottom-left, below the figure) zooms 5× around the cursor; the readout above the
    canvas shows pixel (and data when calibrated). Box-select, Delete, and curve reassignment as needed.
 8. Watch the **preview chart** update in data-space (cartesian, polar, map, or bar). **View data** (under the chart) lists the same points; **Copy** puts TSV on the clipboard.
 9. **CSV** writes `*.csv` plus a sidecar `*.png` of the working plot (`label,value` for bar). **Save JSON** embeds the image with calibration, curves, and workspace.

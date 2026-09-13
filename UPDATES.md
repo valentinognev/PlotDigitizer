@@ -40,9 +40,37 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [2.19.1] — 2026-09-13
+### Changed
+- Magnifier sits in a 160px well under the figure, bottom-left of the canvas column, instead of the top of the right sidebar.
+
 ## [2.19.0] — 2026-09-13
 ### Added
 - Digitize right column: **Auto** / **Curves** tabs share the pane under the magnifier (default Curves). Switching Auto cancels mask / segment-fill / point-match; switching Curves cancels Place points. Choice is session-local, not saved in the project.
+
+## [2.18.6] — 2026-09-13
+### Fixed
+- While dragging a point, axis mark, or mesh vertex, the object centre snaps to the pointer so the magnifier crosshair is the pixel being placed, not the grab offset on the hit circle.
+
+## [2.18.5] — 2026-09-13
+### Fixed
+- Magnifier and cursor readout keep following the pointer while dragging points, axis marks, and mesh vertices (Konva drag no longer freezes or clears hover).
+
+## [2.18.4] — 2026-09-13
+### Fixed
+- Axes (and other stages) keep the cursor coordinate readout mounted at a fixed height, so hovering no longer resizes the canvas and makes the plot image jump.
+
+## [2.18.3] — 2026-09-13
+### Fixed
+- Propose curves from colours no longer treats paper/grid/axes as traces: chromatic plots drop low-saturation pixels even when white paper makes whole-image median saturation look grayscale.
+
+## [2.18.2] — 2026-09-13
+### Changed
+- `./start.sh` stops an already-running PlotDigitizer instance (same as `./kill.sh`) and then starts a new one, instead of exiting.
+
+## [2.18.1] — 2026-09-13
+### Changed
+- `./start.sh` checks whether the default backend (8000) and frontend (5173) TCP ports are already bound; if so it tries the next port and prints the URL it actually used. Chosen ports are stored in `.run/` so `./kill.sh` stops the right processes, and preview proxies `/sessions` to that backend.
 
 ## [2.18.0] — 2026-09-13
 ### Added
