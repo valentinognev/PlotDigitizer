@@ -40,6 +40,12 @@ relevant build phase from `refs/WORKFLOW.md` when applicable.
 
 ## Changelog
 
+## [2.18.0] — 2026-09-13
+### Added
+- Editor stages as tabs: **Image** (Unskew, Filter, compact curve picker), **Axes** (Calibration, figure title/labels, preview), **Digitize** (Auto digitize, Curves, preview). Tabs are always reachable; after upload the Image tab is selected; opening a project lands on Digitize if any curve has points, otherwise Axes if calibration is valid, else Image.
+### Changed
+- Open / Save JSON / CSV / Import live in the header. Leaving a tab cancels that stage’s exclusive canvas mode (Image: pick colour; Axes: place bounds; Digitize: place / mask / segment-fill / point-match). Restore/open also clamps a persisted canvas mode to the landed stage.
+
 ## [2.17.1] — 2026-09-12
 ### Fixed
 - Unskew/mesh Apply remaps every named calibration (ref-points, axis_points, scale_bar) and each curve region, then upserts so the panel singleton is the same object as the list entry.

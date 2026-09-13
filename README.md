@@ -20,16 +20,14 @@ data-space preview, and project save/load — without relying on external AI ser
 
 ## How It Works
 
-PlotDigitizer uses a **manual-first pipeline**:
+PlotDigitizer uses a **manual-first pipeline** in three editor stages (tabs stay reachable):
 
-1. **Upload or paste** a plot image (Ctrl+V / Cmd+V; including photos taken at an angle).
-2. **Calibrate** in Cartesian (four bounds or 3+ precise axis points, linear, log, or date), **Polar** (θ units, radius scale, origin radius), **Map** (two-point scale bar), or **Bar** (two-point value axis, optional rotated/horizontal). Affine/projective models map rotated or perspective photos without resampling ink. Add extra named axes and bind each curve via **Axes** in the curve list.
-3. **Unskew** *(optional)*: preview and apply perspective or mesh correction when you still want a straightened image.
-4. **Condition** the curve: per-curve colour filter and optional grid removal; toggle the binary mask overlay.
-5. **Place** points on each curve, or **auto-digitize**: draw a **region mask** (box / pen / erase), run **Averaging window** (ΔX/ΔY px), **Sample Δx** in data space, **Extract this colour** after a colour pick (or **Propose curves from colours**), segment-fill along ink, or **point-match** for scatter markers (sample one marker, accept/reject ranked candidates).
-6. **Refine** line curves with **Improve** (mask corridor) and **Densify**. Scatter curves (`connect_as: scatter`) stay markers-only.
-7. Watch the **preview chart** in data space (cartesian, polar θ/R, map units, or bar labels vs values). Two cartesian axes overlay a second Y (`yaxis2`).
-8. **Export** CSV (numbers plus a sidecar PNG of the working plot, same stem) or **Save JSON** project (`.pdproj.json`, image embedded). CSV columns follow the coordinate system (`x,y` / `theta,R` / `x,y` plus units / `label,value` for bar).
+1. **Image** — **Upload or paste** a plot (Ctrl+V / Cmd+V; including photos taken at an angle). Colour-filter and optional grid removal; toggle the binary mask overlay. Optional **Unskew** (perspective or mesh) once axis bounds exist — place them on **Axes** first, then return here to preview/apply.
+2. **Axes** — **Calibrate** in Cartesian (four bounds or 3+ precise axis points, linear, log, or date), **Polar** (θ units, radius scale, origin radius), **Map** (two-point scale bar), or **Bar** (two-point value axis, optional rotated/horizontal). Affine/projective models map rotated or perspective photos without resampling ink. Add extra named axes; set figure title / xlabel / ylabel. Preview lives on Axes and Digitize.
+3. **Digitize** — **Place** points on each curve, or **auto-digitize**: draw a **region mask** (box / pen / erase), run **Averaging window** (ΔX/ΔY px), **Sample Δx** in data space, **Extract this colour** after a colour pick (or **Propose curves from colours**), segment-fill along ink, or **point-match** for scatter markers (sample one marker, accept/reject ranked candidates). Bind each curve with the per-curve Axes select in the Curves list (not the Axes tab).
+4. **Refine** line curves with **Improve** (mask corridor) and **Densify**. Scatter curves (`connect_as: scatter`) stay markers-only.
+5. Watch the **preview chart** in data space (cartesian, polar θ/R, map units, or bar labels vs values). Two cartesian axes overlay a second Y (`yaxis2`).
+6. **Export** from the header: CSV (numbers plus a sidecar PNG of the working plot, same stem) or **Save JSON** project (`.pdproj.json`, image embedded). CSV columns follow the coordinate system (`x,y` / `theta,R` / `x,y` plus units / `label,value` for bar).
 
 **Pixel coordinates are the source of truth.** Data-space values are always derived through the
 current calibration, so re-calibrating instantly remaps all points.
@@ -40,9 +38,9 @@ current calibration, so re-calibrating instantly remaps all points.
 
 ```
 ┌──────────────────────────── Frontend (React + Tailwind) ────────────────────────────┐
-│  EditorCanvas (Konva)          PreviewChart (Plotly) + DataTablePanel (View data / Copy) │
+│  EditorCanvas (Konva)          PreviewChart (Plotly) + DataTablePanel (Axes / Digitize) │
 │  image + draggable points  ──▶  live replot in data-space + numeric table                │
-│  UnskewPanel · CalibrationPanel · FilterPanel · AutoDigitizePanel · CurveList · ExportPanel                              │
+│  Image · Axes · Digitize  — Unskew/Filter · Calibration/FigureFields · AutoDigitize/Curves │
 └───────────────────────────────────────┬───────────────────────────────────────────────┘
                                          │ typed REST (JSON)
 ┌────────────────────────────── Backend (Python + FastAPI) ──────────────────────────────┐
@@ -117,25 +115,27 @@ cd frontend && npm test
 
 ## Typical Workflow
 
-1. **Upload** a plot image, **paste** one (Ctrl+V / Cmd+V; ignored while typing in a text field), or **drop** an image file onto the window.
-2. Click **Place bounds** in the Calibration panel, then click the plot four times: X min, X max,
-   Y min, Y max. Optional: **Precise (3+ points)** for affine/projective, **Polar**, **Map**
-   (scale bar), or **Bar** (P1/P2 on the value axis, v1/v2, Rotated/horizontal). **Add** extra named
-   axes when a figure needs a second Y; bind each curve in the Curves list.
-3. Enter the **axis values** (linear, log, or date per axis). Date axes store Unix days from 1970-01-01 UTC; type tokens like `YYYY/MM/DD`.
-4. *(Optional, skewed/rotated photos)* In the **Unskew** panel, choose **Perspective** or
-   **Mesh**, adjust the mesh boundary if needed, click **Preview corrected** to review the
-   straightened image, then **Apply** to commit (or **Cancel preview** to revert the view).
-   Axis bounds must cross; invalid geometry shows a toast.
-5. **Add curves** and turn on **Place points** to click seed points on each curve.
-6. Use **Improve** (OpenCV trace), **Densify**, **Averaging window**, **Sample Δx**, or **Segment fill** (click a stroke) to refine a curve. Optional region mask (Box / Pen / Erase) ANDs with the colour filter; **Clear region** restores the full image.
-7. *(Optional)* **Remove from plot** erases the active curve from the working image (Undo restores
+1. **Upload** a plot image, **paste** one (Ctrl+V / Cmd+V; ignored while typing in a text field), or **drop** an image file onto the window. After load, the **Image** tab is selected.
+2. On **Image**, condition the curve with **Filter** (colour / grid) and optionally **Unskew**.
+   Unskew still needs placed axis bounds — switch to **Axes** first, place the bounds, then return
+   to Image to preview/apply. Choose **Perspective** or **Mesh**, adjust the mesh boundary if
+   needed, click **Preview corrected**, then **Apply** (or **Cancel preview**). Axis bounds must
+   cross; invalid geometry shows a toast.
+3. On **Axes**, click **Place bounds**, then click the plot four times: X min, X max, Y min,
+   Y max. Optional: **Precise (3+ points)** for affine/projective, **Polar**, **Map** (scale bar),
+   or **Bar** (P1/P2 on the value axis, v1/v2, Rotated/horizontal). **Add** extra named axes when a
+   figure needs a second Y. Enter the **axis values** (linear, log, or date per axis) and the
+   figure **title / labels**. Date axes store Unix days from 1970-01-01 UTC; type tokens like `YYYY/MM/DD`.
+4. On **Digitize**, **Add curves** and turn on **Place points** to click seed points on each curve.
+   Bind each curve with the per-curve Axes select in the Curves list.
+5. Use **Improve** (OpenCV trace), **Densify**, **Averaging window**, **Sample Δx**, or **Segment fill** (click a stroke) to refine a curve. Optional region mask (Box / Pen / Erase) ANDs with the colour filter; **Clear region** restores the full image.
+6. *(Optional)* **Remove from plot** erases the active curve from the working image (Undo restores
    it) so overlapping strokes can be traced next.
-8. **Drag** points to correct positions; **arrow keys** nudge a selection 1 px (Shift: 10). The
-   **magnifier** (right column, above Curves) zooms 5× around the cursor; the readout under the
+7. **Drag** points to correct positions; **arrow keys** nudge a selection 1 px (Shift: 10). The
+   **magnifier** (right column) zooms 5× around the cursor; the readout under the
    canvas shows pixel (and data when calibrated). Box-select, Delete, and curve reassignment as needed.
-9. Watch the **preview chart** update in data-space (cartesian, polar, map, or bar). **View data** (under the chart) lists the same points; **Copy** puts TSV on the clipboard.
-10. **CSV** writes `*.csv` plus a sidecar `*.png` of the working plot (`label,value` for bar). **Save JSON** embeds the image with calibration, curves, and workspace.
+8. Watch the **preview chart** update in data-space (cartesian, polar, map, or bar). **View data** (under the chart) lists the same points; **Copy** puts TSV on the clipboard.
+9. **CSV** writes `*.csv` plus a sidecar `*.png` of the working plot (`label,value` for bar). **Save JSON** embeds the image with calibration, curves, and workspace.
 
 ---
 
@@ -149,6 +149,7 @@ cd frontend && npm test
 
 ## Status
 
-**v2.9** — clipboard paste to start a session; CSV export writes a sidecar PNG; JSON still embeds
+**v2.18** — editor stages as tabs (Image / Axes / Digitize); Open / Save JSON / CSV / Import in
+the header. Clipboard paste to start a session; CSV export writes a sidecar PNG; JSON still embeds
 the image. Precision toolkit (v2.6+): affine/projective/polar/map calibration, colour-filter + grid
 conditioning, segment-fill and point-match, scatter curves. Current version: see [`UPDATES.md`](UPDATES.md).

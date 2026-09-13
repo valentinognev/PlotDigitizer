@@ -1,6 +1,5 @@
 import { DEFAULT_POINT_COUNT } from '../lib/constants'
-import { paletteColor } from '../lib/colors'
-import { moveCurve } from '../lib/curves'
+import { appendCurve, moveCurve } from '../lib/curves'
 import type { Calibration, CanvasMode, Curve } from '../types'
 
 interface Props {
@@ -47,19 +46,9 @@ export function CurveList({
   const canImprove = (curve: Curve) => curve.points.length >= 2
 
   const addCurve = () => {
-    const n = curves.length
-    const newCurve: Curve = {
-      id: crypto.randomUUID(),
-      label: `Curve ${n + 1}`,
-      color: paletteColor(n),
-      style: 'unknown',
-      visible: true,
-      target_point_count: DEFAULT_POINT_COUNT,
-      points: [],
-      connect_as: 'line',
-    }
-    onCurveChange([...curves, newCurve])
-    onActiveChange(newCurve.id)
+    const { curves: next, added } = appendCurve(curves, crypto.randomUUID())
+    onCurveChange(next)
+    onActiveChange(added.id)
   }
 
   const hideAll = () => {

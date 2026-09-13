@@ -1,4 +1,27 @@
+import { paletteColor } from './colors'
+import { DEFAULT_POINT_COUNT } from './constants'
 import type { Curve } from '../types'
+
+export function createEmptyCurve(index: number, id: string): Curve {
+  return {
+    id,
+    label: `Curve ${index + 1}`,
+    color: paletteColor(index),
+    style: 'unknown',
+    visible: true,
+    target_point_count: DEFAULT_POINT_COUNT,
+    points: [],
+    connect_as: 'line',
+  }
+}
+
+export function appendCurve(
+  curves: Curve[],
+  id: string,
+): { curves: Curve[]; added: Curve } {
+  const added = createEmptyCurve(curves.length, id)
+  return { curves: [...curves, added], added }
+}
 
 export function firstVisibleCurve(curves: Curve[]): Curve | undefined {
   return curves.find((c) => c.visible)

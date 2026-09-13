@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react'
 import { triggerSessionExport } from '../api/client'
 import { runSessionExport } from '../lib/exportFlow'
-import type { FigureMeta } from '../types'
 
 interface Props {
   sessionId: string | null
@@ -9,51 +8,13 @@ interface Props {
   canExportCsv: boolean
   canImport: boolean
   busy?: boolean
-  figure?: FigureMeta
-  onFigureChange?: (figure: FigureMeta) => void
   /** Flush any debounced-but-unsent preferences (e.g. figure title/labels) before exporting. */
   onBeforeExport?: () => Promise<void>
   onLoadProject?: (file: File) => void
   onImport?: (file: File) => void
   onExportError?: (message: string) => void
   compact?: boolean
-}
-
-const EMPTY_FIGURE: FigureMeta = { title: '', xlabel: '', ylabel: '' }
-
-function FigureFields({
-  figure,
-  disabled,
-  onFigureChange,
-  fullWidth,
-}: {
-  figure: FigureMeta
-  disabled: boolean
-  onFigureChange?: (figure: FigureMeta) => void
-  fullWidth?: boolean
-}) {
-  const inputClass = `rounded border border-slate-600 bg-slate-900 px-1 py-0.5 text-[11px] disabled:cursor-not-allowed disabled:opacity-50 ${
-    fullWidth ? 'w-full' : ''
-  }`
-  const field = (labelText: string, key: keyof FigureMeta) => (
-    <label className="flex flex-col gap-0.5 text-[10px] text-slate-400">
-      {labelText}
-      <input
-        type="text"
-        disabled={disabled}
-        className={inputClass}
-        value={figure[key]}
-        onChange={(e) => onFigureChange?.({ ...figure, [key]: e.target.value })}
-      />
-    </label>
-  )
-  return (
-    <div className="mb-1.5 flex flex-col gap-1">
-      {field('Figure title', 'title')}
-      {field('xlabel', 'xlabel')}
-      {field('ylabel', 'ylabel')}
-    </div>
-  )
+  variant?: 'header' | 'card'
 }
 
 export function ExportPanel({
@@ -62,18 +23,18 @@ export function ExportPanel({
   canExportCsv,
   canImport,
   busy,
-  figure,
-  onFigureChange,
   onBeforeExport,
   onLoadProject,
   onImport,
   onExportError,
   compact,
+  variant,
 }: Props) {
-  const figureValue = figure ?? EMPTY_FIGURE
   const importInputRef = useRef<HTMLInputElement>(null)
   const projectInputRef = useRef<HTMLInputElement>(null)
   const [exporting, setExporting] = useState<'csv' | 'json' | null>(null)
+  const resolvedVariant: 'header' | 'card' =
+    variant ?? (compact ? 'header' : 'card')
 
   const handleExport = async (format: 'csv' | 'json') => {
     if (!sessionId) return
@@ -181,52 +142,37 @@ export function ExportPanel({
     </>
   )
 
-  if (compact) {
+  if (resolvedVariant === 'header') {
     return (
-      <section className="min-w-0 max-w-full flex-1 basis-72 overflow-hidden rounded-lg border border-slate-700 bg-slate-800/50 p-2">
-        <h3 className="mb-1 text-xs font-semibold text-slate-200">Project</h3>
-        <p className="mb-1.5 break-words text-[10px] leading-snug text-slate-500">
-          JSON saves the plot image, calibration, curves, and workspace for full restore.
-        </p>
-        <FigureFields
-          figure={figureValue}
-          disabled={!sessionId}
-          onFigureChange={onFigureChange}
-          fullWidth
-        />
-        <div className="flex flex-wrap gap-1.5">
-          {openProjectButton}
-          <button
-            type="button"
-            disabled={!canExportProject || busy || !!exporting}
-            onClick={() => void handleExport('json')}
-            className={exportButtonClass(canExportProject && !busy && !exporting)}
-          >
-            {exporting === 'json' ? 'Saving…' : 'Save JSON'}
-          </button>
-          <button
-            type="button"
-            disabled={!canExportCsv || busy || !!exporting}
-            onClick={() => void handleExport('csv')}
-            className={exportButtonClass(canExportCsv && !busy && !exporting)}
-          >
-            {exporting === 'csv' ? 'Saving…' : 'CSV'}
-          </button>
-          {importButton}
-        </div>
-      </section>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {openProjectButton}
+        <button
+          type="button"
+          disabled={!canExportProject || busy || !!exporting}
+          onClick={() => void handleExport('json')}
+          className={exportButtonClass(canExportProject && !busy && !exporting)}
+        >
+          {exporting === 'json' ? 'Saving…' : 'Save JSON'}
+        </button>
+        <button
+          type="button"
+          disabled={!canExportCsv || busy || !!exporting}
+          onClick={() => void handleExport('csv')}
+          className={exportButtonClass(canExportCsv && !busy && !exporting)}
+        >
+          {exporting === 'csv' ? 'Saving…' : 'CSV'}
+        </button>
+        {importButton}
+      </div>
     )
   }
 
   return (
     <section className="rounded-lg border border-slate-700 bg-slate-800/50 p-3">
       <h3 className="mb-2 text-sm font-semibold text-slate-200">Project</h3>
-      <FigureFields
-        figure={figureValue}
-        disabled={!sessionId}
-        onFigureChange={onFigureChange}
-        fullWidth
-      />
+      <p className="mb-1.5 break-words text-[10px] leading-snug text-slate-500">
+        JSON saves the plot image, calibration, curves, and workspace for full restore.
+      </p>
       {!sessionId ? (
         <div className="flex gap-2">
           {openProjectButton}

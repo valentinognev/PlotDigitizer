@@ -35,11 +35,14 @@ import { UnskewPanel } from './components/UnskewPanel'
 import { FilterPanel, type MaskView } from './components/FilterPanel'
 import { AutoDigitizePanel } from './components/AutoDigitizePanel'
 import { CurveList } from './components/CurveList'
+import { CurvePicker } from './components/CurvePicker'
 import { EditorCanvas } from './components/EditorCanvas'
 import { MagnifierView } from './components/MagnifierView'
 import { ExportPanel } from './components/ExportPanel'
+import { FigureFields } from './components/FigureFields'
 import { PreviewChart } from './components/PreviewChart'
 import { DataTablePanel } from './components/DataTablePanel'
+import { StageTabs } from './components/StageTabs'
 import { firstVisibleCurve } from './lib/curves'
 import { DEFAULT_POINT_COUNT } from './lib/constants'
 import {
@@ -107,6 +110,16 @@ import {
 import { applyCurveRegion, nextCurveRegion, shouldApplySavedRegion } from './lib/regionPersist'
 import { pixelToData } from './lib/transform2d'
 import { getAxisBounds, isCalibrationValid, updateAxisBound, areCalibrationPixelsInImage, type AxisBoundKey } from './lib/transform'
+import {
+  UNSKEW_PLACE_AXES_HINT,
+  canvasModeAllowedOnStage,
+  nextStageOnSessionIdentityChange,
+  previewGridClassName,
+  shouldResetAxisPlacementOnStage,
+  shouldRenderTopStrip,
+  stageChrome,
+  type WorkflowStage,
+} from './lib/workflowStage'
 import type { Calibration, CanvasMode, ColorFilter, FigureMeta, RegionBox, RegionMask, SegmentPublic, Session } from './types'
 
 const EMPTY_FIGURE: FigureMeta = { title: '', xlabel: '', ylabel: '' }
@@ -120,6 +133,9 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null)
   const sessionRef = useRef(session)
   sessionRef.current = session
+  const [workflowStage, setWorkflowStage] = useState<WorkflowStage>('image')
+  const sessionLandingIdRef = useRef<string | null>(null)
+  const sessionLandingReasonRef = useRef<'upload' | 'restore'>('restore')
   const [activeCurveId, setActiveCurveId] = useState<string | null>(null)
   const [selectedPointIds, setSelectedPointIds] = useState<string[]>([])
   const [preciseMode, setPreciseMode] = useState(false)
@@ -158,6 +174,25 @@ export default function App() {
   const prefsDebounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const filterDebounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const pendingPrefsPatch = useRef<PreferencesPatch>({})
+
+  useEffect(() => {
+    const next = nextStageOnSessionIdentityChange(
+      sessionLandingIdRef.current,
+      session && { id: session.id, calibration: session.calibration, curves: session.curves },
+      sessionLandingReasonRef.current,
+    )
+    if (next !== null) {
+      setWorkflowStage(next)
+      sessionLandingIdRef.current = session?.id ?? null
+      sessionLandingReasonRef.current = 'restore'
+      setCanvasMode((mode) => canvasModeAllowedOnStage(next, mode))
+      if (shouldResetAxisPlacementOnStage(next)) {
+        setAxisPlaceStep(null)
+        setPreciseMode(false)
+        setScaleBarStep(null)
+      }
+    }
+  }, [session])
 
   const applyWorkspaceFromSession = useCallback((s: Session | null) => {
     if (!s) {
@@ -396,6 +431,7 @@ export default function App() {
   }
 
   const handleUpload = async (file: File) => {
+    sessionLandingReasonRef.current = 'upload'
     setBusy(true)
     setBusyMessage('Uploading image…')
     try {
@@ -407,6 +443,7 @@ export default function App() {
       setUnskewPreview(false)
       toast('Image uploaded')
     } catch (e) {
+      sessionLandingReasonRef.current = 'restore'
       toast(e instanceof Error ? e.message : 'Upload failed')
     } finally {
       setBusy(false)
@@ -835,6 +872,18 @@ export default function App() {
     }
   }
 
+  const handleWorkflowStageChange = (next: WorkflowStage) => {
+    if (next === workflowStage) return
+    const nextMode = canvasModeAllowedOnStage(next, canvasMode)
+    if (nextMode !== canvasMode) handleCanvasModeChange(nextMode)
+    if (shouldResetAxisPlacementOnStage(next)) {
+      setAxisPlaceStep(null)
+      setPreciseMode(false)
+      setScaleBarStep(null)
+    }
+    setWorkflowStage(next)
+  }
+
   const handleAddPoint = (pixel: [number, number]) => {
     if (!placementCurveId) return
     patchCurvesQuiet(
@@ -1060,7 +1109,7 @@ export default function App() {
   const unskewStatus = !session
     ? 'Upload an image to begin'
     : !axisBounds
-      ? 'Place axis bounds in Calibration first'
+      ? UNSKEW_PLACE_AXES_HINT
       : !calPixelsInImage
         ? 'Axis marks are outside the image — re-place bounds (turn off preview first)'
       : unskewMode === 'mesh' && !meshGrid
@@ -1392,6 +1441,8 @@ export default function App() {
     }
   }
 
+  const chrome = stageChrome(workflowStage)
+
   return (
     <div
       className="flex h-full min-h-0 flex-col overflow-hidden"
@@ -1445,6 +1496,34 @@ export default function App() {
               </button>
             </>
           )}
+          <ExportPanel
+            variant="header"
+            sessionId={session?.id ?? null}
+            canExportProject={!!session}
+            canExportCsv={!!session && isCalibrationValid(calibration)}
+            canImport={!!session && isCalibrationValid(calibration)}
+            busy={busy}
+            onBeforeExport={flushPreferencesQuiet}
+            onExportError={(message) => toast(message)}
+            onLoadProject={(file) =>
+              run(async () => {
+                const s = await loadProject(file)
+                setSelectedPointIds([])
+                setCanvasMode('select')
+                setAxisPlaceStep(null)
+                return s
+              }, 'Opening project…')
+            }
+            onImport={(file) =>
+              session &&
+              run(async () => {
+                const s = await importCurves(session.id, file)
+                applyWorkspaceFromSession(s)
+                setSelectedPointIds([])
+                return s
+              }, 'Importing curves…')
+            }
+          />
         </div>
       </header>
 
@@ -1456,106 +1535,88 @@ export default function App() {
 
       <p id="toast" className="shrink-0 px-4 py-0.5 text-center text-xs text-amber-300" />
 
-      <div className="flex shrink-0 flex-wrap gap-2 overflow-x-auto border-b border-slate-800 px-2 py-2">
-        <UnskewPanel
-          mode={unskewMode}
-          canTogglePreview={canToggleUnskewPreview}
-          previewActive={unskewPreview}
-          canApply={canApplyUnskew}
-          status={unskewStatus}
-          busy={busy}
-          canResetMesh={unskewMode === 'mesh' && !!meshGrid}
-          onModeChange={handleUnskewModeChange}
-          onTogglePreview={handleToggleUnskewPreview}
-          onApply={handleApplyUnskew}
-          onCancelPreview={() => setUnskewPreview(false)}
-          onResetMesh={handleResetMesh}
-          meshSections={unskewMode === 'mesh' ? (meshGrid?.sections ?? DEFAULT_MESH_SECTIONS) : undefined}
-          minMeshSections={MIN_MESH_SECTIONS}
-          maxMeshSections={MAX_MESH_SECTIONS}
-          onMeshSectionsChange={handleMeshSectionsChange}
-        />
-        <FilterPanel
-          filter={activeCurve?.filter ?? null}
-          disabled={!session || !activeCurve}
-          busy={busy}
-          picking={canvasMode === 'pick-color'}
-          maskView={maskView}
-          grid={session?.workspace?.grid ?? null}
-          onFilterChange={commitFilter}
-          onPickColor={handlePickColor}
-          onMaskViewChange={(view) => {
-            setMaskView(view)
-            if (session) {
-              patchSessionPreferences(session.id, {
-                workspace: {
-                  ...(session.workspace ?? {}),
-                  show_mask: view !== 'none',
-                  canvas_mode: canvasMode,
-                },
-              }).catch(() => {})
-            }
-          }}
-          onToggleGrid={handleToggleGrid}
-        />
-        <CalibrationPanel
-          calibration={calibration}
-          calibrations={calibrationsList}
-          axisPlaceStep={axisPlaceStep}
-          preciseMode={preciseMode}
-          scaleBarStep={scaleBarStep}
-          showAxesChecker={showAxesChecker}
-          onToggleAxesChecker={handleToggleAxesChecker}
-          onStartAxisPlacement={startAxisPlacement}
-          onStartPrecisePlacement={startPrecisePlacement}
-          onStartScaleBarPlacement={startScaleBarPlacement}
-          onChange={handleCalibrationChange}
-          onSelect={handleSelectCalibration}
-          onAdd={handleAddCalibration}
-          onDelete={handleDeleteCalibration}
-          onSave={() =>
-            session &&
-            draftCalibration &&
-            run(
-              () => setCalibration(session.id, { ...draftCalibration, source: 'manual' }),
-              'Saving calibration…',
-            )
-          }
-        />
-        <ExportPanel
-          compact
-          sessionId={session?.id ?? null}
-          canExportProject={!!session}
-          canExportCsv={!!session && isCalibrationValid(calibration)}
-          canImport={!!session && isCalibrationValid(calibration)}
-          busy={busy}
-          figure={figure}
-          onFigureChange={handleFigureChange}
-          onBeforeExport={flushPreferencesQuiet}
-          onExportError={(message) => toast(message)}
-          onLoadProject={(file) =>
-            run(async () => {
-              const s = await loadProject(file)
-              setSelectedPointIds([])
-              setCanvasMode('select')
-              setAxisPlaceStep(null)
-              return s
-            }, 'Opening project…')
-          }
-          onImport={(file) =>
-            session &&
-            run(async () => {
-              const s = await importCurves(session.id, file)
-              applyWorkspaceFromSession(s)
-              setSelectedPointIds([])
-              return s
-            }, 'Importing curves…')
-          }
-        />
+      <div className="shrink-0 border-b border-slate-800 px-2 py-1">
+        <StageTabs stage={workflowStage} onChange={handleWorkflowStageChange} disabled={!session} />
       </div>
 
+      {shouldRenderTopStrip(chrome) && (
+        <div className="flex shrink-0 flex-wrap gap-2 overflow-x-auto border-b border-slate-800 px-2 py-2">
+          {chrome.showUnskew && (
+            <UnskewPanel
+              mode={unskewMode}
+              canTogglePreview={canToggleUnskewPreview}
+              previewActive={unskewPreview}
+              canApply={canApplyUnskew}
+              status={unskewStatus}
+              busy={busy}
+              canResetMesh={unskewMode === 'mesh' && !!meshGrid}
+              onModeChange={handleUnskewModeChange}
+              onTogglePreview={handleToggleUnskewPreview}
+              onApply={handleApplyUnskew}
+              onCancelPreview={() => setUnskewPreview(false)}
+              onResetMesh={handleResetMesh}
+              meshSections={unskewMode === 'mesh' ? (meshGrid?.sections ?? DEFAULT_MESH_SECTIONS) : undefined}
+              minMeshSections={MIN_MESH_SECTIONS}
+              maxMeshSections={MAX_MESH_SECTIONS}
+              onMeshSectionsChange={handleMeshSectionsChange}
+            />
+          )}
+          {chrome.showFilter && (
+            <FilterPanel
+              filter={activeCurve?.filter ?? null}
+              disabled={!session || !activeCurve}
+              busy={busy}
+              picking={canvasMode === 'pick-color'}
+              maskView={maskView}
+              grid={session?.workspace?.grid ?? null}
+              onFilterChange={commitFilter}
+              onPickColor={handlePickColor}
+              onMaskViewChange={(view) => {
+                setMaskView(view)
+                if (session) {
+                  patchSessionPreferences(session.id, {
+                    workspace: {
+                      ...(session.workspace ?? {}),
+                      show_mask: view !== 'none',
+                      canvas_mode: canvasMode,
+                    },
+                  }).catch(() => {})
+                }
+              }}
+              onToggleGrid={handleToggleGrid}
+            />
+          )}
+          {chrome.showCalibration && (
+            <CalibrationPanel
+              calibration={calibration}
+              calibrations={calibrationsList}
+              axisPlaceStep={axisPlaceStep}
+              preciseMode={preciseMode}
+              scaleBarStep={scaleBarStep}
+              showAxesChecker={showAxesChecker}
+              onToggleAxesChecker={handleToggleAxesChecker}
+              onStartAxisPlacement={startAxisPlacement}
+              onStartPrecisePlacement={startPrecisePlacement}
+              onStartScaleBarPlacement={startScaleBarPlacement}
+              onChange={handleCalibrationChange}
+              onSelect={handleSelectCalibration}
+              onAdd={handleAddCalibration}
+              onDelete={handleDeleteCalibration}
+              onSave={() =>
+                session &&
+                draftCalibration &&
+                run(
+                  () => setCalibration(session.id, { ...draftCalibration, source: 'manual' }),
+                  'Saving calibration…',
+                )
+              }
+            />
+          )}
+        </div>
+      )}
+
       <main className="flex min-h-0 flex-1 overflow-hidden">
-        <div className="grid h-full min-h-0 min-w-0 flex-1 grid-cols-1 grid-rows-2 gap-2 p-2 lg:grid-cols-2 lg:grid-rows-1">
+        <div className={previewGridClassName(chrome.showPreview)}>
           <div className="min-h-0 overflow-hidden">
             <EditorCanvas
               imageUrl={imageUrl}
@@ -1614,63 +1675,81 @@ export default function App() {
               cursorReadout={cursorReadout}
             />
           </div>
-          <div className="flex min-h-0 flex-col gap-2 overflow-hidden">
-            <div className="min-h-0 flex-1 overflow-hidden">
-              <PreviewChart
-                curves={session?.curves ?? []}
-                calibration={calibration}
-                calibrations={calibrationsList}
-                figure={figure}
-              />
+          {chrome.showPreview && (
+            <div className="flex min-h-0 flex-col gap-2 overflow-hidden">
+              <div className="min-h-0 flex-1 overflow-hidden">
+                <PreviewChart
+                  curves={session?.curves ?? []}
+                  calibration={calibration}
+                  calibrations={calibrationsList}
+                  figure={figure}
+                />
+              </div>
+              {chrome.showDataTable && (
+                <DataTablePanel
+                  curves={session?.curves ?? []}
+                  calibration={calibration}
+                  calibrations={calibrationsList}
+                  onToast={toast}
+                />
+              )}
             </div>
-            <DataTablePanel
-              curves={session?.curves ?? []}
-              calibration={calibration}
-              calibrations={calibrationsList}
-              onToast={toast}
-            />
-          </div>
+          )}
         </div>
 
         <aside className="flex h-full min-h-0 w-[300px] shrink-0 flex-col overflow-hidden border-l border-slate-800 p-2">
-          <AutoDigitizePanel
-            busy={busy}
-            disabled={!activeCurveId}
-            active={canvasMode === 'segment-fill'}
-            pointSeparation={pointSeparation}
-            minSegmentLength={minSegmentLength}
-            fillCorners={fillCorners}
-            onPointSeparationChange={(n) => {
-              setPointSeparation(n)
-            }}
-            onMinSegmentLengthChange={(n) => {
-              setMinSegmentLength(n)
-            }}
-            onFillCornersChange={setFillCorners}
-            onEnterSegmentFill={enterSegmentFill}
-            maxPointSize={maxPointSize}
-            onMaxPointSizeChange={(n) => {
-              setMaxPointSize(n)
-              if (session) {
-                savePreferencesQuiet({
-                  workspace: { ...(session.workspace ?? {}), max_point_size: n },
-                })
-              }
-            }}
-            canvasMode={canvasMode}
-            onCanvasModeChange={handleCanvasModeChange}
-            acceptedCount={pointMatchState.accepted.length}
-            onApplyAccepted={handlePointMatchApply}
-            onClearCandidates={() => setPointMatchState(emptyPointMatch)}
-            calibration={calibration}
-            onClearRegion={handleClearRegion}
-            onAveragingWindow={handleAveragingWindow}
-            onSampleXStep={handleSampleXStep}
-            lastPickPixel={lastPickPixel}
-            onExtractColor={handleExtractColor}
-            onProposeCurves={handleProposeCurves}
-            proposeDisabled={busy || !session}
-          />
+          {chrome.showCurvePicker && (
+            <CurvePicker
+              curves={session?.curves ?? []}
+              activeCurveId={activeCurveId}
+              busy={busy}
+              onCurvesChange={syncCurves}
+              onActiveChange={setActiveCurveId}
+            />
+          )}
+          {chrome.showFigureFields && (
+            <FigureFields figure={figure} disabled={!session} onFigureChange={handleFigureChange} />
+          )}
+          {chrome.showAutoDigitize && (
+            <AutoDigitizePanel
+              busy={busy}
+              disabled={!activeCurveId}
+              active={canvasMode === 'segment-fill'}
+              pointSeparation={pointSeparation}
+              minSegmentLength={minSegmentLength}
+              fillCorners={fillCorners}
+              onPointSeparationChange={(n) => {
+                setPointSeparation(n)
+              }}
+              onMinSegmentLengthChange={(n) => {
+                setMinSegmentLength(n)
+              }}
+              onFillCornersChange={setFillCorners}
+              onEnterSegmentFill={enterSegmentFill}
+              maxPointSize={maxPointSize}
+              onMaxPointSizeChange={(n) => {
+                setMaxPointSize(n)
+                if (session) {
+                  savePreferencesQuiet({
+                    workspace: { ...(session.workspace ?? {}), max_point_size: n },
+                  })
+                }
+              }}
+              canvasMode={canvasMode}
+              onCanvasModeChange={handleCanvasModeChange}
+              acceptedCount={pointMatchState.accepted.length}
+              onApplyAccepted={handlePointMatchApply}
+              onClearCandidates={() => setPointMatchState(emptyPointMatch)}
+              calibration={calibration}
+              onClearRegion={handleClearRegion}
+              onAveragingWindow={handleAveragingWindow}
+              onSampleXStep={handleSampleXStep}
+              lastPickPixel={lastPickPixel}
+              onExtractColor={handleExtractColor}
+              onProposeCurves={handleProposeCurves}
+              proposeDisabled={busy || !session}
+            />
+          )}
           <div className="mb-2 flex h-[160px] shrink-0 items-center justify-center">
             <MagnifierView
               imageUrl={imageUrl}
@@ -1679,38 +1758,40 @@ export default function App() {
               imageH={imageHeight}
             />
           </div>
-          <CurveList
-            curves={session?.curves ?? []}
-            calibrations={calibrationsList}
-            activeCurveId={activeCurveId}
-            placementCurveId={placementCurveId}
-            selectedPointIds={selectedPointIds}
-            busy={busy}
-            resampleCount={resampleCount}
-            onResampleCountChange={setResampleCount}
-            onActiveChange={setActiveCurveId}
-            canvasMode={canvasMode}
-            onCanvasModeChange={handleCanvasModeChange}
-            onCurveChange={syncCurves}
-            onReassignPoints={handleReassign}
-            onImprove={(curveId) =>
-              session && run(() => cvImproveCurve(session.id, curveId), 'Tracing curve…')
-            }
-            onResample={(curveId) =>
-              session &&
-              run(
-                () => resampleSession(session.id, curveId, resampleCount),
-                'Densifying curve…',
-              )
-            }
-            onRemoveFromPlot={(curveId) =>
-              session &&
-              run(
-                () => removeCurveFromPlot(session.id, curveId),
-                'Removing curve from plot…',
-              )
-            }
-          />
+          {chrome.showCurveList && (
+            <CurveList
+              curves={session?.curves ?? []}
+              calibrations={calibrationsList}
+              activeCurveId={activeCurveId}
+              placementCurveId={placementCurveId}
+              selectedPointIds={selectedPointIds}
+              busy={busy}
+              resampleCount={resampleCount}
+              onResampleCountChange={setResampleCount}
+              onActiveChange={setActiveCurveId}
+              canvasMode={canvasMode}
+              onCanvasModeChange={handleCanvasModeChange}
+              onCurveChange={syncCurves}
+              onReassignPoints={handleReassign}
+              onImprove={(curveId) =>
+                session && run(() => cvImproveCurve(session.id, curveId), 'Tracing curve…')
+              }
+              onResample={(curveId) =>
+                session &&
+                run(
+                  () => resampleSession(session.id, curveId, resampleCount),
+                  'Densifying curve…',
+                )
+              }
+              onRemoveFromPlot={(curveId) =>
+                session &&
+                run(
+                  () => removeCurveFromPlot(session.id, curveId),
+                  'Removing curve from plot…',
+                )
+              }
+            />
+          )}
         </aside>
       </main>
     </div>
